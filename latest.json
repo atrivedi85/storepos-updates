@@ -1,6 +1,6 @@
 {
- "version": "1.4.0",
- "notes": "EBT category with tax-free EBT payments, EBT button, blank-store setup screen.",
- "url": "updates/StorePOS-Update-1.4.0.posupdate",
- "sha256": "06a710609cde640aa9372e899f31a0dc0b113ec88927bf5b2b58fcfab1676390"
+ "version": "1.5.0",
+ "notes": "License keys (14-day trial for new stores), update address filled in for new installs.",
+ "url": "updates/StorePOS-Update-1.5.0.posupdate",
+ "sha256": "bf23de2b6d11b65925146b7664d60708a0bbf949707713a25e1ba81103287657"
 }

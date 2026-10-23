@@ -35,5 +35,8 @@ contextBridge.exposeInMainWorld('posAPI', {
   downloadUpdate: () => ipcRenderer.invoke('downloadUpdate'),
   onUpdateAvailable: cb => ipcRenderer.on('updateAvailable', (e, u) => cb(u)),
   undoUpdate: () => ipcRenderer.invoke('undoUpdate'),
+  licenseState: () => ipcRenderer.invoke('licenseState'),
+  setLicense: k => ipcRenderer.invoke('setLicense', k),
+  loadLicenseFile: () => ipcRenderer.invoke('loadLicenseFile'),
   exitApp: () => ipcRenderer.invoke('exitApp')
 });

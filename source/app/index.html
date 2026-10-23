@@ -363,6 +363,7 @@ function render(){
  if(S.setupMode){$('#app').innerHTML=renderSetup();return}
  if(!S.user){$('#app').innerHTML=renderLogin();return}
  if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
+ if(DESK&&S.lic&&S.lic.locked&&(S.screen==='register'||S.screen==='pay')){$('#app').innerHTML=`<main>${renderLicLock()}</main>${footer()}`;tick();return}
  const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
  $('#app').innerHTML=`<main>${f()}</main>${footer()}`;tick();saveCart();
  if(S.screen==='register'){requestAnimationFrame(()=>{const el=document.querySelector('.line.sel');el&&el.scrollIntoView({block:'nearest'})})}
@@ -372,7 +373,7 @@ function footer(){
  const tabs=[['register','Register'],['items','Items','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['promos','Promos','promos'],['settings','Settings','settings']];
  return `<footer><div class="who"><b>${esc(TITLES[S.screen])}</b><span>Logged in: ${esc(S.user.name)}</span></div>
  <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${S.screen===t[0]||(S.screen==='pay'&&t[0]==='register')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
- <div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
+ ${DESK&&S.lic&&['trial','grace','trialover','expired','wrongpc'].includes(S.lic.status)||(DESK&&S.lic&&S.lic.status==='licensed'&&S.lic.expires&&S.lic.daysLeft<=14)?`<button class="lock" style="background:${S.lic.locked?'var(--red)':'var(--amber)'}" data-a="licOpen">${S.lic.status==='trial'?`Trial: ${S.lic.daysLeft}d`:S.lic.locked?'License needed':`License: ${S.lic.daysLeft}d`}</button>`:''}<div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
 }
 function tick(){const el=$('#clock');if(!el)return;const n=new Date();el.innerHTML=`<b>${n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}</b>${n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'})}`}
 function renderSetup(){const v=id=>{const e=document.getElementById(id);return e?e.value:''};
@@ -382,10 +383,16 @@ function renderSetup(){const v=id=>{const e=document.getElementById(id);return e
  <label class="fld"><span>Phone</span><input id="su_phone" autocomplete="off"></label><label class="fld"><span>Sales tax % *</span><input id="su_tax" type="number" step="any" inputmode="decimal" placeholder="e.g. 8.25"></label>
  <label class="fld"><span>Owner name *</span><input id="su_owner" placeholder="Owner" autocomplete="off"></label><label class="fld"><span>Owner PIN (4–8 digits) *</span><input id="su_pin" inputmode="numeric" type="password" autocomplete="off"></label>
  <label class="fld"></label><label class="fld"><span>Type the PIN again *</span><input id="su_pin2" inputmode="numeric" type="password" autocomplete="off"></label></div>
- <label class="tog"><input type="checkbox" id="su_cats" checked><span>Add starter categories (Drinks, Snacks, Candy, Grocery, Tobacco, Vape, Accessories, Misc)</span></label>
+ ${DESK?`<label class="fld wide" style="margin-bottom:8px"><span>License key (optional — leave empty for a ${14}-day free trial)</span><textarea id="su_lic" rows="2" placeholder="SPOS-…" style="font-family:monospace"></textarea></label>`:''}<label class="tog"><input type="checkbox" id="su_cats" checked><span>Add starter categories (Drinks, Snacks, Candy, Grocery, Tobacco, Vape, Accessories, Misc)</span></label>
  <label class="tog"><input type="checkbox" id="su_ebt" checked><span>Add an EBT category (food you can sell on EBT, tax free when paid by EBT)</span></label>
  <div class="warn" id="su_msg" style="min-height:18px"></div><button class="btn green" style="width:100%;min-height:62px;font-size:20px" data-a="setupDone">Start using Store POS</button>
  <p class="hint" style="text-align:center">Next: add items in Items (or import a list in Settings → Import / Backup), set up printers, and add staff in Users & PINs.</p></div></div>`}
+function licText(l){if(!l)return'';switch(l.status){case'licensed':return `Licensed to <b>${esc(l.customer||'')}</b>${l.expires?` · renews ${esc(l.expires)} (${l.daysLeft} days)`:' · no expiry'}`;case'grace':return `License for <b>${esc(l.customer||'')}</b> expired ${esc(l.expires)} — <b>${l.daysLeft} days</b> left before the register locks`;case'trial':return `Free trial — <b>${l.daysLeft} day${l.daysLeft===1?'':'s'}</b> left`;case'trialover':return 'The free trial has ended';case'expired':return `The license for <b>${esc(l.customer||'')}</b> expired on ${esc(l.expires)}`;case'wrongpc':return esc(l.error||'This license is for a different computer');default:return''}}
+function licBox(){const l=S.lic||{};return `<div class="sec" style="max-width:720px"><p style="font-size:17px;margin-top:0">${licText(l)}</p>${l.id?`<p class="hint">License ID: ${esc(l.id)}</p>`:''}
+ <p class="hint">Computer ID: <b style="font-size:16px;letter-spacing:1px">${esc(l.machine||'')}</b> — give this to your Store POS dealer if your license should be locked to this computer.</p>
+ <label class="fld"><span>License key</span><textarea id="licKey" rows="3" placeholder="SPOS-…" style="font-family:monospace"></textarea></label>
+ <div class="mbtns" style="justify-content:flex-start"><button class="btn green" data-a="licActivate">Activate license</button><button class="btn" data-a="licFile">Load license file…</button></div><div class="warn" id="licMsg"></div></div>`}
+function renderLicLock(){return `<div style="height:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:30px 16px"><div style="width:min(760px,96vw)"><h2>🔒 The register is locked</h2><p class="hint">${licText(S.lic)}. Your items, sales and settings are safe. Enter a Store POS license key to keep selling.${can('txn_view')?' You can still look up Transactions':''}${can('reports_view')?' and Reports.':'.'}</p>${licBox()}</div></div>`}
 function renderLogin(){const def=S.users.some(u=>u.pin==='1234'&&u.role==='admin');
  return `<div class="login"><div class="lbox">${S.settings.logo?`<img src="${S.settings.logo}" style="max-width:220px;max-height:90px;margin-bottom:6px">`:''}<h1>${esc(S.settings.storeName)}</h1><div class="hint">Enter your PIN</div><div class="pin" id="pinD">${'•'.repeat(S.pin.length)||'&nbsp;'}</div>
  <div class="kp">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-a="pinK" data-k="${k}">${k}</button>`).join('')}</div>
@@ -539,7 +546,7 @@ function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
  if((type==='Credit'||type==='Debit')&&a<S.settings.cardMin)confirmBox(`Card minimum is $${money(S.settings.cardMin)}.<br>This charge is $${money(a)}. Continue anyway?`,'Continue',go);else go()}
 function addPay(type,a,last4){const pe={type,amount:r2(a),time:Date.now()};if(last4)pe.last4=last4;S.cart.payments.push(pe);const c=calc(S.cart);
  if((c.total>=0&&c.balance<=0.004)||(c.total<0&&Math.abs(c.balance)<0.005))finishSale();else{S.screen='pay';render()}}
-function finishSale(){const c=calc(S.cart),cart=S.cart;
+function finishSale(){if(DESK&&S.lic&&S.lic.locked){toast('The register is locked — a license is needed',1);render();return}const c=calc(S.cart),cart=S.cart;
  const change=c.total>=0?r2(c.paid-c.total):0;
  const o={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:cart.label,
   lines:cart.lines.map((l,i)=>({ebt:!!l.ebt,sku:l.sku,name:l.name,qty:l.qty,price:l.price,origPrice:l.origPrice??l.price,cost:+l.cost||0,cat:l.cat||'',taxes:l.taxes||[],misc:!!l.misc,fee:!!l.fee,inv:!!l.inv,disc:r2(c.lineDisc[i]),net:r2(c.lineNet[i]),tax:r2(c.lineTax[i]),note:c.lineNotes[i]||''})),
@@ -734,6 +741,7 @@ const SETT={
  <div class="sec"><h4 style="margin-top:0">Automatic backups</h4><p class="hint">A full backup is saved once a day (last 30 kept). Add a USB stick or OneDrive folder so a dead hard drive can't take your data.</p>
  <table class="tbl mini"><tr><td>Last backup</td><td><b>${c.lastBackup?fmtDT(c.lastBackup):'not yet'}</b> ${c.lastBackupError?`<div class="warn">${esc(c.lastBackupError)}</div>`:''}</td></tr><tr><td>Backups on this PC</td><td>${esc(c.backupRoot||'')}</td></tr><tr><td>Extra backup folder</td><td>${c.backupDir?esc(c.backupDir):'<span class="warn">none set</span>'}</td></tr><tr><td>Database file</td><td>${esc((c.dataDir||'')+'\\pos.db')}</td></tr></table>
  <button class="btn green" data-a="hwBackup">Back up now</button><button class="btn" data-a="hwBackupDir">Choose extra backup folder</button><button class="btn" data-a="hwOpen" data-v="backups">Open backups folder</button><button class="btn" data-a="hwOpen" data-v="data">Open data folder</button><p class="hint">To restore, use Import / Backup → Restore from backup and pick a pos-backup file.</p></div>`},
+ license:()=>`<h2>Store POS license</h2>${licBox()}`,
  data:()=>`<h2>Import / backup</h2>
  <div class="sec"><h4 style="margin-top:0">Import items from your old POS</h4><p class="hint">Export your item list from the old system as CSV or Excel → “Save as CSV”. Needs columns for SKU/barcode, item name and price. Cost, quantity, category and subcategory are used if present. Existing SKUs are updated, new ones are added.</p><label class="btn blue"><input type="file" accept=".csv,.txt,.tsv" data-file="csv" hidden>Import items CSV</label><button class="btn" data-a="exportCsv">Export items CSV</button></div>
  ${DESK?`<div class="sec"><h4 style="margin-top:0">Software update</h4><p>Running version <b>${esc(S.cfg.appVersion||'')}</b>${S.cfg.runningUpdate?` (updated — installed version ${esc(S.cfg.bundledVersion)})`:''}</p>${S.cfg.rolledBack?`<p class="warn">Update ${esc(S.cfg.rolledBack)} did not start, so the installed version is running. Send this to support.</p>`:''}<p class="hint">Got a <b>.posupdate</b> file? Put it in Downloads or on a USB stick, then tap Install update. Your items, sales and settings are kept, and a backup is made first.</p>${S.updAvail?`<div class="sec" style="background:#d4f2e1"><b>Version ${esc(S.updAvail.version)} is available.</b> ${esc(S.updAvail.notes||'')}<br><button class="btn green" data-a="dlUpdate">Download & install</button></div>`:''}<button class="btn green" data-a="installUpdate">Install update file…</button><button class="btn" data-a="chkUpdate">Check online</button>
@@ -742,7 +750,7 @@ const SETT={
  <div class="sec"><h4 style="margin-top:0">Clean up</h4><p class="hint">${S.products.filter(p=>p.sample).length} sample items are loaded for testing.</p><button class="btn" data-a="wipeSample">Remove sample items</button><button class="btn red" data-a="wipeItems">Delete ALL items</button><button class="btn red" data-a="wipeSales">Delete ALL sales history</button></div>
  <div class="sec"><div class="hint" id="stinfo">${S.products.length.toLocaleString()} items · ${(DESK&&S.stats?S.stats.orders:S.orders.length).toLocaleString()} transactions saved${DESK&&S.stats&&S.stats.firstOrder?' · history since '+new Date(S.stats.firstOrder).toLocaleDateString():''}${DB.mem?' · <b class="warn">STORAGE NOT AVAILABLE — nothing is being saved</b>':''}</div></div>`
 };
-function renderSettings(){const tabs=[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(DESK?[['printers','Printers & Drawer'],['hw','Scanner, App & Backups']]:[]),['data','Import / Backup']];
+function renderSettings(){const tabs=[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(DESK?[['printers','Printers & Drawer'],['hw','Scanner, App & Backups']]:[]),['data','Import / Backup'],...(DESK?[['license','License']]:[])];
  return `<div class="sett"><nav class="stabs">${tabs.map(([k,t])=>`<button class="${S.setTab===k?'on':''}" data-a="setTab" data-v="${k}">${t}</button>`).join('')}</nav><section class="sbody">${SETT[S.setTab]()}${saveBar()}</section></div>`}
 
 /* ---------- import / export ---------- */
@@ -951,7 +959,10 @@ const A={
   if($('#su_ebt').checked)st.categories.push({name:'EBT',color:'#1e9e5a',ebt:true});
   S.settings=st;S.users=[{id:uid(),name:owner,pin,role:'admin'}];
   for(const k of KV_KEYS)await DB.put('kv',clone(S[k]),k);
-  S.setupMode=false;S.pin='';reindex();render();toast(`${name} is ready — sign in with your PIN`)},
+  S.setupMode=false;S.pin='';reindex();if(DESK){S.lic=await posAPI.licenseState();const lk=(document.getElementById('su_lic')||{}).value||'';if(lk.trim()){const r=await posAPI.setLicense(lk);if(r.ok)S.lic=r.state;else toast('License key: '+r.error+' — you can add it later in Settings → License',1)}}render();toast(`${name} is ready — sign in with your PIN`)},
+ licOpen(){if(can('settings')){S.screen='settings';S.setTab='license';render()}else{openModal(`<div class="mtitle">Store POS license</div>${licBox()}<div class="mbtns">${cancelBtn('Close')}</div>`,'wide')}},
+ async licActivate(){const k=($('#licKey')||{}).value||'';const m=$('#licMsg');if(!k.trim()){m.textContent='Paste or type the license key first';return}const r=await posAPI.setLicense(k);if(!r.ok){m.textContent=r.error;beep(300,250);return}S.lic=r.state;closeModal();render();toast('✓ License activated — '+(r.state.customer||''))},
+ async licFile(){const r=await posAPI.loadLicenseFile();if(r.canceled)return;if(!r.ok){$('#licMsg').textContent=r.error;return}$('#licKey').value=r.key;A.licActivate()},
  userAdd(){S.users.push({id:uid(),name:'New user',pin:String(Math.floor(1000+Math.random()*9000)),role:'cashier'});saveKV('users');render()},
  userDel(d){const u=S.users[+d.i];if(u===S.user){toast("You can't delete yourself",1);return}if(u.role==='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one admin',1);return}confirmBox(`Delete user <b>${esc(u.name)}</b>?`,'Delete',()=>{S.users.splice(+d.i,1);saveKV('users');render()},{danger:true})},
  exportBackup(){const d={version:1,exported:Date.now(),products:S.products,orders:S.orders};KV_KEYS.forEach(k=>d[k]=S[k]);download(`pos-backup-${localDay()}.json`,JSON.stringify(d),'application/json');toast('Backup downloaded')},
@@ -1085,6 +1096,7 @@ async function boot(){
  else{S.settings={...defaultSettings(),...saved};S.products=(await DB.all('products')).map(ensureItem);S.orders=DESK?[]:await DB.all('orders');for(const k of KV_KEYS.slice(1))S[k]=(await DB.get(k))||[];if(!S.users.length)S.users=seedUsers();S.cart=(await DB.get('cart'))||newCart()}
  if(!S.setupMode&&!S.settings.ebtSetup){S.settings.ebtSetup=1;if(!S.settings.categories.some(c=>c.ebt)){const c=S.settings.categories.find(c=>c.name.toUpperCase()==='EBT');if(c)c.ebt=true;else S.settings.categories.push({name:'EBT',color:'#1e9e5a',ebt:true})}saveKV('settings')}
  reindex();render();setInterval(tick,1000);logoRaster();
+ if(DESK){S.lic=await posAPI.licenseState().catch(()=>null);render();setInterval(async()=>{const was=S.lic&&S.lic.locked;S.lic=await posAPI.licenseState().catch(()=>S.lic);if(S.lic&&S.lic.locked!==was&&S.user)render()},3600000)}
  if(DESK)posAPI.onUpdateAvailable(u=>{S.updAvail=u;if(isMgr())toast(`Store POS ${u.version} is available — Settings → Import / Backup`)});
  if(DESK&&S.cfg.rolledBack)setTimeout(()=>toast(`Update ${S.cfg.rolledBack} could not start — running the installed version`,1),2500);
  if(DESK){S.stats=await posAPI.stats().catch(()=>null);posAPI.onHistory(histUI);const hs=await posAPI.historyState();if(hs.running)histUI(hs)}

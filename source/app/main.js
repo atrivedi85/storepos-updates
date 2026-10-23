@@ -6,6 +6,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, powerSaveBlocker } = r
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
+const crypto = require('crypto');
 const os = require('os');
 const readline = require('readline');
 const { pipeline } = require('stream/promises');
@@ -55,7 +56,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 /* ---------- machine config ---------- */
-const CFG_DEFAULT = { updateUrl: '', labelPrinter: '', rcptConn: 'driver', cmdSet: 'escpos', cols: 48, cut: true, feed: 4, drawerPin: 2, netHost: '', netPort: 9100, comPort: '', comBaud: 9600, comFlow: 'none', scanCom: '', scanBaud: 9600, reportPrinter: '', printer: '', paper: 80, drawerOnCash: true, drawerMode: 'raw', kiosk: true, autoStart: true, backupDir: '', lastBackup: 0, lastBackupFile: '', lastBackupError: '' };
+const CFG_DEFAULT = { updateUrl: 'https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json', labelPrinter: '', rcptConn: 'driver', cmdSet: 'escpos', cols: 48, cut: true, feed: 4, drawerPin: 2, netHost: '', netPort: 9100, comPort: '', comBaud: 9600, comFlow: 'none', scanCom: '', scanBaud: 9600, reportPrinter: '', printer: '', paper: 80, drawerOnCash: true, drawerMode: 'raw', kiosk: true, autoStart: true, backupDir: '', lastBackup: 0, lastBackupFile: '', lastBackupError: '' };
 let cfg = { ...CFG_DEFAULT };
 try { cfg = { ...CFG_DEFAULT, ...JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')) }; } catch (e) { /* first run */ }
 function saveCfg() {
@@ -321,6 +322,77 @@ ipcMain.handle('restoreDb', async () => {
   return { ok: true };
 });
 
+/* ---------- license keys (Ed25519-signed; only the License Maker's private key can create them) ---------- */
+const LIC_PUB = crypto.createPublicKey({ key: Buffer.from('MCowBQYDK2VwAyEAChLk2xj5iczD4MkE2RBkAppOTPz5qaThemEoawP+iro=', 'base64'), format: 'der', type: 'spki' });
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+function b32decode(str) {
+  const clean = String(str || '').toUpperCase().replace(/^SPOS/, '').replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  let bits = 0, val = 0; const out = [];
+  for (const ch of clean) { const i = B32.indexOf(ch); if (i < 0) throw new Error('bad character'); val = (val << 5) | i; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return Buffer.from(out);
+}
+function verifyKey(key) {
+  try {
+    const raw = b32decode(key);
+    if (raw.length < 70) return { ok: false, error: 'That license key is too short — check it was copied completely' };
+    const n = raw.readUInt16BE(0), payload = raw.subarray(2, 2 + n), sig = raw.subarray(2 + n, 2 + n + 64);
+    if (sig.length !== 64 || !crypto.verify(null, payload, LIC_PUB, sig)) return { ok: false, error: 'That license key is not valid' };
+    return { ok: true, data: JSON.parse(payload.toString('utf8')) };
+  } catch (e) { return { ok: false, error: 'That license key is not valid' }; }
+}
+let MACHINE_ID = '';
+function machineId() {
+  if (MACHINE_ID) return MACHINE_ID;
+  let base = os.hostname();
+  if (process.platform === 'win32') {
+    try { const r = require('child_process').execFileSync('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], { windowsHide: true, encoding: 'utf8' }); const m = r.match(/MachineGuid\s+REG_SZ\s+(\S+)/i); if (m) base = m[1]; } catch (e) { /* fall back to computer name */ }
+  }
+  const h = crypto.createHash('sha256').update('storepos:' + base).digest();
+  let s2 = ''; for (let i = 0; i < 10; i++) s2 += B32[h[i] & 31];
+  return (MACHINE_ID = s2.slice(0, 5) + '-' + s2.slice(5));
+}
+const TRIAL_DAYS = 14, GRACE_DAYS = 7, DAY = 86400000;
+function licenseState() {
+  const now = Date.now();
+  const kvGet = k => { const r = Q.kv.get.get(k); return r ? JSON.parse(r.data) : null; };
+  if (!kvGet('settings')) return { status: 'setup', locked: false, machine: machineId() };
+  let trial = Math.min(Number(kvGet('trialStart')) || now, Number(cfg.trialStart) || now);
+  if (!kvGet('trialStart')) Q.kv.put.run('trialStart', JSON.stringify(trial));
+  if (!cfg.trialStart) { cfg.trialStart = trial; saveCfg(); }
+  const key = kvGet('license');
+  const base = { machine: machineId() };
+  if (key) {
+    const v = verifyKey(key);
+    if (v.ok) {
+      const d = v.data;
+      if (d.m && d.m.toUpperCase() !== base.machine) return { ...base, status: 'wrongpc', locked: true, customer: d.c, id: d.id, error: `This license is for computer ${d.m}. This computer is ${base.machine}.` };
+      if (d.e) {
+        const end = new Date(d.e + 'T23:59:59').getTime();
+        if (now > end + GRACE_DAYS * DAY) return { ...base, status: 'expired', locked: true, customer: d.c, id: d.id, expires: d.e };
+        if (now > end) return { ...base, status: 'grace', locked: false, customer: d.c, id: d.id, expires: d.e, daysLeft: Math.ceil((end + GRACE_DAYS * DAY - now) / DAY) };
+        return { ...base, status: 'licensed', locked: false, customer: d.c, id: d.id, expires: d.e, daysLeft: Math.ceil((end - now) / DAY) };
+      }
+      return { ...base, status: 'licensed', locked: false, customer: d.c, id: d.id, expires: '' };
+    }
+  }
+  const left = Math.ceil((trial + TRIAL_DAYS * DAY - now) / DAY);
+  return left > 0 ? { ...base, status: 'trial', locked: false, daysLeft: left } : { ...base, status: 'trialover', locked: true, daysLeft: 0 };
+}
+ipcMain.handle('licenseState', () => licenseState());
+ipcMain.handle('setLicense', (e, key) => {
+  const v = verifyKey(key);
+  if (!v.ok) return { ok: false, error: v.error };
+  if (v.data.m && v.data.m.toUpperCase() !== machineId()) return { ok: false, error: `This license is locked to computer ${v.data.m}, but this computer is ${machineId()}.` };
+  Q.kv.put.run('license', JSON.stringify(String(key).trim()));
+  return { ok: true, state: licenseState() };
+});
+ipcMain.handle('loadLicenseFile', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Pick the license file', defaultPath: app.getPath('downloads'), filters: [{ name: 'Store POS license', extensions: ['poslicense', 'txt'] }], properties: ['openFile'] });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  const text = fs.readFileSync(r.filePaths[0], 'utf8'); const m = text.match(/SPOS[-0-9A-Z\s]+/i);
+  return m ? { ok: true, key: m[0].replace(/\s+/g, '') } : { ok: false, error: 'No license key found in that file' };
+});
+
 /* ---------- config / app ---------- */
 ipcMain.handle('getConfig', () => ({ ...cfg, appVersion: require('./package.json').version, bundledVersion: BOOT.bundledVersion, runningUpdate: !!BOOT.updateDir, rolledBack: BOOT.rolledBack, hasPrevious: fs.existsSync(path.join(UPDATE_DIR, 'previous')) || !!BOOT.updateDir, dataDir: DATA_DIR, backupRoot: BACKUP_DIR, version: app.getVersion(), platform: process.platform }));
 ipcMain.handle('setConfig', (e, patch) => {
@@ -334,7 +406,6 @@ ipcMain.handle('setConfig', (e, patch) => {
 });
 /* ---------- install / undo a small update file (.posupdate) ---------- */
 const vm = require('vm');
-const crypto = require('crypto');
 ipcMain.handle('installUpdate', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'Pick a Store POS update file', defaultPath: app.getPath('downloads'), filters: [{ name: 'Store POS update', extensions: ['posupdate'] }], properties: ['openFile'] });
   if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
