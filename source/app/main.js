@@ -416,8 +416,10 @@ ipcMain.handle('setConfig', (e, patch) => {
 /* ---------- install / undo a small update file (.posupdate) ---------- */
 const vm = require('vm');
 ipcMain.handle('installUpdate', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Pick a Store POS update file', defaultPath: app.getPath('downloads'), filters: [{ name: 'Store POS update', extensions: ['posupdate'] }], properties: ['openFile'] });
+  const guess = [cfg.lastUpdateDir, 'Y:\\Vape & Smoke Studio POS\\Updates', app.getPath('downloads')].find(d => { try { return d && fs.statSync(d).isDirectory(); } catch (e) { return false; } }) || app.getPath('downloads');
+  const r = await dialog.showOpenDialog(win, { title: 'Pick a Store POS update file', defaultPath: guess, filters: [{ name: 'Store POS update', extensions: ['posupdate'] }], properties: ['openFile'] });
   if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  try { cfg.lastUpdateDir = path.dirname(r.filePaths[0]); saveCfg(); } catch (e) { /* ignore */ }
   return installUpdateFile(fs.readFileSync(r.filePaths[0]));
 });
 async function installUpdateFile(raw) {
@@ -458,25 +460,33 @@ async function openUpdateArg(argv) {
 }
 /* optional online updates: Settings → Software update → update address (a latest.json manifest) */
 let onlineUpdate = null;
+const BUILTIN_UPDATE_URL = 'https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json';
 async function checkOnline(manual) {
-  if (!cfg.updateUrl) return { ok: false, error: 'No update address set' };
-  try {
-    const { net } = require('electron');
-    const res = await net.fetch(cfg.updateUrl, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const m = await res.json();
-    if (!m.version || !m.url) throw new Error('Update address does not point to a Store POS update list');
-    onlineUpdate = verGt(m.version, require('./package.json').version) ? m : null;
-    if (onlineUpdate) send('updateAvailable', onlineUpdate);
-    return { ok: true, available: onlineUpdate };
-  } catch (e) { return { ok: false, error: e.message }; }
+  // the built-in address is always tried; a custom address (if someone set one) is tried too
+  const urls = [...new Set([BUILTIN_UPDATE_URL, String(cfg.updateUrl || '').trim()].filter(u => /^https:\/\//i.test(u)))];
+  const { net } = require('electron');
+  let best = null, lastErr = '';
+  for (const u of urls) {
+    try {
+      const res = await net.fetch(u + (u.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const m = await res.json();
+      if (!m.version || !m.url) throw new Error('not a Store POS update list');
+      m.base = u;
+      if (!best || verGt(m.version, best.version)) best = m;
+    } catch (e) { lastErr = e.message; }
+  }
+  if (!best) return { ok: false, error: 'Could not reach the update server (' + lastErr + '). Check the internet connection.' };
+  onlineUpdate = verGt(best.version, require('./package.json').version) ? best : null;
+  if (onlineUpdate) send('updateAvailable', onlineUpdate);
+  return { ok: true, available: onlineUpdate };
 }
 ipcMain.handle('checkUpdate', () => checkOnline(true));
 ipcMain.handle('downloadUpdate', async () => {
   if (!onlineUpdate) return { ok: false, error: 'No update available' };
   try {
     const { net } = require('electron');
-    const res = await net.fetch(new URL(onlineUpdate.url, cfg.updateUrl).toString(), { cache: 'no-store' });
+    const res = await net.fetch(new URL(onlineUpdate.url, onlineUpdate.base || BUILTIN_UPDATE_URL).toString() + '?t=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const raw = Buffer.from(await res.arrayBuffer());
     if (onlineUpdate.sha256 && crypto.createHash('sha256').update(raw).digest('hex') !== onlineUpdate.sha256) throw new Error('Download was damaged — try again');

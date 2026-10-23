@@ -1,6 +1,6 @@
 {
- "version": "1.6.0",
- "notes": "Receiving tab: upload vendor invoices (PDF, Excel, CSV) or scan items to add stock, update cost and set prices by markup %. Markup % on every item. Touch keyboard no longer covers pop-ups.",
- "url": "updates/StorePOS-Update-1.6.0.posupdate",
- "sha256": "f0dcef2200da497be150d38dbaa903653d6ab98bf79a0652736a6610a87e38df"
+ "version": "1.6.1",
+ "notes": "Update address is built in (nothing to type); Check online offers Download & install right away; Install update file opens the NAS Updates folder; keyboard hides when a Windows window opens.",
+ "url": "updates/StorePOS-Update-1.6.1.posupdate",
+ "sha256": "e81f26bb31777f9fa61a7a3ed5c0c3d9f41cba49f03e659c033f36d6c31bd9da"
 }
