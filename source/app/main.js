@@ -300,6 +300,14 @@ ipcMain.handle('chooseBackupDir', async () => {
   return cfg.backupDir;
 });
 ipcMain.handle('addPrinter', () => { if (process.platform !== 'win32') return false; win.setKiosk(false); win.minimize(); shell.openExternal('ms-settings:printers'); return true; });
+const INVOICE_DIR = path.join(DATA_DIR, 'invoices');
+ipcMain.handle('saveInvoiceFile', (e, { name, bytes }) => {
+  fs.mkdirSync(INVOICE_DIR, { recursive: true });
+  const safe = String(name || 'invoice').replace(/[^\w.\- ]+/g, '_').slice(-80);
+  const f = path.join(INVOICE_DIR, Date.now() + '-' + safe);
+  fs.writeFileSync(f, Buffer.from(bytes)); return { path: f };
+});
+ipcMain.handle('openPath', (e, f) => { f = path.resolve(String(f || '')); if (!f.startsWith(INVOICE_DIR + path.sep)) return 'not allowed'; win.setKiosk(false); return shell.openPath(f); });
 ipcMain.handle('showFile', (e, f) => { win.setKiosk(false); win.minimize(); shell.showItemInFolder(f); });
 ipcMain.handle('openFolder', (e, which) => shell.openPath(which === 'backups' ? BACKUP_DIR : which === 'extra' && cfg.backupDir ? cfg.backupDir : DATA_DIR));
 ipcMain.handle('restoreDb', async () => {

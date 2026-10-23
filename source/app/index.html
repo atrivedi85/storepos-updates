@@ -102,6 +102,10 @@ footer .lock,footer .fs{min-height:46px;padding:0 14px;border-radius:8px;backgro
 .split{display:grid;grid-template-columns:minmax(280px,33%) 1fr;height:100%}
 .listp{display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);min-height:0}
 .rfbody{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px}.rfbody .arow{padding:8px 10px}.rfq{display:flex;align-items:center;gap:10px}.rfq b{min-width:28px;text-align:center;font-size:20px}.rfq .btn{min-width:48px;min-height:44px;font-size:22px}.rftot{font-size:20px;margin:10px 0 0;text-align:right}
+.rvhead{grid-template-columns:2fr 1fr 1.2fr 2fr!important}.rvhead select{min-width:0}
+.rvtools{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}.rvtools input{flex:1;min-width:260px;font-size:17px;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:46px}.rvtools label.btn{display:flex;align-items:center;cursor:pointer}
+.rvmu{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;padding:8px;background:var(--panel2);border-radius:8px}.rvmu input,.rvmu select{font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);min-height:42px}
+.rvwrap{overflow:auto;max-height:52vh;border:1px solid var(--line);border-radius:8px;margin-top:6px}.rvt td{vertical-align:middle}.rvt .rvin{width:84px;text-align:right;font-size:16px;padding:8px 6px;border:1px solid var(--line);border-radius:6px;min-height:40px}.rvt .rvname{width:100%;min-width:200px;font-size:16px;padding:8px;border:1px solid var(--amber);border-radius:6px}.rvt tr.rvnew td{background:#fff8e1}.rvt .up{color:var(--red);font-weight:700}.rvt .dn{color:var(--green,#16a34a);font-weight:700}.rvt select{font-size:13px;padding:2px}
 .otabs{margin:0}.otabs button{flex:1;padding:8px 6px;font-size:14px}
 .lhead{display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--panel2)}
 .lhead input,.lhead select{font-size:17px;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:46px;background:#fff}
@@ -152,7 +156,7 @@ label.btn{cursor:pointer}
 #osk .r{display:flex;gap:6px;margin-bottom:6px;justify-content:center}#osk button{flex:1;max-width:92px;min-height:54px;border-radius:8px;background:#e9eef6;font-size:21px;font-weight:700;color:#14213d}
 #osk .np{display:grid;grid-template-columns:repeat(3,96px) 150px;grid-template-rows:repeat(4,62px);gap:6px;justify-content:center}#osk .np button{max-width:none;font-size:26px}#osk .np .npside{grid-column:4;grid-row:1/5;display:grid;grid-template-rows:62px 62px 62px 62px;gap:6px}#osk .np .npside button{font-size:17px}
 #osk button.w{max-width:150px;background:#c9d4e5;font-size:16px}#osk button.sp{max-width:none;flex:5}#osk button.ok{background:var(--green);color:#fff}#osk button.x{background:var(--red);color:#fff}#osk button.on{background:var(--blue);color:#fff}
-body.osk-on #app{height:calc(100vh - var(--oskh,330px))}body.osk-on .mback{align-items:flex-start;padding-top:14px;bottom:var(--oskh,330px)}
+body.osk-on .mback{bottom:var(--oskh,330px)}body.osk-on #app{height:calc(100vh - var(--oskh,330px))}body.osk-on .mback{align-items:flex-start;padding-top:14px;bottom:var(--oskh,330px)}
 #hist{position:fixed;right:14px;top:10px;max-width:330px;pointer-events:none;background:#14213d;color:#fff;padding:12px 16px;border-radius:12px;font-weight:700;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.35);display:none}#hist.on{display:block}#hist small{display:block;font-weight:600;opacity:.8}.pbar{height:8px;background:#33415c;border-radius:4px;margin-top:8px;overflow:hidden}.pbar i{display:block;height:100%;background:#1e9e5a}
 .rc{width:72mm;font:12px/1.35 "Courier New",monospace;color:#000}.rc .c{text-align:center}.rc .r{display:flex;justify-content:space-between;gap:6px}.rc .b{font-weight:700;font-size:14px}.rc hr{border:0;border-top:1px dashed #000;margin:5px 0}.rc .sm{font-size:11px}
 @media print{body{background:#fff;overflow:visible;height:auto}#app,#modal,#toast{display:none!important}#print{display:block}@page{size:80mm auto;margin:3mm}}
@@ -202,7 +206,7 @@ if(DESK){const api=window.posAPI;Object.assign(DB,{mem:false,open:()=>Promise.re
  put:(s,v,k)=>api.db('put',s,v,k).catch(e=>toast('Could not save: '+e.message,1)),del:(s,k)=>api.db('del',s,k),clear:s=>api.db('clear',s),putMany:(s,a)=>api.db('putMany',s,a)})}
 let ORDV=0;const DC={ord:null,rep:null,det:{},im:{},ordLoading:0,repLoading:0};
 function bumpOrders(){ORDV++;DC.ord=null;DC.rep=null;DC.im={}}
-const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts'];
+const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts','invoices'];
 const saveT={};
 function saveKV(k,delay=0){clearTimeout(saveT[k]);saveT[k]=setTimeout(async()=>{await DB.put('kv',clone(S[k]),k);if(['settings','users','discounts','mixmatch'].includes(k))savedMark()},delay);}
 function savedMark(){const el=document.getElementById('saveState');if(el){el.innerHTML='✓ Saved '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});el.classList.add('ok')}}
@@ -339,7 +343,7 @@ function calc(cart){
 /* ---------- modal plumbing ---------- */
 const CB=new Map();let cbn=0;
 function cb(fn){const id='c'+(++cbn);CB.set(id,fn);return id}
-function openModal(html,cls=''){$('#modal').innerHTML=`<div class="mback"><div class="mbox ${cls}">${html}</div></div>`}
+function openModal(html,cls=''){const ae=document.activeElement;if(ae&&ae!==document.body&&!$('#modal').contains(ae)&&ae.blur){ae.blur();if(typeof oskHide==='function')oskHide()}$('#modal').innerHTML=`<div class="mback"><div class="mbox ${cls}">${html}</div></div>`}
 function closeModal(){$('#modal').innerHTML='';CB.clear();S.kp=null;if(OSK.el&&!document.body.contains(OSK.el))oskHide()}
 const modalOpen=()=>!!$('#modal').firstChild;
 const cancelBtn=(t='Cancel')=>`<button class="btn" data-a="cb" data-id="${cb(closeModal)}">${t}</button>`;
@@ -361,19 +365,19 @@ function kpPress(key){const k=S.kp;if(!k)return;if(k.fresh&&key!=='⌫'){k.buf='
  const d=$('#kpd');if(d){d.innerHTML=kpDisp();d.classList.remove('fresh')}if(k.onKey)k.onKey()}
 
 /* ---------- rendering ---------- */
-const TITLES={register:'Register',pay:'Pay',items:'Item Details',orders:'Transactions',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
+const TITLES={register:'Register',pay:'Pay',items:'Item Details',orders:'Transactions',receive:'Receiving',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
 function render(){
  if(S.setupMode){$('#app').innerHTML=renderSetup();return}
  if(!S.user){$('#app').innerHTML=renderLogin();return}
  if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
  if(DESK&&S.lic&&S.lic.locked&&(S.screen==='register'||S.screen==='pay')){$('#app').innerHTML=`<main>${renderLicLock()}</main>${footer()}`;tick();return}
- const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
+ const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,receive:renderReceive,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
  $('#app').innerHTML=`<main>${f()}</main>${footer()}`;tick();saveCart();
  if(S.screen==='register'){requestAnimationFrame(()=>{const el=document.querySelector('.line.sel');el&&el.scrollIntoView({block:'nearest'})})}
 }
 let cartT;function saveCart(){clearTimeout(cartT);cartT=setTimeout(()=>DB.put('kv',clone(S.cart),'cart'),300)}
 function footer(){
- const tabs=[['register','Register'],['items','Items','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['promos','Promos','promos'],['settings','Settings','settings']];
+ const tabs=[['register','Register'],['items','Items','items_view'],['receive','Receiving','stock'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['promos','Promos','promos'],['settings','Settings','settings']];
  return `<footer><div class="who"><b>${esc(TITLES[S.screen])}</b><span>Logged in: ${esc(S.user.name)}</span></div>
  <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${S.screen===t[0]||(S.screen==='pay'&&t[0]==='register')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
  ${DESK&&S.lic&&['trial','grace','trialover','expired','wrongpc'].includes(S.lic.status)||(DESK&&S.lic&&S.lic.status==='licensed'&&S.lic.expires&&S.lic.daysLeft<=14)?`<button class="lock" style="background:${S.lic.locked?'var(--red)':'var(--amber)'}" data-a="licOpen">${S.lic.status==='trial'?`Trial: ${S.lic.daysLeft}d`:S.lic.locked?'License needed':`License: ${S.lic.daysLeft}d`}</button>`:''}<div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
@@ -521,6 +525,7 @@ const cleanScan=c=>String(c).replace(/[\x00-\x1f\x7f]/g,'').trim().replace(/^\][
 function onScan(code){code=cleanScan(code);if(!code)return;S.lastScan={code,time:Date.now()};const ls=$('#lastScan');if(ls){const p=findSku(code);ls.innerHTML=`<b>${esc(code)}</b> — ${p?'matches '+esc(p.name):'<span class="warn">not in your items</span>'}`}
  if(!S.user||modalOpen())return;
  if(S.screen==='items'){const p=findSku(code);if(p)openItem(p.sku);else if(can('items_edit'))newItem(code);return}
+ if(S.screen==='receive'){const inv=rvCur();if(inv&&inv.status==='draft')rvAdd(code);else toast('Tap + New Invoice first, then scan the items');return}
  if(S.screen==='orders'){const p=findSku(code);S.ordQ=p?p.sku:code;const i=$('#ordQ');if(i)i.value=S.ordQ;if(DESK)updOrd();else render();if(!p)toast('That barcode is not in your items — searching transactions for it');return}
  if(S.screen==='register'||S.screen==='pay'){const p=findSku(code);if(p){if(p.discontinued)toast(`${p.name} is marked discontinued`);addItem(p)}else notFound(code);return}
  if(S.screen==='promos'&&S.promoTab==='mm'&&S.mmEdit){const p=findSku(code);if(p)mmAddSku(p.sku);return}
@@ -576,6 +581,7 @@ const printReceipt=o=>printHtml(receiptHtml(o));
 
 /* ---------- items screen ---------- */
 const marginTxt=e=>e.price>0?(((e.price-(+e.cost||0))/e.price)*100).toFixed(2)+'%':'—';
+const markupTxt=e=>(+e.cost||0)>0?(((e.price-(+e.cost||0))/(+e.cost))*100).toFixed(1)+'%':'—';
 function F(o,obj,label,path,opt={}){const v=getP(obj,path);const t=opt.t||(opt.num?'num':'str');const at=`data-o="${o}" data-f="${path}" data-t="${t}"`;
  if(t==='bool')return `<label class="tog"><input type="checkbox" ${at} ${v?'checked':''}><span>${label}</span></label>`;
  if(opt.opts)return `<label class="fld ${opt.wide?'wide':''}"><span>${label}</span><select ${at}>${opt.opts.map(x=>{const[val,txt]=Array.isArray(x)?x:[x,x];return `<option value="${esc(val)}" ${String(val)===String(v)?'selected':''}>${esc(txt)}</option>`}).join('')}</select></label>`;
@@ -589,7 +595,7 @@ function renderItems(){
  if(!S.edit){const p=[...S.products].sort((a,b)=>a.name.localeCompare(b.name))[0];if(p){S.edit=clone(p);S.editOrig=p.sku}else{S.edit=blankItem('');S.editOrig=null}}
  const e=S.edit,cats=S.settings.categories.map(c=>c.name);
  return `<div class="split"><section class="listp"><div class="lhead"><input id="itemQ" data-in="itemQ" data-enter="itemQ" placeholder="Search or scan…" value="${esc(S.itemQ)}" autocomplete="off"><select data-in="itemCat"><option value="">All categories</option>${cats.map(c=>`<option ${S.itemCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="ilist" id="itemList">${itemListHtml()}</div><div class="lfoot">${S.products.length} items</div></section>
- <section class="edp"><div class="ehead"><div><div class="etitle">${esc(e.name||'New item')}</div><div class="hint">${S.editOrig?'SKU '+esc(S.editOrig):'Not saved yet'}${S.dirty?' · <b style="color:var(--amber)">unsaved changes</b>':''}</div></div><div class="ekpis"><div><small>Price</small><b>$${money(e.price)}</b></div><div><small>Margin</small><b id="margin">${marginTxt(e)}</b></div><div><small>In stock</small><b>${e.nonInventory?'—':e.stock}</b></div></div></div>
+ <section class="edp"><div class="ehead"><div><div class="etitle">${esc(e.name||'New item')}</div><div class="hint">${S.editOrig?'SKU '+esc(S.editOrig):'Not saved yet'}${S.dirty?' · <b style="color:var(--amber)">unsaved changes</b>':''}</div></div><div class="ekpis"><div><small>Price</small><b>$${money(e.price)}</b></div><div><small>Markup</small><b id="markupK">${markupTxt(e)}</b></div><div><small>Margin</small><b id="margin">${marginTxt(e)}</b></div><div><small>In stock</small><b>${e.nonInventory?'—':e.stock}</b></div></div></div>
  <div class="tabs">${[['details','Details'],['pricing','Pricing & Tax'],['promo','Promo'],['inventory','Inventory']].map(([k,t])=>`<button class="${S.itemTab===k?'on':''}" data-a="itemTab" data-v="${k}">${t}</button>`).join('')}</div>
  <div class="ebody"><fieldset style="border:0;padding:0;margin:0;min-width:0" ${can('items_edit')?'':'disabled'}>${can('items_edit')?'':'<p class="warn" style="margin-top:0">Read only — you can look but not change items.</p>'}${itemTabHtml(e)}</fieldset></div>
  <div class="ebar">${can('items_delete')?'<button class="btn red" data-a="delItem">Delete</button>':''}${can('items_edit')?'<button class="btn" data-a="dupItem">Duplicate</button>':''}${can('stock')?'<button class="btn slate" data-a="adjItem">Adjust Stock</button>':''}<button class="btn" data-a="labelItem">🏷 Print Labels</button><span class="flex"></span>${can('items_edit')?'<button class="btn blue" data-a="newItem">New Item</button><button class="btn green" data-a="saveItem">Save</button>':''}</div></section></div>`}
@@ -598,7 +604,7 @@ function itemTabHtml(e){const f=(l,p,o)=>F('edit',e,l,p,o);
   <div class="fld"><span>Barcode</span><div id="bcPrev" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;display:inline-block;max-width:340px">${e.sku?barcodeSVG(e.sku,{h:50}):'<span class="hint">No SKU yet — scan the item, type its barcode, or tap New barcode</span>'}</div></div>
  <div class="fld"><span>Button color</span><div class="sw">${['',...PALETTE].map(c=>`<button class="swb ${(e.color||'')===c?'on':''}" style="background:${c||catColor(e.cat)}" data-a="color" data-v="${c}">${c?'':'Cat'}</button>`).join('')}</div></div>
   <div class="togs">${f('Show on register','show',{t:'bool'})}${f(`Age check required (${S.settings.ageMin}+)`,'ageCheck',{t:'bool'})}${f(catIsEbt(e.cat)?'EBT / SNAP eligible (always on: EBT category)':'EBT / SNAP eligible','ebt',{t:'bool'})}${f('Allow price override','priceOverride',{t:'bool'})}${f('Ask for price when sold','pricePrompt',{t:'bool'})}${f('Discontinued','discontinued',{t:'bool'})}</div>`;
- if(S.itemTab==='pricing')return `<div class="fgrid">${f('Price *','price',{num:1})}${f('Cost (what you pay)','cost',{num:1})}</div><h4>Tax groups</h4><div class="hint">Turn on every tax that applies to this item. Rates are set in Settings → Tax Groups.</div><div class="togs">${S.settings.taxGroups.map(g=>`<label class="tog"><input type="checkbox" data-tax="${g.id}" ${e.taxes.includes(g.id)?'checked':''}><span>${esc(g.name)} (${g.type==='$'?'$'+money(g.rate)+' each':g.rate+'%'})</span></label>`).join('')}</div>`;
+ if(S.itemTab==='pricing')return `<div class="fgrid">${f('Price *','price',{num:1})}${f('Cost (what you pay, each)','cost',{num:1})}<label class="fld"><span>Markup % — type to set the price</span><input id="itMu" data-itmu="1" inputmode="decimal" value="${(+e.cost||0)>0?(((e.price-e.cost)/e.cost)*100).toFixed(1):''}" placeholder="${(+e.cost||0)>0?'':'enter the cost first'}" autocomplete="off"></label>${f('Units per case (for invoices)','pack',{num:1})}</div><p class="hint">Markup = profit ÷ cost. Margin = profit ÷ price. Example: cost $10, price $15 → 50% markup, 33.3% margin. Prices set from markup are rounded the way you chose in Receiving.</p><h4>Tax groups</h4><div class="hint">Turn on every tax that applies to this item. Rates are set in Settings → Tax Groups.</div><div class="togs">${S.settings.taxGroups.map(g=>`<label class="tog"><input type="checkbox" data-tax="${g.id}" ${e.taxes.includes(g.id)?'checked':''}><span>${esc(g.name)} (${g.type==='$'?'$'+money(g.rate)+' each':g.rate+'%'})</span></label>`).join('')}</div>`;
  if(S.itemTab==='promo'){const pr=e.promo;const mms=S.mixmatch.filter(m=>m.skus.includes(S.editOrig));
   return `<div class="togs">${f('On sale (multi-buy deal)','promo.on',{t:'bool'})}</div><div class="fgrid">${f('Buy quantity','promo.buy',{num:1})}${f('For $ (total for the group)','promo.amount',{num:1})}${f('Max deals per sale (0 = no limit)','promo.max',{num:1})}${f('Start date','promo.start',{type:'date'})}${f('End date','promo.end',{type:'date'})}</div>${daysHtml('edit',e,'promo.days')}
   <p class="hint">Example: Buy 2 for $5.00 — every 2 of this item ring up at $5.00 together.</p>${mms.length?`<h4>Also in mix &amp; match deals</h4>${mms.map(m=>`<div>• ${esc(m.name)}${m.active?'':' (inactive)'}</div>`).join('')}`:''}`}
@@ -813,7 +819,7 @@ const A={
  pinOk(){const u=S.users.find(u=>String(u.pin)===S.pin&&S.pin);S.pin='';if(!u){$('#pinD').innerHTML='&nbsp;';$('#pinMsg').textContent='Wrong PIN';beep(300,250);return}S.user=u;S.screen='register';render()},
  lock(){if(S.dirty){toast('Save or discard your item changes first',1);return}S.user=null;S.pin='';closeModal();render()},
  fullscreen(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{})},
- go(d){const need={items:'items_view',orders:'txn_view',reports:'reports_view',promos:'promos',settings:'settings'}[d.v];if(need&&!can(need)){toast(`${S.user.name} doesn't have access to that`,1);return}if(S.screen==='items'&&d.v!=='items'&&S.dirty){guardDirty(()=>{S.screen=d.v;render()});return}if(S.screen==='promos'&&S.mmDirty&&d.v!=='promos'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.screen=d.v;render()},{danger:true});return}S.screen=d.v;render()},
+ go(d){const need={receive:'stock',items:'items_view',orders:'txn_view',reports:'reports_view',promos:'promos',settings:'settings'}[d.v];if(need&&!can(need)){toast(`${S.user.name} doesn't have access to that`,1);return}if(S.screen==='items'&&d.v!=='items'&&S.dirty){guardDirty(()=>{S.screen=d.v;render()});return}if(S.screen==='promos'&&S.mmDirty&&d.v!=='promos'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.screen=d.v;render()},{danger:true});return}S.screen=d.v;render()},
  goPay(){if(!S.cart.lines.length){toast('Add items first');return}S.screen='pay';render()},
  cardQuick(d){if(!S.cart.lines.length){toast('Add items first');return}tenderModal(d.v)},
  tender(d){tenderModal(d.v)},
@@ -1114,12 +1120,149 @@ const ENTER={
  find:t=>{const p=findSku(t.value)||(()=>{const b=document.querySelector('#findR .fr');return b?findSku(b.dataset.sku):null})();if(p){closeModal();addItem(p)}},
  itemQ:t=>{const v=t.value.trim();if(!v)return;const p=findSku(v);if(p){S.itemQ='';openItem(p.sku)}else if(/^\d{6,}$/.test(v)&&can('items_edit')){S.itemQ='';newItem(v)}}
 };
+/* ---------- receiving: vendor invoices -> stock, cost, price & markup ---------- */
+const rvN=v=>{const n=parseFloat(String(v??'').replace(/[$,\s]/g,''));return isNaN(n)?0:n};
+const rvUnitCost=l=>(rvN(l.pack)||1)>0?rvN(l.caseCost)/(rvN(l.pack)||1):0;
+const rvUnits=l=>r2(rvN(l.qty)*(rvN(l.pack)||1));
+const muPct=(price,cost)=>cost>0?((price-cost)/cost)*100:null;
+const mgPct=(price,cost)=>price>0?((price-cost)/price)*100:null;
+const pctTxt=v=>v==null||!isFinite(v)?'—':v.toFixed(1)+'%';
+function roundPrice(v){const m=(S.settings&&S.settings.rvRound)||'99';if(!(v>0))return 0;if(m==='none')return r2(v);
+ const f=Math.floor(v);if(m==='49'){for(const c of [f-0.01,f+0.49,f+0.99])if(c>=v-0.0001&&c>0)return r2(c);return r2(f+1.49)}
+ return r2(f-0.01>=v-0.0001&&f>0?f-0.01:f+0.99)}
+function rvCur(){S.invoices=S.invoices||[];return S.invoices.find(x=>x.id===S.rvSel)}
+function rvTotals(inv){let cost=0,retail=0,units=0;for(const l of inv.lines){const u=rvUnits(l);units+=u;cost+=rvN(l.qty)*rvN(l.caseCost);retail+=u*rvN(l.price)}return{cost:r2(cost),retail:r2(retail),units,mu:muPct(retail,cost),mg:mgPct(retail,cost)}}
+function rvSave(){saveKV('invoices',500)}
+function rvNewLine(code,o={}){const p=code?findSku(code):null;
+ if(p){const pack=rvN(o.pack)||p.pack||1;return{sku:p.sku,name:p.name,qty:o.qty??1,pack,caseCost:o.caseCost!=null?r2(o.caseCost):r2((+p.cost||0)*pack),price:p.price,oldCost:+p.cost||0,oldPrice:p.price}}
+ return{sku:String(code||'').trim(),name:o.name||'',qty:o.qty??1,pack:rvN(o.pack)||1,caseCost:r2(o.caseCost||0),price:0,newItem:true,cat:(S.settings.categories[0]||{}).name||''}}
+function rvAdd(code){const inv=rvCur();if(!inv||inv.status!=='draft')return;code=String(code||'').trim();if(!code)return;const p=findSku(code);
+ const ex=inv.lines.find(l=>p?l.sku===p.sku:l.sku===code);if(ex){ex.qty=rvN(ex.qty)+1;toast(`${ex.name||code}: ${ex.qty}`)}
+ else{inv.lines.push(rvNewLine(code));if(!p){beep(300,200);toast('New item — type its name and price on the invoice line',1)}}
+ rvSave();render();setTimeout(()=>{const r=document.querySelector('.rvt tr.last');r&&r.scrollIntoView({block:'nearest'})},30)}
+function renderReceive(){S.invoices=S.invoices||[];const inv=rvCur();const list=[...S.invoices].sort((a,b)=>b.created-a.created);
+ return `<div class="split rv"><section class="listp"><div class="lhead"><button class="btn green" data-a="rvNew">+ New Invoice</button></div><div class="ilist">${list.map(x=>{const t=rvTotals(x);return `<button class="il ${S.rvSel===x.id?'on':''}" data-a="rvSel" data-v="${x.id}"><span><b>${esc(x.vendor||'(no vendor)')}</b> ${x.status==='draft'?'<span class="badge b">draft</span>':'<span class="badge g">received</span>'}<small>${x.number?'Invoice #'+esc(x.number)+' · ':''}${esc(x.date||'')} · ${x.lines.length} lines</small></span><span class="r"><b>$${money(t.cost)}</b><small>${pctTxt(t.mu)} markup</small></span></button>`}).join('')||'<div class="empty">No invoices yet.<br><br>Tap <b>+ New Invoice</b> when a delivery comes in.</div>'}</div><div class="lfoot">${S.invoices.length} invoices</div></section>
+ <section class="edp">${inv?rvDetail(inv):`<div class="empty big">Receive a vendor invoice<br><small>Upload the invoice (PDF, Excel or CSV) or scan each item. Stock, cost and prices update when you tap <b>Receive</b>.</small></div>`}</section></div>`}
+function rvDetail(inv){const ro=inv.status!=='draft',ed=can('items_edit')&&!ro;const t=rvTotals(inv);const vendors=[...new Set(S.products.map(p=>p.vendor).filter(Boolean).concat(S.invoices.map(x=>x.vendor).filter(Boolean)))].sort();
+ const fld=(lab,k,o={})=>`<label class="fld"><span>${lab}</span><input data-rvh="${k}" value="${esc(inv[k]||'')}" ${o.type?`type="${o.type}"`:''} ${o.list?`list="${o.list}"`:''} ${ro?'readonly':''} autocomplete="off"></label>`;
+ return `<div class="ehead"><div><div class="etitle">${esc(inv.vendor||'New invoice')} ${ro?'<span class="badge g">received</span>':'<span class="badge b">draft</span>'}</div><div class="hint">${ro?`Received ${fmtDT(inv.receivedTime)} by ${esc(inv.receivedBy||'')}`:'Not in stock yet — tap Receive when it all looks right'}</div></div>
+ <div class="ekpis"><div><small>Invoice cost</small><b id="rvCost">$${money(t.cost)}</b></div><div><small>Retail value</small><b id="rvRetail">$${money(t.retail)}</b></div><div><small>Markup</small><b id="rvMu">${pctTxt(t.mu)}</b></div><div><small>Margin</small><b id="rvMg">${pctTxt(t.mg)}</b></div></div></div>
+ <div class="ebody"><div class="fgrid rvhead">${fld('Vendor','vendor',{list:'rvVendors'})}${fld('Invoice #','number')}${fld('Invoice date','date',{type:'date'})}<label class="fld"><span>How it was paid</span><select data-rvh="paid" ${ro?'disabled':''}>${[['','Not paid yet / on account'],['cash','Cash from the drawer (makes a Cash Payout)'],['check','Check'],['card','Card / bank']].map(([k,l])=>`<option value="${k}" ${(inv.paid||'')===k?'selected':''}>${l}</option>`).join('')}</select></label></div><datalist id="rvVendors">${vendors.map(v=>`<option value="${esc(v)}">`).join('')}</datalist>
+ ${!ro?`<div class="rvtools"><input id="rvScan" data-enter="rvScan" placeholder="🔍 Scan or type a barcode to add it" autocomplete="off"><label class="btn blue">📄 Upload invoice (PDF, Excel, CSV, photo)<input type="file" accept=".pdf,.csv,.tsv,.txt,.xlsx,image/*" data-rvfile="1" hidden></label></div>`:''}
+ ${inv.file?`<div class="hint" style="margin:6px 0">Attached: <b>${esc(inv.file.name)}</b> ${DESK&&inv.file.path?'<button class="btn sm" data-a="rvOpenFile">Open</button>':''}</div>`:''}
+ ${ed?`<div class="rvmu"><span>Set prices by markup:</span><input id="rvMuAll" inputmode="decimal" value="${esc(S.settings.rvMarkup??50)}" style="width:80px"> %<select data-rvset="rvRound">${[['99','round up to .99'],['49','round up to .49 / .99'],['none','no rounding']].map(([k,l])=>`<option value="${k}" ${(S.settings.rvRound||'99')===k?'selected':''}>${l}</option>`).join('')}</select><button class="btn sm" data-a="rvMuApply" data-v="all">Apply to all lines</button><button class="btn sm" data-a="rvMuApply" data-v="new">Only new / cost changed</button></div>`:''}
+ <div class="rvwrap"><table class="tbl rvt"><tr><th>Item</th><th class="n">Qty</th><th class="n">Units / case</th><th class="n">Cost per case</th><th class="n">Unit cost</th><th class="n">Sell price</th><th class="n">Markup %</th><th class="n">Margin</th><th class="n">Stock</th>${ro?'':'<th></th>'}</tr>
+ ${inv.lines.map((l,i)=>rvRow(inv,l,i,ro,ed)).join('')||`<tr><td colspan="10"><div class="empty">No items yet — scan them or upload the invoice</div></td></tr>`}</table></div>
+ <p class="hint">Markup = profit ÷ cost (cost $10, price $15 = 50% markup). Margin = profit ÷ price (same item = 33.3% margin). Units / case: if the invoice is in cases or boxes, type how many you sell from each one, and the cost per unit is worked out for you.</p></div>
+ <div class="ebar">${ro?'':'<button class="btn red" data-a="rvDel">Delete Draft</button>'}<button class="btn" data-a="rvPrint">🖨 Print</button><span class="flex"></span>${ro?'':`<span class="hint" id="rvSum">${inv.lines.length} lines · ${t.units} units</span><button class="btn green" data-a="rvReceive">✓ Receive — add to stock</button>`}</div>`}
+function rvRow(inv,l,i,ro,ed){const p=l.newItem?null:findSku(l.sku);const uc=rvUnitCost(l);const old=l.newItem||l.created?null:(ro?l.oldCost:(p?+p.cost||0:0));const up=old!=null&&old>0&&uc>old+0.004,dn=old!=null&&old>0&&uc<old-0.004;
+ const inp=(k,v,o='')=>ro?`<td class="n">${esc(v)}</td>`:`<td class="n"><input class="rvin" data-rv="${k}" data-i="${i}" value="${esc(v)}" inputmode="decimal" ${o} autocomplete="off"></td>`;
+ const cats=S.settings.categories.map(c=>c.name);
+ return `<tr id="rvr${i}" class="${i===inv.lines.length-1?'last':''} ${l.newItem?'rvnew':''}"><td>${l.newItem?(ro?`<b>${esc(l.name)}</b><div class="hint">new item · ${esc(l.sku)}</div>`:`<input class="rvname" data-rv="name" data-i="${i}" value="${esc(l.name)}" placeholder="New item — type its name" autocomplete="off"><div class="hint">${l.sku?esc(l.sku):'no barcode — one will be made'} · <select data-rv="cat" data-i="${i}">${cats.map(c=>`<option ${c===l.cat?'selected':''}>${esc(c)}</option>`).join('')}</select></div>`):`<b>${esc(l.name)}</b><div class="hint">${esc(l.sku)}${l.created?' · <b>new item</b>':''}${old!=null?` · was $${money(old)}${up?' <span class="up">▲ cost went up</span>':dn?' <span class="dn">▼ cost went down</span>':''}`:''}</div>`}</td>
+ ${inp('qty',l.qty)}${inp('pack',l.pack||1)}${inp('caseCost',money(l.caseCost))}<td class="n" data-c="uc">$${money(uc)}</td>
+ ${ed||(!ro&&l.newItem)?`<td class="n"><input class="rvin" data-rv="price" data-i="${i}" value="${money(l.price)}" inputmode="decimal" autocomplete="off"></td><td class="n"><input class="rvin" data-rv="mu" data-i="${i}" value="${(()=>{const m=muPct(rvN(l.price),uc);return m==null?'':m.toFixed(1)})()}" inputmode="decimal" autocomplete="off"></td>`:`<td class="n">$${money(l.price)}</td><td class="n">${pctTxt(muPct(rvN(l.price),uc))}</td>`}
+ <td class="n" data-c="mg">${pctTxt(mgPct(rvN(l.price),uc))}</td><td class="n" data-c="st">${l.newItem?`+${rvUnits(l)}`:ro?`${l.stockBefore??''} → ${l.stockAfter??''}`:`${p?p.stock:'?'} → ${p?r2((+p.stock||0)+rvUnits(l)):'?'}`}</td>${ro?'':`<td><button class="btn sm red" data-a="rvRm" data-i="${i}">✕</button></td>`}</tr>`}
+function rvRefresh(i){const inv=rvCur();if(!inv)return;const l=inv.lines[i];const tr=$('#rvr'+i);if(l&&tr){const uc=rvUnitCost(l);const p=l.newItem?null:findSku(l.sku);
+  tr.querySelector('[data-c=uc]').textContent='$'+money(uc);tr.querySelector('[data-c=mg]').textContent=pctTxt(mgPct(rvN(l.price),uc));tr.querySelector('[data-c=st]').textContent=l.newItem?`+${rvUnits(l)}`:`${p?p.stock:'?'} → ${p?r2((+p.stock||0)+rvUnits(l)):'?'}`}
+ const t=rvTotals(inv);const set=(id,v)=>{const e=$('#'+id);if(e)e.textContent=v};set('rvCost','$'+money(t.cost));set('rvRetail','$'+money(t.retail));set('rvMu',pctTxt(t.mu));set('rvMg',pctTxt(t.mg));set('rvSum',`${inv.lines.length} lines · ${t.units} units`)}
+document.addEventListener('input',e=>{const t=e.target;
+ if(t.dataset.rvh){const inv=rvCur();if(!inv||inv.status!=='draft')return;inv[t.dataset.rvh]=t.value;rvSave();return}
+ if(t.dataset.rvset){S.settings[t.dataset.rvset]=t.value;saveKV('settings');return}
+ if(t.id==='rvMuAll'){S.settings.rvMarkup=rvN(t.value);saveKV('settings',800);return}
+ if(t.dataset.rv==null)return;const inv=rvCur();if(!inv||inv.status!=='draft')return;const i=+t.dataset.i,l=inv.lines[i];if(!l)return;const k=t.dataset.rv;
+ if(k==='name'||k==='cat')l[k]=t.value;
+ else if(k==='mu'){const uc=rvUnitCost(l);if(uc>0&&t.value.trim()!==''){l.price=roundPrice(uc*(1+rvN(t.value)/100));const pi=document.querySelector(`[data-rv=price][data-i="${i}"]`);if(pi)pi.value=money(l.price)}}
+ else{l[k]=rvN(t.value);if(k!=='price'){const m=document.querySelector(`[data-rv=mu][data-i="${i}"]`);const mv=muPct(rvN(l.price),rvUnitCost(l));if(m)m.value=mv==null?'':mv.toFixed(1)}else{const m=document.querySelector(`[data-rv=mu][data-i="${i}"]`);const mv=muPct(rvN(l.price),rvUnitCost(l));if(m)m.value=mv==null?'':mv.toFixed(1)}}
+ rvSave();rvRefresh(i)});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.rvfile){const f=t.files[0];t.value='';if(f)rvUpload(f).catch(er=>toast('Could not read that file: '+er.message,1))}
+ if(t.dataset&&(t.dataset.rv==='cat'||t.dataset.rvh==='paid'||t.dataset.rvset)){const inv=rvCur();if(t.dataset.rvset){S.settings[t.dataset.rvset]=t.value;saveKV('settings')}else if(inv&&inv.status==='draft'){if(t.dataset.rvh)inv.paid=t.value;else inv.lines[+t.dataset.i].cat=t.value;rvSave()}}},true);
+/* --- reading invoice files --- */
+async function rvUpload(f){const inv=rvCur();if(!inv||inv.status!=='draft')return;const buf=await f.arrayBuffer();const ext=(f.name.split('.').pop()||'').toLowerCase();
+ if(DESK&&posAPI.saveInvoiceFile){try{const r=await posAPI.saveInvoiceFile({name:f.name,bytes:new Uint8Array(buf)});if(r&&r.path)inv.file={name:f.name,path:r.path}}catch(e){}}else inv.file={name:f.name};rvSave();
+ if(/^(png|jpe?g|gif|bmp|webp|heic)$/.test(ext)||(f.type||'').startsWith('image/')){render();toast('Photo attached. Scan each item to add it — photos can\'t be read automatically yet.');return}
+ if(ext==='pdf'){toast('Reading the PDF…');const lines=await pdfInvoiceLines(buf);if(!lines.length){render();toast('Could not find item lines in that PDF. It is attached — scan the items instead.',1);return}rvAddParsed(inv,lines,'PDF');return}
+ let rows;if(ext==='xlsx'){rows=await xlsxRows(buf)}else{const txt=new TextDecoder().decode(buf);rows=ext==='tsv'||(txt.split('\t').length>txt.split(',').length)?txt.split(/\r?\n/).map(r=>r.split('\t')):parseCSV(txt)}
+ rows=(rows||[]).filter(r=>r.some(c=>String(c).trim()!==''));if(!rows.length){toast('That file is empty',1);return}rvMapModal(inv,rows)}
+function rvAddParsed(inv,lines,src){let n=0,nw=0;for(const x of lines){const p=x.code?findSku(x.code):null;const byName=!p&&x.name?S.products.find(q=>q.name.toUpperCase()===x.name.toUpperCase()):null;const prod=p||byName;
+  const caseCost=x.cost!=null?x.cost:(x.ext!=null&&x.qty?x.ext/x.qty:null);const l=rvNewLine(prod?prod.sku:x.code,{qty:x.qty||1,pack:x.pack||null,caseCost:caseCost,name:x.name});
+  if(prod&&caseCost!=null)l.caseCost=r2(caseCost);if(l.newItem)nw++;
+  const ex=inv.lines.find(y=>!l.newItem&&y.sku===l.sku);if(ex){ex.qty=rvN(ex.qty)+rvN(l.qty)}else inv.lines.push(l);n++}
+ rvSave();render();toast(`Added ${n} lines from the ${src}${nw?` — ${nw} not in your items yet (shown in yellow)`:''}. Please check quantities and costs.`)}
+const RV_COLS=[['code','Barcode / UPC / Item #',/upc|bar ?code|sku|item ?(no|#|num|code)|product ?code|^code$|^item$/i],['name','Description',/desc|item ?name|product|^name$|^item$/i],['qty','Quantity',/qty|quantity|shipped|^ship|units|^cases?$|^count/i],['pack','Units per case (optional)',/pack|per ?case|case ?qty|^pk$|inner|units ?\/ ?case/i],['cost','Cost each / per case',/unit ?(price|cost)|^cost|^price|rate|each/i],['ext','Line total (optional)',/amount|ext|extended|line ?total|^total/i]];
+function rvMapModal(inv,rows){let hi=0,best=-1;rows.slice(0,20).forEach((r,i)=>{const s=r.filter(c=>RV_COLS.some(([, ,re])=>re.test(String(c).trim()))).length;if(s>best){best=s;hi=i}});
+ const head=rows[hi].map(c=>String(c).trim());const guess={};const used=new Set();for(const [k,,re] of RV_COLS){const j=head.findIndex((h,j)=>!used.has(j)&&re.test(h));if(j>=0){guess[k]=j;used.add(j)}}
+ const body=rows.slice(hi+1);const opt=k=>`<select id="rvm_${k}"><option value="">— none —</option>${head.map((h,j)=>`<option value="${j}" ${guess[k]===j?'selected':''}>${esc(h||'Column '+(j+1))}</option>`).join('')}</select>`;
+ openModal(`<div class="mtitle">Match the invoice columns</div><div class="msub">Tell Store POS which column is which. We guessed — fix anything that's wrong.</div>
+ <div class="fgrid">${RV_COLS.map(([k,l])=>`<label class="fld"><span>${l}</span>${opt(k)}</label>`).join('')}</div>
+ <div class="rvwrap" style="max-height:30vh"><table class="tbl"><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>${body.slice(0,6).map(r=>`<tr>${head.map((h,j)=>`<td>${esc(r[j]??'')}</td>`).join('')}</tr>`).join('')}</table></div>
+ <div class="mbtns">${cancelBtn()}<button class="btn green" id="mok" data-a="cb" data-id="${cb(()=>{const g=k=>{const v=$('#rvm_'+k).value;return v===''?null:+v};const m={};RV_COLS.forEach(([k])=>m[k]=g(k));if(m.code==null&&m.name==null){toast('Pick the barcode or description column',1);return}
+  const lines=[];for(const r of body){const code=m.code!=null?String(r[m.code]??'').trim().replace(/\.0+$/,''):'';const name=m.name!=null?String(r[m.name]??'').trim():'';const qty=m.qty!=null?rvN(r[m.qty]):1;const cost=m.cost!=null&&String(r[m.cost]??'').trim()!==''?rvN(r[m.cost]):null;const ext=m.ext!=null&&String(r[m.ext]??'').trim()!==''?rvN(r[m.ext]):null;const pack=m.pack!=null?rvN(r[m.pack]):null;
+   if(!code&&!name)continue;if(!(qty>0))continue;if(/^(sub)?total|^tax|^freight|^shipping/i.test(name)&&!code)continue;lines.push({code,name,qty,cost,ext,pack})}
+  closeModal();if(!lines.length){toast('No item lines found with those columns',1);return}rvAddParsed(inv,lines,'file')})}">Add ${body.length} rows</button></div>`,'wide')}
+async function unzipFile(buf,want){const dv=new DataView(buf),u8=new Uint8Array(buf);let e=buf.byteLength-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error('not a zip/xlsx file');
+ const n=dv.getUint16(e+10,true);let off=dv.getUint32(e+16,true);const out={};const td=new TextDecoder();
+ for(let i=0;i<n;i++){if(dv.getUint32(off,true)!==0x02014b50)break;const method=dv.getUint16(off+10,true),cs=dv.getUint32(off+20,true),nl=dv.getUint16(off+28,true),el=dv.getUint16(off+30,true),cl=dv.getUint16(off+32,true),lho=dv.getUint32(off+42,true);const name=td.decode(u8.subarray(off+46,off+46+nl));off+=46+nl+el+cl;
+  if(!want(name))continue;const lnl=dv.getUint16(lho+26,true),lel=dv.getUint16(lho+28,true);const data=u8.slice(lho+30+lnl+lel,lho+30+lnl+lel+cs);
+  out[name]=method===0?td.decode(data):await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text()}
+ return out}
+async function xlsxRows(buf){const z=await unzipFile(buf,n=>n==='xl/sharedStrings.xml'||/^xl\/worksheets\/sheet\d+\.xml$/.test(n));const P=s=>new DOMParser().parseFromString(s,'application/xml');
+ const ss=z['xl/sharedStrings.xml']?[...P(z['xl/sharedStrings.xml']).getElementsByTagName('si')].map(si=>[...si.getElementsByTagName('t')].map(t=>t.textContent).join('')):[];
+ const sheet=Object.keys(z).filter(n=>n.includes('worksheets')).sort((a,b)=>parseInt(a.match(/\d+/))-parseInt(b.match(/\d+/)))[0];if(!sheet)throw new Error('no sheet found');
+ const col=r=>{const m=String(r).match(/^[A-Z]+/);let c=0;for(const ch of m?m[0]:'A')c=c*26+ch.charCodeAt(0)-64;return c-1};
+ return [...P(z[sheet]).getElementsByTagName('row')].map(row=>{const a=[];for(const c of row.getElementsByTagName('c')){const t=c.getAttribute('t'),v=c.getElementsByTagName('v')[0];let x=v?v.textContent:'';if(t==='s')x=ss[+x]??'';else if(t==='inlineStr')x=[...c.getElementsByTagName('t')].map(q=>q.textContent).join('');a[col(c.getAttribute('r'))]=x}for(let i=0;i<a.length;i++)if(a[i]==null)a[i]='';return a})}
+function loadPdfJs(){if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);return new Promise((res,rej)=>{const s=document.createElement('script');s.src='lib/pdf.js';s.onload=()=>{const L=window.pdfjsLib||window['pdfjs-dist/build/pdf'];if(!L)return rej(new Error('PDF reader missing'));L.GlobalWorkerOptions.workerSrc='lib/pdf.worker.js';window.pdfjsLib=L;res(L)};s.onerror=()=>rej(new Error('PDF reader missing'));document.head.appendChild(s)})}
+async function pdfTextLines(buf){const L=await loadPdfJs();const doc=await L.getDocument({data:new Uint8Array(buf),isEvalSupported:false}).promise;const lines=[];
+ for(let pn=1;pn<=Math.min(doc.numPages,30);pn++){const pg=await doc.getPage(pn);const tc=await pg.getTextContent();const rows=[];
+  for(const it of tc.items){const s=String(it.str||'').trim();if(!s)continue;const y=it.transform[5],x=it.transform[4];let r=rows.find(r=>Math.abs(r.y-y)<3);if(!r){r={y,cells:[]};rows.push(r)}r.cells.push({x,s})}
+  rows.sort((a,b)=>b.y-a.y).forEach(r=>lines.push(r.cells.sort((a,b)=>a.x-b.x).map(c=>c.s)))}
+ return lines}
+function invoiceLineFrom(cells){const toks=cells.flatMap(c=>/^\$?-?[\d,]+(\.\d+)?$/.test(c.replace(/\s/g,''))?[c.replace(/\s/g,'')]:[c]);
+ const isNum=s=>/^\$?-?[\d,]*\.?\d+$/.test(s);let code='',prod=null;
+ for(const t of toks.flatMap(t=>t.split(/\s+/))){const c=t.replace(/[^0-9A-Za-z\-]/g,'');if(c.length<4)continue;const p=findSku(c);if(p){code=c;prod=p;break}if(!code&&/^\d{8,14}$/.test(c))code=c}
+ const nums=toks.filter(t=>isNum(t)&&t.replace(/[^0-9]/g,'')!==code).map(t=>({v:rvN(t),dec:/\.\d\d/.test(t)}));
+ let qty=null,cost=null,ext=null;
+ for(let a=0;a<nums.length&&qty==null;a++)for(let b=a+1;b<nums.length&&qty==null;b++)for(let c=b+1;c<nums.length;c++){const q=nums[a].v,u=nums[b].v,x=nums[c].v;if(q>0&&q<10000&&Number.isInteger(q)&&u>0&&Math.abs(q*u-x)<0.02+x*0.001){qty=q;cost=u;ext=x;break}}
+ if(qty==null&&prod){const m=nums.filter(n=>n.dec);const ints=nums.filter(n=>!n.dec&&n.v>0&&n.v<10000);if(m.length){qty=ints.length?ints[0].v:1;cost=m[0].v}}
+ if(qty==null)return null;const name=toks.filter(t=>!isNum(t)&&!t.includes(code||'\u0000')).join(' ').replace(/\s+/g,' ').trim();
+ if(!prod&&/^(sub ?total|total|tax|freight|shipping|balance|amount due)/i.test(name))return null;if(!prod&&!code&&name.length<3)return null;
+ return{code,name:prod?prod.name:name,qty,cost,ext}}
+async function pdfInvoiceLines(buf){const lines=await pdfTextLines(buf);return lines.map(invoiceLineFrom).filter(Boolean)}
+/* --- actions --- */
+Object.assign(A,{
+ rvNew(){if(!can('stock')){toast(`${S.user.name} isn't allowed to add inventory`,1);return}S.invoices=S.invoices||[];const inv={id:uid(),vendor:'',number:'',date:localDay(),paid:'',status:'draft',lines:[],created:Date.now(),user:S.user.name};S.invoices.push(inv);S.rvSel=inv.id;rvSave();render();setTimeout(()=>{const i=document.querySelector('[data-rvh=vendor]');i&&i.focus()},50)},
+ rvSel(d){S.rvSel=d.v;render()},
+ rvRm(d){const inv=rvCur();if(!inv||inv.status!=='draft')return;inv.lines.splice(+d.i,1);rvSave();render()},
+ rvDel(){const inv=rvCur();if(!inv||inv.status!=='draft')return;confirmBox('Delete this draft invoice?<br><small>Nothing was added to stock yet.</small>','Delete',()=>{S.invoices=S.invoices.filter(x=>x!==inv);S.rvSel=null;rvSave();render()},{danger:true})},
+ rvOpenFile(){const inv=rvCur();if(inv&&inv.file&&inv.file.path&&posAPI.openPath)posAPI.openPath(inv.file.path)},
+ rvMuApply(d){const inv=rvCur();if(!inv||inv.status!=='draft'||!can('items_edit'))return;const m=rvN(($('#rvMuAll')||{}).value);S.settings.rvMarkup=m;saveKV('settings');let n=0;
+  for(const l of inv.lines){const uc=rvUnitCost(l);if(!(uc>0))continue;if(d.v==='new'){const p=l.newItem?null:findSku(l.sku);if(p&&Math.abs((+p.cost||0)-uc)<0.005&&l.price>0)continue}l.price=roundPrice(uc*(1+m/100));n++}
+  rvSave();render();toast(`Prices set on ${n} lines at ${m}% markup`)},
+ rvPrint(){const inv=rvCur();if(!inv)return;const t=rvTotals(inv);printHtml(`<div class="rc"><div class="c"><b>${esc(S.settings.storeName)}</b><br>RECEIVING — ${esc(inv.vendor)}<br>${inv.number?'Invoice #'+esc(inv.number)+'<br>':''}${esc(inv.date||'')}</div><hr>${inv.lines.map(l=>`<div>${esc(l.name||l.sku)}</div><div class="r"><span>${rvUnits(l)} @ $${money(rvUnitCost(l))} · sell $${money(l.price)}</span><span>${pctTxt(muPct(rvN(l.price),rvUnitCost(l)))}</span></div>`).join('')}<hr><div class="r b"><span>Cost</span><span>$${money(t.cost)}</span></div><div class="r"><span>Retail</span><span>$${money(t.retail)}</span></div><div class="r"><span>Markup</span><span>${pctTxt(t.mu)}</span></div><br></div>`)},
+ rvReceive(){const inv=rvCur();if(!inv||inv.status!=='draft')return;if(!can('stock')){toast(`${S.user.name} isn't allowed to add inventory`,1);return}
+  if(!inv.lines.length){toast('Add items first',1);return}if(!String(inv.vendor||'').trim()){toast('Type the vendor name',1);const i=document.querySelector('[data-rvh=vendor]');i&&i.focus();return}
+  const nw=inv.lines.filter(l=>l.newItem);if(nw.length&&!can('items_edit')){toast('This invoice has new items — someone allowed to add items must receive it',1);return}
+  const bad=nw.find(l=>!String(l.name||'').trim()||!(rvN(l.price)>0));if(bad){toast('Every new item (yellow) needs a name and a sell price',1);return}
+  const t=rvTotals(inv);const costCh=inv.lines.filter(l=>{if(l.newItem)return false;const p=findSku(l.sku);return p&&Math.abs((+p.cost||0)-rvUnitCost(l))>0.004}).length;const priceCh=inv.lines.filter(l=>{if(l.newItem)return false;const p=findSku(l.sku);return p&&Math.abs(p.price-rvN(l.price))>0.004}).length;
+  const go=by=>confirmBox(`Receive invoice from <b>${esc(inv.vendor)}</b>?<br><br>• Add <b>${t.units}</b> units to stock (${inv.lines.length} lines)<br>• Update cost on <b>${costCh}</b> items<br>• Change sell price on <b>${priceCh}</b> items${nw.length?`<br>• Create <b>${nw.length}</b> new items`:''}${inv.paid==='cash'?`<br>• Take <b>$${money(t.cost)}</b> cash from the drawer (Cash Payout)`:''}`,'Receive',()=>{
+   const now=Date.now();for(const l of inv.lines){const units=rvUnits(l),uc=r2(rvUnitCost(l)*10000)/10000;let p=l.newItem?null:findSku(l.sku);
+    if(!p){let sku=String(l.sku||'').trim();if(!sku||findSku(sku))sku=newStoreBarcode()||('N'+Date.now()+Math.floor(Math.random()*1000));p=ensureItem({...blankItem(sku),name:String(l.name).trim(),label:String(l.name).trim().slice(0,24),cat:l.cat||(S.settings.categories[0]||{}).name||'',vendor:inv.vendor,price:r2(rvN(l.price)),cost:r2(uc),stock:0,pack:rvN(l.pack)||1});S.products.push(p);l.sku=sku}
+    const before=+p.stock||0;l.oldCost=+p.cost||0;l.oldPrice=p.price;l.stockBefore=before;
+    if(!p.nonInventory)p.stock=r2(before+units);if(uc>0)p.cost=r2(uc);if(rvN(l.price)>0&&can('items_edit'))p.price=r2(rvN(l.price));if(!p.vendor)p.vendor=inv.vendor;if(rvN(l.pack)>1)p.pack=rvN(l.pack);
+    l.stockAfter=p.stock;l.name=p.name;if(l.newItem){l.created=true;delete l.newItem}DB.put('products',p);
+    S.invlog.push({time:now,sku:p.sku,name:p.name,change:units,reason:`Invoice ${inv.number?'#'+inv.number+' ':''}${inv.vendor}`,user:S.user.name,before,after:p.stock,cost:p.cost})}
+   saveKV('invlog');inv.status='received';inv.receivedTime=now;inv.receivedBy=S.user.name;inv.total=t.cost;
+   if(inv.paid==='cash'&&t.cost>0){const po={id:uid(),time:now,amount:t.cost,type:'Vendor invoice',payee:inv.vendor,invoice:inv.number||'',note:'Received in Receiving',reason:['Vendor invoice',inv.vendor,inv.number?'Invoice #'+inv.number:''].filter(Boolean).join(' · '),user:S.user.name,approvedBy:by&&by!==S.user.name?by:''};S.payouts.push(po);saveKV('payouts');if(DESK&&(S.cfg.drawerMode||'raw')==='raw')openDrawer();printPayout(po)}
+   rvSave();render();toast(`Received — ${t.units} units added to stock`)});
+  if(inv.paid==='cash')needMgr('payout',by=>go(by));else go()}
+});
+ENTER.rvScan=t=>{const v=t.value.trim();t.value='';if(v)rvAdd(v)};
+
 const OBJ={edit:()=>S.edit,set:()=>S.settings,discs:()=>S.discounts,mm:()=>S.mmEdit,users:()=>S.users};
 const AUTOSAVE={set:'settings',discs:'discounts',users:'users'};
 function setField(t){const o=OBJ[t.dataset.o]&&OBJ[t.dataset.o]();if(!o)return;const ty=t.dataset.t;let v;
  if(ty==='bool')v=t.checked;else if(ty==='num'){v=t.value===''?0:parseFloat(t.value);if(isNaN(v))v=0}else v=t.value;
  setP(o,t.dataset.f,v);
- if(t.dataset.o==='edit'){S.dirty=true;const m=$('#margin');if(m)m.textContent=marginTxt(S.edit);if(t.dataset.f==='sku'){const b=$('#bcPrev');if(b)b.innerHTML=S.edit.sku?barcodeSVG(S.edit.sku,{h:50}):''}}
+ if(t.dataset.o==='edit'){S.dirty=true;const m=$('#margin');if(m)m.textContent=marginTxt(S.edit);const mk=$('#markupK');if(mk)mk.textContent=markupTxt(S.edit);const mu=$('#itMu');if(mu&&(t.dataset.f==='price'||t.dataset.f==='cost'))mu.value=(+S.edit.cost||0)>0?(((S.edit.price-S.edit.cost)/S.edit.cost)*100).toFixed(1):'';if(t.dataset.f==='sku'){const b=$('#bcPrev');if(b)b.innerHTML=S.edit.sku?barcodeSVG(S.edit.sku,{h:50}):''}}
  if(t.dataset.o==='mm')S.mmDirty=true;
  const k=AUTOSAVE[t.dataset.o];if(k)saveKV(k,400)}
 
@@ -1128,6 +1271,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!
 document.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault()});
 function onField(e){const t=e.target;if(t.dataset.f)setField(t);if(t.dataset.tax&&S.edit){const a=S.edit.taxes,id=t.dataset.tax,i=a.indexOf(id);if(t.checked&&i<0)a.push(id);if(!t.checked&&i>=0)a.splice(i,1);S.dirty=true}if(t.dataset.in&&IN[t.dataset.in]&&e.type==='input')IN[t.dataset.in](t)}
 document.addEventListener('input',onField);
+document.addEventListener('input',e=>{const t=e.target;if(!t.dataset.itmu||!S.edit)return;const c=+S.edit.cost||0;if(!(c>0)||t.value.trim()==='')return;S.edit.price=roundPrice(c*(1+rvN(t.value)/100));S.dirty=true;const pi=document.querySelector('[data-o=edit][data-f=price]');if(pi)pi.value=S.edit.price;const m=$('#margin');if(m)m.textContent=marginTxt(S.edit);const mk=$('#markupK');if(mk)mk.textContent=markupTxt(S.edit)});
 document.addEventListener('input',e=>{const t=e.target;if(DESK&&t.dataset.cfg&&t.tagName==='INPUT'&&t.type!=='checkbox'){clearTimeout(t._cfgT);t._cfgT=setTimeout(()=>{let v=t.value;if(['netPort','comBaud','scanBaud'].includes(t.dataset.cfg))v=+v||0;S.cfg[t.dataset.cfg]=v;posAPI.setConfig({[t.dataset.cfg]:v}).then(savedMark)},400)}});
 document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.a2==='role'){const u=S.users[+t.dataset.i];if(u.role==='admin'&&t.value!=='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one Owner',1);t.value='admin';return}u.role=t.value;delete u.perms;saveKV('users');render();return}

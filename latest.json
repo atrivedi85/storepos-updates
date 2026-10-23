@@ -1,6 +1,6 @@
 {
- "version": "1.5.1",
- "notes": "Touch-screen keyboard with number row and number pad; Refund button with pick-the-items refunds; Cash Payout button for invoices and employees; Refunds and Cash Payouts tabs in Transactions.",
- "url": "updates/StorePOS-Update-1.5.1.posupdate",
- "sha256": "2c96dd57bc1243af7aaa724c1b0325139baa9ac96ee56dc73be63328f7d71e25"
+ "version": "1.6.0",
+ "notes": "Receiving tab: upload vendor invoices (PDF, Excel, CSV) or scan items to add stock, update cost and set prices by markup %. Markup % on every item. Touch keyboard no longer covers pop-ups.",
+ "url": "updates/StorePOS-Update-1.6.0.posupdate",
+ "sha256": "f0dcef2200da497be150d38dbaa903653d6ab98bf79a0652736a6610a87e38df"
 }
