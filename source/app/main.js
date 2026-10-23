@@ -287,7 +287,7 @@ async function backupNow() {
   return { ok: !errors.length, file: name, errors, time: cfg.lastBackup };
 }
 function maybeBackup() {
-  if (!db.prepare('SELECT COUNT(*) AS n FROM products').get().n) return; // nothing to back up yet
+  if (!Q.kv.get.get('settings')) return; // store not set up yet — nothing to back up
   if (Date.now() - (cfg.lastBackup || 0) > 20 * 3600 * 1000) backupNow().catch(() => {});
 }
 ipcMain.handle('backupNow', () => backupNow());

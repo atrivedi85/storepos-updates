@@ -44,8 +44,8 @@ footer .lock,footer .fs{min-height:46px;padding:0 14px;border-radius:8px;backgro
 .sum .r{display:flex;justify-content:space-between;padding:1px 0}
 .sum .tot{font-size:26px;font-weight:800;color:var(--blue);padding:5px 0;border-top:1px solid var(--line);margin-top:4px}
 .sum .due{font-size:19px;font-weight:800}.sum .due.chg{color:var(--red)}
-.tenders3{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;background:var(--panel2)}
-.tenders3 button{min-height:62px;border-radius:8px;font-size:19px;font-weight:800}
+.tenders3{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:6px;background:var(--panel2)}
+.tenders3 button{min-height:62px;border-radius:8px;font-size:17px;font-weight:800}
 .cats{display:flex;flex-direction:column;overflow-y:auto;background:#d4dcea;gap:4px;padding:5px}
 .cat{min-height:62px;flex-shrink:0;border-radius:8px;background:#f6f8fb;font-weight:700;font-size:14px;padding:4px 6px;border-left:7px solid var(--cc)}
 .cat.on{background:var(--cc);color:#fff}
@@ -219,6 +219,8 @@ function upcEtoA(c){c=String(c);if(c.length===8){if(!/^[01]/.test(c))return null
 function codeKeys(c){c=String(c).trim().toUpperCase();const k=[norm(c)];if(/^\d+$/.test(c)){if(hasValidCheck(c))k.push(norm(c.slice(0,-1)));else if(c.length===11||c.length===12||c.length===7)k.push(norm(c+upcCheck(c)));const e=upcEtoA(c);if(e)k.push(norm(e),norm(e.slice(0,-1)))}return k}
 function reindex(){EX=new Map(S.products.map(p=>[String(p.sku).trim().toUpperCase(),p]));IDX=new Map();S.products.forEach(p=>{const k=norm(p.sku);if(!IDX.has(k))IDX.set(k,p)});S.products.forEach(p=>codeKeys(p.sku).slice(1).forEach(k=>{if(k&&!IDX.has(k))IDX.set(k,p)}))}
 function findSku(s){if(s==null||s==='')return null;const u=String(s).trim().toUpperCase();if(EX.has(u))return EX.get(u);for(const k of codeKeys(u)){const p=IDX.get(k);if(p)return p}return null}
+const catIsEbt=n=>!!((S.settings.categories||[]).find(c=>c.name===n)||{}).ebt;
+const isEbtItem=p=>!!(p&&(p.ebt||catIsEbt(p.cat)));
 const isAdmin=()=>S.user&&S.user.role==='admin';
 /* ---------- per-user permissions (Owner always has everything) ---------- */
 const PERMS=[
@@ -247,15 +249,12 @@ const catColor=n=>(S.settings.categories.find(c=>c.name===n)||{}).color||'#2563c
 const defaultTaxes=()=>S.settings.taxGroups.filter(g=>g.def).map(g=>g.id);
 
 function defaultSettings(){return{
- storeName:'Vape & Smoke Studio',address:'',phone:'',footer:'Thank you! Come again.',
- cardMin:2,cardFee:{type:'%',value:3,label:'CARD FEE'},ageMin:21,afterSale:'ask',nextOrder:235210,
+ storeName:'My Store',address:'',phone:'',footer:'Thank you! Come again.',
+ cardMin:2,cardFee:{type:'%',value:3,label:'CARD FEE'},ageMin:21,afterSale:'ask',nextOrder:1001,
  osk:'auto',logo:'',labelSize:'2.25x1.25',
- taxGroups:[{id:'A',name:'Tax',rate:7,type:'%',show:true,def:true},{id:'B',name:'VAPE',rate:0,type:'%',show:false,def:false},{id:'C',name:'Vape Tax',rate:30,type:'%',show:true,def:false},{id:'D',name:'Tariff',rate:3,type:'%',show:true,def:true}],
- categories:[['Novelty','#a23aa8'],['Water','#1aa3c4'],['Drinks','#0f7c8c'],['Edibles & Vape','#2563c9'],['Hookah','#b7791f'],['Hookah Accessories','#c2317a'],['E Cig Accessories','#4a5a75'],['Disposable E-Cig','#6b4fc8'],['E-Juice','#1d3f8a'],['Candy','#d9481c'],['Glass','#2f855a'],['Tobacco','#8a5a2b']].map(([name,color])=>({name,color})),
- quickKeys:[
-  {type:'item',sku:'SODA75'},{type:'act',act:'remove'},{type:'act',act:'disc10'},{type:'item',sku:'PIPE4'},{type:'item',sku:'PIPE6'},{type:'item',sku:'GLASS'},{type:'item',sku:'CHILLUM'},
-  {type:'item',sku:'SW-099'},{type:'item',sku:'SW-119'},{type:'item',sku:'SW-129'},{type:'item',sku:'SW-139'},{type:'item',sku:'SW-149'},{type:'item',sku:'SW-169'},{type:'item',sku:'SW-249'},
-  {type:'act',act:'drawer'},{type:'act',act:'age'},{type:'item',sku:'BM-PT'},{type:'item',sku:'BM-WT'},{type:'item',sku:'COIL'},{type:'item',sku:'COIL699'},{type:'item',sku:'COILPK'}]
+ taxGroups:[{id:'A',name:'Sales Tax',rate:0,type:'%',show:true,def:true}],
+ categories:[],
+ quickKeys:[{type:'act',act:'remove'},{type:'act',act:'disc10'},{type:'act',act:'drawer'},{type:'act',act:'age'},{type:'act',act:'misc'},{type:'act',act:'find'},{type:'act',act:'payout'},null,null,null,null,null,null,null]
 }}
 function blankItem(sku){return{sku:sku||'',name:'',label:'',price:0,cost:0,stock:0,cat:(S.settings.categories[0]||{}).name||'',sub:'',color:'',taxes:defaultTaxes(),ageCheck:false,show:true,discontinued:false,nonInventory:false,ebt:false,priceOverride:true,pricePrompt:false,low:0,vendor:'',promo:{on:false,buy:2,amount:0,max:0,start:'',end:'',days:[]}}}
 function ensureItem(p){const b=blankItem(p.sku);const o={...b,...p};o.promo={...b.promo,...(p.promo||{})};if(!Array.isArray(o.promo.days))o.promo.days=[];if(!Array.isArray(o.taxes))o.taxes=b.taxes;o.sku=String(o.sku);return o}
@@ -321,13 +320,17 @@ function calc(cart){
  const elig=L.map((l,i)=>l.fee||l.qty<=0?0:Math.max(0,ext[i]-disc[i]));let es=sum(elig);
  for(const od of cart.discounts||[]){if(es<=0.004)break;const d=od.type==='%'?es*od.value/100:Math.min(od.value,es);L.forEach((l,i)=>{if(!elig[i])return;const sh=elig[i]/es*d;disc[i]+=sh;elig[i]-=sh});es-=d}
  const net=L.map((l,i)=>ext[i]-disc[i]);
+ const isE=L.map(l=>!!l.ebt&&!l.fee&&l.qty>0);
+ const ebtElig=Math.max(0,sum(L.map((l,i)=>isE[i]?net[i]:0)));
+ const ebtPaid=Math.max(0,sum((cart.payments||[]).filter(p=>p.type==='EBT Food'),p=>p.amount));
+ const ebtF=ebtElig>0.004?Math.min(1,ebtPaid/ebtElig):0;let ebtExempt=0;
  const groups=S.settings.taxGroups,tg={};groups.forEach(g=>tg[g.id]=0);
- const lineTax=L.map((l,i)=>{let t=0;(l.taxes||[]).forEach(id=>{const g=groups.find(x=>x.id===id);if(!g||!g.rate)return;const v=g.type==='$'?g.rate*l.qty:net[i]*g.rate/100;tg[id]+=v;t+=v});return t});
+ const lineTax=L.map((l,i)=>{let t=0;(l.taxes||[]).forEach(id=>{const g=groups.find(x=>x.id===id);if(!g||!g.rate)return;let v=g.type==='$'?g.rate*l.qty:net[i]*g.rate/100;if(isE[i]&&ebtF>0){ebtExempt+=v*ebtF;v=v*(1-ebtF)}tg[id]+=v;t+=v});return t});
  const taxByGroup=groups.map(g=>({id:g.id,name:g.name,amount:r2(tg[g.id]),show:g.show})).filter(x=>Math.abs(x.amount)>0.004);
  const tax=r2(sum(taxByGroup,t=>t.amount)),discount=r2(sum(disc)),total=r2(subtotal-discount+tax);
  const paid=r2(sum(cart.payments,p=>p.amount)),balance=r2(total-paid);
- const ebtTotal=r2(sum(L.map((l,i)=>l.ebt?net[i]+lineTax[i]:0)));
- return{subtotal,discount,tax,taxByGroup,total,paid,balance,ebtTotal,itemCount:sum(L.filter(l=>!l.fee),l=>l.qty),lineDisc:disc,lineNet:net,lineTax,lineNotes:notes};
+ const ebtRemain=r2(Math.max(0,ebtElig-ebtPaid));
+ return{subtotal,discount,tax,taxByGroup,total,paid,balance,ebtElig:r2(ebtElig),ebtPaid:r2(ebtPaid),ebtRemain,ebtExempt:r2(ebtExempt),itemCount:sum(L.filter(l=>!l.fee),l=>l.qty),lineDisc:disc,lineNet:net,lineTax,lineNotes:notes};
 }
 
 /* ---------- modal plumbing ---------- */
@@ -357,6 +360,7 @@ function kpPress(key){const k=S.kp;if(!k)return;if(k.fresh&&key!=='⌫'){k.buf='
 /* ---------- rendering ---------- */
 const TITLES={register:'Register',pay:'Pay',items:'Item Details',orders:'Transactions',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
 function render(){
+ if(S.setupMode){$('#app').innerHTML=renderSetup();return}
  if(!S.user){$('#app').innerHTML=renderLogin();return}
  if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
  const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
@@ -371,6 +375,17 @@ function footer(){
  <div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
 }
 function tick(){const el=$('#clock');if(!el)return;const n=new Date();el.innerHTML=`<b>${n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}</b>${n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'})}`}
+function renderSetup(){const v=id=>{const e=document.getElementById(id);return e?e.value:''};
+ return `<div class="login" style="overflow:auto;align-items:flex-start;padding:24px 0"><div class="lbox" style="width:min(640px,94vw);text-align:left"><h1 style="text-align:center">Welcome to Store POS</h1><div class="hint" style="text-align:center;margin-bottom:14px">Let's set up your store. You can change all of this later in Settings.</div>
+ <div class="fgrid" style="grid-template-columns:1fr 1fr"><label class="fld wide" style="grid-column:span 2"><span>Store name *</span><input id="su_name" placeholder="e.g. Main Street Market" autocomplete="off"></label>
+ <label class="fld wide" style="grid-column:span 2"><span>Address (prints on receipts)</span><textarea id="su_addr" rows="2"></textarea></label>
+ <label class="fld"><span>Phone</span><input id="su_phone" autocomplete="off"></label><label class="fld"><span>Sales tax % *</span><input id="su_tax" type="number" step="any" inputmode="decimal" placeholder="e.g. 8.25"></label>
+ <label class="fld"><span>Owner name *</span><input id="su_owner" placeholder="Owner" autocomplete="off"></label><label class="fld"><span>Owner PIN (4–8 digits) *</span><input id="su_pin" inputmode="numeric" type="password" autocomplete="off"></label>
+ <label class="fld"></label><label class="fld"><span>Type the PIN again *</span><input id="su_pin2" inputmode="numeric" type="password" autocomplete="off"></label></div>
+ <label class="tog"><input type="checkbox" id="su_cats" checked><span>Add starter categories (Drinks, Snacks, Candy, Grocery, Tobacco, Vape, Accessories, Misc)</span></label>
+ <label class="tog"><input type="checkbox" id="su_ebt" checked><span>Add an EBT category (food you can sell on EBT, tax free when paid by EBT)</span></label>
+ <div class="warn" id="su_msg" style="min-height:18px"></div><button class="btn green" style="width:100%;min-height:62px;font-size:20px" data-a="setupDone">Start using Store POS</button>
+ <p class="hint" style="text-align:center">Next: add items in Items (or import a list in Settings → Import / Backup), set up printers, and add staff in Users & PINs.</p></div></div>`}
 function renderLogin(){const def=S.users.some(u=>u.pin==='1234'&&u.role==='admin');
  return `<div class="login"><div class="lbox">${S.settings.logo?`<img src="${S.settings.logo}" style="max-width:220px;max-height:90px;margin-bottom:6px">`:''}<h1>${esc(S.settings.storeName)}</h1><div class="hint">Enter your PIN</div><div class="pin" id="pinD">${'•'.repeat(S.pin.length)||'&nbsp;'}</div>
  <div class="kp">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-a="pinK" data-k="${k}">${k}</button>`).join('')}</div>
@@ -404,10 +419,10 @@ function orderPanel(c){const L=S.cart.lines;
  <div class="lines">${L.length?L.map((l,i)=>lineHtml(l,i,c)).join(''):'<div class="empty">Scan an item or tap a button to start</div>'}</div>
  ${S.sel!=null&&L[S.sel]?`<div class="ltools">${[['minus','−'],['plus','+'],['qty','Qty'],['price','Price'],['disc','Disc'],['ret','Return'],['remove','Remove']].map(([v,t])=>`<button class="${v==='remove'?'red':''}" data-a="lt" data-v="${v}">${t}</button>`).join('')}</div>`:''}
  ${summaryHtml(c)}
- <div class="tenders3"><button class="green" data-a="goPay">Cash</button><button class="green" data-a="cardQuick" data-v="Credit">Credit</button><button class="green" data-a="cardQuick" data-v="Debit">Debit</button><button class="amber" data-a="splitPay">Split</button></div>`}
-function summaryHtml(c){const rows=[['Item Count',c.itemCount],['Subtotal',money(c.subtotal)]];if(c.discount)rows.push(['Discount','-'+money(c.discount)]);c.taxByGroup.forEach(t=>rows.push([t.name,money(t.amount)]));if(!c.taxByGroup.length)rows.push(['Tax','0.00']);
+ <div class="tenders3"><button class="green" data-a="goPay">Cash</button><button class="green" data-a="cardQuick" data-v="Credit">Credit</button><button class="green" data-a="cardQuick" data-v="Debit">Debit</button><button class="teal" data-a="cardQuick" data-v="EBT Food" title="EBT / SNAP — food items only, tax free">EBT</button><button class="amber" data-a="splitPay">Split</button></div>`}
+function summaryHtml(c){const rows=[['Item Count',c.itemCount],['Subtotal',money(c.subtotal)]];if(c.discount)rows.push(['Discount','-'+money(c.discount)]);c.taxByGroup.forEach(t=>rows.push([t.name,money(t.amount)]));if(!c.taxByGroup.length)rows.push(['Tax','0.00']);if(c.ebtElig>0)rows.push([`<span style="color:var(--green)">EBT eligible${c.ebtPaid?` (paid $${money(c.ebtPaid)})`:''}</span>`,`<span style="color:var(--green)">${money(c.ebtElig)}</span>`]);if(c.ebtExempt>0)rows.push(['<span style="color:var(--green)">Tax saved by EBT</span>','<span style="color:var(--green)">-'+money(c.ebtExempt)+'</span>']);
  const refund=c.total<0;const lab=refund?'Refund Due':(c.balance<0?'Change':'Balance Due');
- return `<div class="sum">${rows.map(r=>`<div class="r"><span>${esc(r[0])}</span><span>${r[1]}</span></div>`).join('')}<div class="r tot"><span>Total</span><span>$${money(c.total)}</span></div>${c.paid?`<div class="r"><span>Paid</span><span>${money(c.paid)}</span></div>`:''}<div class="r due ${refund||c.balance<0?'chg':''}"><span>${lab}</span><span>$${money(Math.abs(c.balance))}</span></div></div>`}
+ return `<div class="sum">${rows.map(r=>`<div class="r"><span>${String(r[0]).startsWith('<span')?r[0]:esc(r[0])}</span><span>${r[1]}</span></div>`).join('')}<div class="r tot"><span>Total</span><span>$${money(c.total)}</span></div>${c.paid?`<div class="r"><span>Paid</span><span>${money(c.paid)}</span></div>`:''}<div class="r due ${refund||c.balance<0?'chg':''}"><span>${lab}</span><span>$${money(Math.abs(c.balance))}</span></div></div>`}
 function sideHtml(){const held=S.held.length;const hasFee=S.cart.lines.some(l=>l.fee);const b=[];
  if(S.screen==='pay')b.push(['go','Register','teal','register']);else b.push(['goPay','Pay','green']);
  b.push(['find','Find Items','slate'],['misc','Misc. Sale','blue'],['fee',hasFee?'Remove Card Fee':'Card Fee','blue'],['disc','Discounts','amber'],['save','Hold Sale','slate'],['get',`Get Held${held?` (${held})`:''}`,'slate'],['clear','Clear All','red']);
@@ -432,7 +447,7 @@ function addItem(p,{qty=1,price=null}={}){
  const pr=price??p.price;
  const ex=S.cart.lines.findIndex(l=>l.sku===p.sku&&!l.misc&&l.price===pr&&!l.disc&&l.qty>0);
  if(ex>=0){S.cart.lines[ex].qty+=qty;S.sel=ex}
- else{S.cart.lines.push({sku:p.sku,name:p.name,price:pr,origPrice:p.price,qty,cost:+p.cost||0,taxes:[...(p.taxes||[])],cat:p.cat,ebt:!!p.ebt,inv:!p.nonInventory});S.sel=S.cart.lines.length-1}
+ else{S.cart.lines.push({sku:p.sku,name:p.name,price:pr,origPrice:p.price,qty,cost:+p.cost||0,taxes:[...(p.taxes||[])],cat:p.cat,ebt:isEbtItem(p),inv:!p.nonInventory});S.sel=S.cart.lines.length-1}
  beep(1000,50);render();
 }
 function removeLine(i){S.cart.lines.splice(i,1);S.sel=null;if(!S.cart.lines.length)S.cart.discounts=[];render()}
@@ -506,10 +521,10 @@ function tenderModal(type){const c=calc(S.cart);const bal=c.balance;
  if(!S.cart.lines.length){toast('No items in the order');return}
  if(Math.abs(bal)<0.005){finishSale();return}
  if(bal<0){confirmBox(`Give the customer <b>$${money(-bal)}</b> back as ${esc(type)}?`,'Refund',()=>addPay(type,bal));return}
- let max=bal;if(type==='EBT Food'){const lim=r2(c.ebtTotal-sum(S.cart.payments.filter(p=>p.type==='EBT Food'),p=>p.amount));if(lim<=0){toast('No EBT-eligible items in this order',1);return}max=Math.min(bal,lim)}
+ let max=bal;if(type==='EBT Food'){const lim=c.ebtRemain;if(lim<=0.004){toast(c.ebtElig>0?'EBT already covers all the EBT items':'No EBT-eligible items in this sale',1);return}max=Math.min(bal,lim)}
  S.kp={mode:'dec',buf:money(max),fresh:true,onKey:null,onOk:null};
  const keys=[7,8,9,4,5,6,1,2,3,'Clear',0,'.'];
- openModal(`<div class="tmod"><div><div class="bal">Balance</div><div class="balv">$${money(bal)}</div><div class="bal">${esc(type)} Amount:</div><div class="kpd fresh" id="kpd">${kpDisp()}</div>${type==='EBT Food'?`<div class="hint">EBT-eligible max: $${money(max)}</div>`:''}${CARDLIKE.includes(type)&&S.settings.cardMin>0?`<div class="hint">Card minimum: $${money(S.settings.cardMin)}</div>`:''}</div>
+ openModal(`<div class="tmod"><div><div class="bal">Balance</div><div class="balv">$${money(bal)}</div><div class="bal">${esc(type)} Amount:</div><div class="kpd fresh" id="kpd">${kpDisp()}</div>${type==='EBT Food'?`<div class="hint">EBT can pay up to <b>$${money(max)}</b> (the EBT food items, tax free). Everything else is paid another way.</div>`:''}${CARDLIKE.includes(type)&&S.settings.cardMin>0?`<div class="hint">Card minimum: $${money(S.settings.cardMin)}</div>`:''}</div>
  <div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div></div></div>
  <div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(closeModal)}">Cancel</button><span class="flex"></span><button class="btn green" style="flex:2" id="mok" data-a="cb" data-id="${cb(()=>{const a=r2(kpVal());closeModal();tender(type,a)})}">Pay</button></div>`,'tm')}
 function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
@@ -518,7 +533,7 @@ function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
  if(bal<0){confirmBox(`Give the customer <b>$${money(-bal)}</b> back as ${esc(type)}?`,'Refund',()=>addPay(type,bal));return}
  let a=r2(amt==null?bal:amt);if(!(a>0))return;
  if(type!=='Cash'&&a>bal)a=bal;
- if(type==='EBT Food'){const lim=r2(c.ebtTotal-sum(S.cart.payments.filter(p=>p.type==='EBT Food'),p=>p.amount));if(lim<=0){toast('No EBT-eligible items in this order',1);return}a=Math.min(a,lim)}
+ if(type==='EBT Food'){const lim=c.ebtRemain;if(lim<=0.004){toast(c.ebtElig>0?'EBT already covers all the EBT items':'No EBT-eligible items in this sale',1);return}a=Math.min(a,lim)}
  const card=CARDLIKE.includes(type);
  const go=()=>{if(card)cardApprove(type,a);else addPay(type,a)};
  if((type==='Credit'||type==='Debit')&&a<S.settings.cardMin)confirmBox(`Card minimum is $${money(S.settings.cardMin)}.<br>This charge is $${money(a)}. Continue anyway?`,'Continue',go);else go()}
@@ -527,8 +542,8 @@ function addPay(type,a,last4){const pe={type,amount:r2(a),time:Date.now()};if(la
 function finishSale(){const c=calc(S.cart),cart=S.cart;
  const change=c.total>=0?r2(c.paid-c.total):0;
  const o={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:cart.label,
-  lines:cart.lines.map((l,i)=>({sku:l.sku,name:l.name,qty:l.qty,price:l.price,origPrice:l.origPrice??l.price,cost:+l.cost||0,cat:l.cat||'',taxes:l.taxes||[],misc:!!l.misc,fee:!!l.fee,inv:!!l.inv,disc:r2(c.lineDisc[i]),net:r2(c.lineNet[i]),tax:r2(c.lineTax[i]),note:c.lineNotes[i]||''})),
-  subtotal:c.subtotal,discount:c.discount,taxes:c.taxByGroup,tax:c.tax,total:c.total,payments:cart.payments,change,status:c.total<0?'refund':'paid',ageOk:cart.ageOk,approvals:cart.approvals||[]};
+  lines:cart.lines.map((l,i)=>({ebt:!!l.ebt,sku:l.sku,name:l.name,qty:l.qty,price:l.price,origPrice:l.origPrice??l.price,cost:+l.cost||0,cat:l.cat||'',taxes:l.taxes||[],misc:!!l.misc,fee:!!l.fee,inv:!!l.inv,disc:r2(c.lineDisc[i]),net:r2(c.lineNet[i]),tax:r2(c.lineTax[i]),note:c.lineNotes[i]||''})),
+  subtotal:c.subtotal,discount:c.discount,taxes:c.taxByGroup,tax:c.tax,total:c.total,payments:cart.payments,change,status:c.total<0?'refund':'paid',ageOk:cart.ageOk,approvals:cart.approvals||[],ebtExempt:c.ebtExempt||0};
  for(const l of o.lines){if(!l.inv)continue;const p=findSku(l.sku);if(p&&!p.nonInventory){p.stock=r2((+p.stock||0)-l.qty);DB.put('products',p)}}
  S.orders.push(o);DB.put('orders',o);DC.det[o.id]=o;bumpOrders();saveKV('settings');
  S.cart=newCart();S.sel=null;S.screen='register';render();beep(1300,90);
@@ -540,13 +555,13 @@ function finishSale(){const c=calc(S.cart),cart=S.cart;
 function receiptHtml(o){const s=S.settings;const tend={};o.payments.forEach(p=>{const k=p.type+(p.last4?' ****'+p.last4:'');tend[k]=(tend[k]||0)+p.amount});
  return `<div class="rc">${s.logo?`<div class="c" data-logo="1"><img src="${s.logo}" style="max-width:62mm;max-height:28mm"></div>`:''}<div class="c"><b style="font-size:15px">${esc(s.storeName)}</b>${s.address?'<br>'+esc(s.address).replace(/\n/g,'<br>'):''}${s.phone?'<br>'+esc(s.phone):''}</div><hr>
  ${o.status==='refund'?`<div class="c b">*** REFUND ***</div>${o.refundOf?`<div>Refund of transaction #${o.refundOf}</div>`:''}`:''}<div>Transaction #${o.num}${o.label?' · '+esc(o.label):''}</div><div>${fmtDT(o.time)}</div><div>Cashier: ${esc(o.user)}</div><hr>
- ${o.lines.map(l=>`<div class="r"><span>${esc(l.name)}</span><span>${money(l.price*l.qty)}</span></div>${l.qty!==1?`<div class="sm">  ${l.qty} @ ${money(l.price)}</div>`:''}${Math.abs(l.disc)>0.004?`<div class="r sm"><span>  ${esc(l.note||'Discount')}</span><span>-${money(l.disc)}</span></div>`:''}`).join('')}<hr>
+ ${o.lines.map(l=>`<div class="r"><span>${esc(l.name)}${l.ebt?' F':''}</span><span>${money(l.price*l.qty)}</span></div>${l.qty!==1?`<div class="sm">  ${l.qty} @ ${money(l.price)}</div>`:''}${Math.abs(l.disc)>0.004?`<div class="r sm"><span>  ${esc(l.note||'Discount')}</span><span>-${money(l.disc)}</span></div>`:''}`).join('')}<hr>
  <div class="r"><span>Subtotal</span><span>${money(o.subtotal)}</span></div>${Math.abs(o.discount)>0.004?`<div class="r"><span>You saved</span><span>-${money(o.discount)}</span></div>`:''}
  ${o.taxes.map(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false?'':`<div class="r"><span>${esc(t.name)}</span><span>${money(t.amount)}</span></div>`}).join('')}
  ${o.taxes.some(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false})?`<div class="r"><span>Other tax</span><span>${money(sum(o.taxes.filter(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false}),t=>t.amount))}</span></div>`:''}
- <div class="r b"><span>TOTAL</span><span>$${money(o.total)}</span></div>
+ ${o.ebtExempt>0.004?`<div class="r"><span>Tax exempt (EBT)</span><span>-${money(o.ebtExempt)}</span></div>`:''}<div class="r b"><span>TOTAL</span><span>$${money(o.total)}</span></div>
  ${Object.entries(tend).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}${o.change>0.004?`<div class="r b"><span>CHANGE</span><span>${money(o.change)}</span></div>`:''}
- <div class="sm">Items: ${sum(o.lines.filter(l=>!l.fee),l=>l.qty)}</div><hr><div class="c">${esc(s.footer).replace(/\n/g,'<br>')}</div><br></div>`}
+ <div class="sm">Items: ${sum(o.lines.filter(l=>!l.fee),l=>l.qty)}${o.lines.some(l=>l.ebt)?' · F = EBT eligible':''}</div><hr><div class="c">${esc(s.footer).replace(/\n/g,'<br>')}</div><br></div>`}
 const printReceipt=o=>printHtml(receiptHtml(o));
 
 /* ---------- items screen ---------- */
@@ -572,7 +587,7 @@ function itemTabHtml(e){const f=(l,p,o)=>F('edit',e,l,p,o);
  if(S.itemTab==='details')return `<div class="fgrid"><div class="fld" style="flex-direction:row;align-items:flex-end;gap:6px"><div style="flex:1">${f('SKU / Barcode *','sku')}</div><button class="btn" style="min-height:44px;padding:4px 10px" data-a="genSku" title="Make a new barcode for this item"><span style="font-size:20px;line-height:1">▥</span><small>New barcode</small></button></div>${f('Item name *','name',{wide:1})}${f('Button label','label')}${f('Category *','cat',{opts:S.settings.categories.map(c=>c.name)})}${f('Subcategory','sub',{list:'subs'})}${f('Vendor','vendor')}</div><datalist id="subs">${[...new Set(S.products.map(p=>p.sub).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
   <div class="fld"><span>Barcode</span><div id="bcPrev" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;display:inline-block;max-width:340px">${e.sku?barcodeSVG(e.sku,{h:50}):'<span class="hint">No SKU yet — scan the item, type its barcode, or tap New barcode</span>'}</div></div>
  <div class="fld"><span>Button color</span><div class="sw">${['',...PALETTE].map(c=>`<button class="swb ${(e.color||'')===c?'on':''}" style="background:${c||catColor(e.cat)}" data-a="color" data-v="${c}">${c?'':'Cat'}</button>`).join('')}</div></div>
-  <div class="togs">${f('Show on register','show',{t:'bool'})}${f(`Age check required (${S.settings.ageMin}+)`,'ageCheck',{t:'bool'})}${f('EBT / SNAP eligible','ebt',{t:'bool'})}${f('Allow price override','priceOverride',{t:'bool'})}${f('Ask for price when sold','pricePrompt',{t:'bool'})}${f('Discontinued','discontinued',{t:'bool'})}</div>`;
+  <div class="togs">${f('Show on register','show',{t:'bool'})}${f(`Age check required (${S.settings.ageMin}+)`,'ageCheck',{t:'bool'})}${f(catIsEbt(e.cat)?'EBT / SNAP eligible (always on: EBT category)':'EBT / SNAP eligible','ebt',{t:'bool'})}${f('Allow price override','priceOverride',{t:'bool'})}${f('Ask for price when sold','pricePrompt',{t:'bool'})}${f('Discontinued','discontinued',{t:'bool'})}</div>`;
  if(S.itemTab==='pricing')return `<div class="fgrid">${f('Price *','price',{num:1})}${f('Cost (what you pay)','cost',{num:1})}</div><h4>Tax groups</h4><div class="hint">Turn on every tax that applies to this item. Rates are set in Settings → Tax Groups.</div><div class="togs">${S.settings.taxGroups.map(g=>`<label class="tog"><input type="checkbox" data-tax="${g.id}" ${e.taxes.includes(g.id)?'checked':''}><span>${esc(g.name)} (${g.type==='$'?'$'+money(g.rate)+' each':g.rate+'%'})</span></label>`).join('')}</div>`;
  if(S.itemTab==='promo'){const pr=e.promo;const mms=S.mixmatch.filter(m=>m.skus.includes(S.editOrig));
   return `<div class="togs">${f('On sale (multi-buy deal)','promo.on',{t:'bool'})}</div><div class="fgrid">${f('Buy quantity','promo.buy',{num:1})}${f('For $ (total for the group)','promo.amount',{num:1})}${f('Max deals per sale (0 = no limit)','promo.max',{num:1})}${f('Start date','promo.start',{type:'date'})}${f('End date','promo.end',{type:'date'})}</div>${daysHtml('edit',e,'promo.days')}
@@ -687,7 +702,7 @@ const SETT={
  <div class="fgrid">${f('On-screen keyboard','osk',{opts:[['auto','Show when typing (touch screen)'],['off','Off (I use a real keyboard)']]})}${f('Ask for card last 4 digits','askLast4',{opts:[[true,'Yes — so receipts can be found by card'],[false,'No']]})}${f('After a sale','afterSale',{opts:[['ask','Ask to print receipt'],['always','Always print receipt'],['cash','Print for cash sales only']]})}${f('Minimum age for age-check items','ageMin',{num:1})}${f('Card minimum ($)','cardMin',{num:1})}${f('Card fee type','cardFee.type',{opts:[['%','% of total'],['$','Flat $']]})}${f('Card fee amount','cardFee.value',{num:1})}${f('Card fee name on receipt','cardFee.label')}${f('Next order number','nextOrder',{num:1})}</div>
  <p class="hint">Tip: most receipt printers open the cash drawer when they print. Turn on “open cash drawer” in the printer's Windows driver settings.</p>`},
  tax:()=>`<h2>Tax groups</h2><p class="hint">Each item picks which groups apply (Items → Pricing &amp; Tax). Tax is figured on the price after discounts. Changes save automatically.</p><table class="tbl"><tr><th>Group</th><th>Name</th><th>Rate</th><th>Type</th><th>On receipt</th><th>On for new items</th></tr>${S.settings.taxGroups.map((g,i)=>`<tr><td>${esc(g.id)}</td><td>${inp('set',`taxGroups.${i}.name`,g.name)}</td><td>${inp('set',`taxGroups.${i}.rate`,g.rate,'num')}</td><td>${sel('set',`taxGroups.${i}.type`,g.type,[['%','% of price'],['$','$ per item']])}</td><td>${chk('set',`taxGroups.${i}.show`,g.show)}</td><td>${chk('set',`taxGroups.${i}.def`,g.def)}</td></tr>`).join('')}</table><button class="btn" data-a="taxAdd">+ Add tax group</button>`,
- cats:()=>{const cnt={};S.products.forEach(p=>cnt[p.cat]=(cnt[p.cat]||0)+1);return `<h2>Categories</h2><p class="hint">This order is the order of the category buttons on the register. Tap the color square to change a color.</p>${S.settings.categories.map((c,i)=>`<div class="crow"><input type="color" data-o="set" data-f="categories.${i}.color" value="${esc(c.color)}"><b>${esc(c.name)}</b><small>${cnt[c.name]||0} items</small><label class="tog" style="padding:0 8px"><input type="checkbox" data-o="set" data-f="categories.${i}.hide" data-t="bool" ${c.hide?'checked':''}><span>Hide on register</span></label><span class="flex"></span><button class="btn sm" data-a="catMove" data-i="${i}" data-v="-1">▲</button><button class="btn sm" data-a="catMove" data-i="${i}" data-v="1">▼</button><button class="btn sm" data-a="catRen" data-i="${i}">Rename</button><button class="btn sm red" data-a="catDel" data-i="${i}">Delete</button></div>`).join('')}<button class="btn blue" data-a="catAdd">+ Add category</button>`},
+ cats:()=>{const cnt={};S.products.forEach(p=>cnt[p.cat]=(cnt[p.cat]||0)+1);return `<h2>Categories</h2><p class="hint">This order is the order of the category buttons on the register. Tap the color square to change a color. <b>EBT food</b>: every item in that category can be paid with EBT, and the part EBT pays is tax free.</p>${S.settings.categories.map((c,i)=>`<div class="crow"><input type="color" data-o="set" data-f="categories.${i}.color" value="${esc(c.color)}"><b>${esc(c.name)}</b><small>${cnt[c.name]||0} items</small><label class="tog" style="padding:0 8px"><input type="checkbox" data-o="set" data-f="categories.${i}.hide" data-t="bool" ${c.hide?'checked':''}><span>Hide on register</span></label><label class="tog" style="padding:0 8px"><input type="checkbox" data-o="set" data-f="categories.${i}.ebt" data-t="bool" ${c.ebt?'checked':''}><span>EBT food</span></label>${c.ebt?`<button class="btn sm green" data-a="ebtAdd" data-i="${i}">Add items…</button>`:''}<span class="flex"></span><button class="btn sm" data-a="catMove" data-i="${i}" data-v="-1">▲</button><button class="btn sm" data-a="catMove" data-i="${i}" data-v="1">▼</button><button class="btn sm" data-a="catRen" data-i="${i}">Rename</button><button class="btn sm red" data-a="catDel" data-i="${i}">Delete</button></div>`).join('')}<button class="btn blue" data-a="catAdd">+ Add category</button>`},
  qk:()=>`<h2>Quick keys</h2><p class="hint">The buttons under the item grid on the register. Tap a key to change it.</p><div class="quick" style="max-width:900px">${quickKeysHtml(true)}</div><p><button class="btn" data-a="qkRow" data-v="1">+ Add a row</button> <button class="btn" data-a="qkRow" data-v="-1">− Remove last row</button></p>`,
  users:()=>{const seen={},dup=new Set();S.users.forEach(u=>{if(seen[u.pin])dup.add(u.pin);seen[u.pin]=1});
  return `<h2>Users & PINs</h2><p class="hint">Pick a starting role, then tap <b>Permissions</b> to choose exactly what each person can do. The <b>Owner</b> can always do everything. When someone tries something they aren't allowed to, a user with <b>Approve</b> permission can enter their PIN for them. Changes save automatically.</p>
@@ -888,6 +903,9 @@ const A={
  catAdd(){promptText('New category name','',n=>{n=n.trim();if(!n)return;if(S.settings.categories.some(c=>c.name.toLowerCase()===n.toLowerCase())){toast('That category exists',1);return}S.settings.categories.push({name:n,color:PALETTE[S.settings.categories.length%PALETTE.length]});saveKV('settings');render()})},
  catRen(d){const c=S.settings.categories[+d.i];promptText('Rename category',c.name,n=>{n=n.trim();if(!n||n===c.name)return;if(S.settings.categories.some(x=>x!==c&&x.name.toLowerCase()===n.toLowerCase())){toast('That name is taken',1);return}const old=c.name;c.name=n;const ch=S.products.filter(p=>p.cat===old);ch.forEach(p=>p.cat=n);DB.putMany('products',ch);if(S.cat===old)S.cat=n;saveKV('settings');render();toast(`Renamed — ${ch.length} items moved`)})},
  catMove(d){const i=+d.i,j=i+(+d.v);const a=S.settings.categories;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];saveKV('settings');render()},
+ ebtAdd(d){const ebtCat=S.settings.categories[+d.i];const cnt={};S.products.forEach(p=>{if(!p.discontinued)cnt[p.cat]=(cnt[p.cat]||0)+1});
+  const others=S.settings.categories.filter(c=>c!==ebtCat&&cnt[c.name]);
+  openModal(`<div class="mtitle">Add items to ${esc(ebtCat.name)}</div><div class="msub">Pick a category of food items. Its items move into <b>${esc(ebtCat.name)}</b>, grouped under a subcategory with the same name (for example ${esc(ebtCat.name)} → Drinks). You can also move single items on the Items screen.</div><div class="dgrid">${others.map(c=>`<button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();confirmBox(`Move all <b>${cnt[c.name]}</b> items from <b>${esc(c.name)}</b> into <b>${esc(ebtCat.name)} → ${esc(c.name)}</b>?`,'Move items',async()=>{const ch=S.products.filter(p=>p.cat===c.name);ch.forEach(p=>{p.cat=ebtCat.name;p.sub=c.name;p.ebt=true});await DB.putMany('products',ch);reindex();render();toast(`${ch.length} items moved to ${ebtCat.name} → ${c.name}`)})})}">${esc(c.name)}<small>${cnt[c.name]} items</small></button>`).join('')}</div><div class="mbtns">${cancelBtn('Close')}</div>`,'wide')},
  catDel(d){const c=S.settings.categories[+d.i];const n=S.products.filter(p=>p.cat===c.name).length;if(n){toast(`Move the ${n} items in ${c.name} to another category first`,1);return}confirmBox(`Delete category <b>${esc(c.name)}</b>?`,'Delete',()=>{S.settings.categories.splice(+d.i,1);saveKV('settings');render()},{danger:true})},
  qkSlot(d){const i=+d.i;openModal(`<div class="mtitle">Quick key ${i+1}</div><div class="msub">Pick an action, or search for an item.</div><div class="qacts">${Object.entries(QA).map(([k,[t]])=>`<button class="btn" data-a="cb" data-id="${cb(()=>setQK(i,{type:'act',act:k}))}">${t}</button>`).join('')}<button class="btn red" data-a="cb" data-id="${cb(()=>setQK(i,null))}">Empty</button></div><input class="big-in" id="qkQ" data-in="qkQ" data-i="${i}" placeholder="Search items…" autocomplete="off"><div class="findr" id="qkR"></div><div class="mbtns">${cancelBtn('Close')}</div>`,'wide')},
  qkPick(d){setQK(+d.i,{type:'item',sku:d.sku})},
@@ -925,6 +943,15 @@ const A={
  async chkUpdate(){await A.saveUpdUrl({quiet:1});if(!S.cfg.updateUrl){toast('Paste the update address first, then tap Save',1);return}toast('Checking…');const r=await posAPI.checkUpdate();if(!r.ok)toast('Update check: '+r.error,1);else if(r.available){S.updAvail=r.available;render()}else toast('You have the latest version')},
  async dlUpdate(){toast('Downloading update…');const r=await posAPI.downloadUpdate();if(r&&r.error)toast('Update: '+r.error,1)},
  logoDel(){S.settings.logo='';LOGO_SRC='';LOGO_RASTER=null;saveKV('settings');render()},
+ async setupDone(){const g=id=>(document.getElementById(id)||{}).value||'';const msg=t=>{$('#su_msg').textContent=t;beep(300,200)};
+  const name=g('su_name').trim(),owner=g('su_owner').trim()||'Owner',pin=g('su_pin').trim(),pin2=g('su_pin2').trim(),tax=parseFloat(g('su_tax'));
+  if(!name)return msg('Enter the store name');if(isNaN(tax)||tax<0||tax>30)return msg('Enter the sales tax % (0 if none)');if(!/^\d{4,8}$/.test(pin))return msg('The PIN must be 4 to 8 digits');if(pin!==pin2)return msg('The two PINs are different');
+  const st=defaultSettings();st.storeName=name;st.address=g('su_addr').trim();st.phone=g('su_phone').trim();st.taxGroups[0].rate=r2(tax);st.ebtSetup=1;
+  if($('#su_cats').checked)st.categories=[['Drinks','#0f7c8c'],['Snacks','#d9481c'],['Candy','#c2317a'],['Grocery','#2f855a'],['Tobacco','#8a5a2b'],['Vape','#6b4fc8'],['Accessories','#4a5a75'],['Misc','#1d3f8a']].map(([n,c])=>({name:n,color:c}));
+  if($('#su_ebt').checked)st.categories.push({name:'EBT',color:'#1e9e5a',ebt:true});
+  S.settings=st;S.users=[{id:uid(),name:owner,pin,role:'admin'}];
+  for(const k of KV_KEYS)await DB.put('kv',clone(S[k]),k);
+  S.setupMode=false;S.pin='';reindex();render();toast(`${name} is ready — sign in with your PIN`)},
  userAdd(){S.users.push({id:uid(),name:'New user',pin:String(Math.floor(1000+Math.random()*9000)),role:'cashier'});saveKV('users');render()},
  userDel(d){const u=S.users[+d.i];if(u===S.user){toast("You can't delete yourself",1);return}if(u.role==='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one admin',1);return}confirmBox(`Delete user <b>${esc(u.name)}</b>?`,'Delete',()=>{S.users.splice(+d.i,1);saveKV('users');render()},{danger:true})},
  exportBackup(){const d={version:1,exported:Date.now(),products:S.products,orders:S.orders};KV_KEYS.forEach(k=>d[k]=S[k]);download(`pos-backup-${localDay()}.json`,JSON.stringify(d),'application/json');toast('Backup downloaded')},
@@ -1054,9 +1081,9 @@ async function boot(){
  if(DESK){try{S.cfg=await posAPI.getConfig();S.printers=await posAPI.printers();posAPI.comPorts().then(p=>S.comPorts=p);S.scanState=await posAPI.scannerState()}catch(e){}posAPI.onScan(c=>onScan(c));posAPI.onScannerState(st=>{S.scanState=st;if(S.screen==='settings'&&S.setTab==='hw')render()})}
  const first=!saved&&DESK?await posAPI.firstRunData().catch(()=>null):null;
  if(first&&Array.isArray(first.products)){S.settings=defaultSettings();await restore(first);toast(`Welcome! Loaded ${S.products.length} items from your old POS`)}
- else if(!saved){S.settings=defaultSettings();S.products=seedProducts();S.discounts=seedDiscounts();S.mixmatch=seedMM();S.users=seedUsers();S.cart=newCart();
-  await DB.putMany('products',S.products);for(const k of KV_KEYS)await DB.put('kv',clone(S[k]),k)}
+ else if(!saved){S.settings=defaultSettings();S.products=[];S.discounts=seedDiscounts();S.mixmatch=[];S.users=[];S.held=[];S.invlog=[];S.payouts=[];S.cart=newCart();S.setupMode=true}
  else{S.settings={...defaultSettings(),...saved};S.products=(await DB.all('products')).map(ensureItem);S.orders=DESK?[]:await DB.all('orders');for(const k of KV_KEYS.slice(1))S[k]=(await DB.get(k))||[];if(!S.users.length)S.users=seedUsers();S.cart=(await DB.get('cart'))||newCart()}
+ if(!S.setupMode&&!S.settings.ebtSetup){S.settings.ebtSetup=1;if(!S.settings.categories.some(c=>c.ebt)){const c=S.settings.categories.find(c=>c.name.toUpperCase()==='EBT');if(c)c.ebt=true;else S.settings.categories.push({name:'EBT',color:'#1e9e5a',ebt:true})}saveKV('settings')}
  reindex();render();setInterval(tick,1000);logoRaster();
  if(DESK)posAPI.onUpdateAvailable(u=>{S.updAvail=u;if(isMgr())toast(`Store POS ${u.version} is available — Settings → Import / Backup`)});
  if(DESK&&S.cfg.rolledBack)setTimeout(()=>toast(`Update ${S.cfg.rolledBack} could not start — running the installed version`,1),2500);
