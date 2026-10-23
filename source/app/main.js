@@ -149,7 +149,7 @@ ipcMain.handle('firstRunData', () => {
 
 /* ---------- order history queries (all done here so 190k+ orders never load into the screen) ---------- */
 function rowsIn(sql, params) { const st = db.prepare(sql); return typeof st.iterate === 'function' ? st.iterate(...params) : st.all(...params); }
-ipcMain.handle('ordersQuery', (e, { a, b, q, sku, limit = 400 }) => {
+ipcMain.handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
   q = String(q || '').trim();
   let where = 'time BETWEEN ? AND ?', params = [a, b], item = null;
   if (sku) {
@@ -163,6 +163,7 @@ ipcMain.handle('ordersQuery', (e, { a, b, q, sku, limit = 400 }) => {
   } else if (/^\d{4}$/.test(q)) { where = '(num = ? OR data LIKE ?)'; params = [Number(q), `%"last4":"${q}"%`]; }   // order # or card last 4
   else if (/^\d{1,7}$/.test(q)) { where = 'num = ?'; params = [Number(q)]; }
   else if (q) { where += ' AND data LIKE ?'; params.push('%' + q.replace(/[%_"]/g, '') + '%'); }
+  if (Array.isArray(status) && status.length) { where = `(${where}) AND status IN (${status.map(() => '?').join(',')})`; params.push(...status.map(String)); }
   const agg = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(total),0) s FROM orders WHERE ${where}`).get(...params);
   const rows = db.prepare(`SELECT data FROM orders WHERE ${where} ORDER BY time DESC LIMIT ?`).all(...params, limit);
   return { count: agg.n, total: agg.s, rows: parseRows(rows), item };

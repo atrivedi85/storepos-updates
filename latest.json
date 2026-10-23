@@ -1,6 +1,6 @@
 {
- "version": "1.5.0",
- "notes": "License keys (14-day trial for new stores), update address filled in for new installs.",
- "url": "updates/StorePOS-Update-1.5.0.posupdate",
- "sha256": "bf23de2b6d11b65925146b7664d60708a0bbf949707713a25e1ba81103287657"
+ "version": "1.5.1",
+ "notes": "Touch-screen keyboard with number row and number pad; Refund button with pick-the-items refunds; Cash Payout button for invoices and employees; Refunds and Cash Payouts tabs in Transactions.",
+ "url": "updates/StorePOS-Update-1.5.1.posupdate",
+ "sha256": "2c96dd57bc1243af7aaa724c1b0325139baa9ac96ee56dc73be63328f7d71e25"
 }
