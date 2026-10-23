@@ -1,6 +1,6 @@
 {
- "version": "1.3.0",
- "notes": "Split payment, user permissions, barcode labels, printers tab, logo, on-screen keyboard, small-file updates.",
- "url": "updates/StorePOS-Update-1.3.0.posupdate",
- "sha256": "b43c4428c939692ba49786f0b6ecd7340f7666bc67d747af51abe006544ffa25"
+ "version": "1.3.1",
+ "notes": "Save buttons on every settings screen, saved confirmations, update address saves instantly.",
+ "url": "updates/StorePOS-Update-1.3.1.posupdate",
+ "sha256": "7bddf4ab23091e9471a270a6211427686c5741804b6f60103c2dcc0de01b19bc"
 }
