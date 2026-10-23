@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Store POS</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:">
+<style>
+:root{--bg:#0f1b2d;--panel:#eef2f8;--panel2:#dfe6f1;--ink:#14213d;--mut:#5b6b85;--line:#c5d0e0;--blue:#1f5fbf;--green:#1e9e5a;--red:#d93a3a;--amber:#d98b12;--slate:#4a5a75;--teal:#178a8a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);font-family:"Segoe UI",system-ui,Arial,sans-serif;color:var(--ink);overflow:hidden;user-select:none}
+input,textarea,select{user-select:text;font:inherit;color:var(--ink)}
+button{font:inherit;border:0;cursor:pointer;touch-action:manipulation;color:inherit;background:none}
+button:active{filter:brightness(.86);transform:scale(.985)}
+#app{height:100vh;display:flex;flex-direction:column}
+main{flex:1;min-height:0;background:var(--panel);overflow:hidden}
+.green{background:var(--green)!important;color:#fff!important}.red{background:var(--red)!important;color:#fff!important}.blue{background:var(--blue)!important;color:#fff!important}.amber{background:var(--amber)!important;color:#fff!important}.slate{background:var(--slate)!important;color:#fff!important}.teal{background:var(--teal)!important;color:#fff!important}
+.btn{background:#d5ddea;border-radius:10px;padding:10px 18px;font-weight:700;font-size:16px;min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-direction:column;line-height:1.15}
+.btn small{font-weight:600;opacity:.9;font-size:13px}
+.btn.sm{min-height:40px;padding:6px 12px;font-size:14px}
+.flex{flex:1}.hint{color:var(--mut);font-size:14px}.warn{color:var(--red);font-size:12px;font-weight:700}
+.empty{color:var(--mut);padding:24px;text-align:center;font-size:16px}.empty.big{padding:80px 20px;font-size:20px}
+footer{height:62px;background:#0b1424;color:#cfd8e6;display:flex;align-items:center;gap:8px;padding:0 10px;flex-shrink:0}
+footer .who{display:flex;flex-direction:column;min-width:150px;line-height:1.2}footer .who b{color:#fff;text-transform:uppercase;font-size:15px}footer .who span{font-size:12px;opacity:.8}
+footer .nav{display:flex;gap:4px;flex:1;justify-content:center}
+footer .nav button{padding:10px 14px;border-radius:8px;background:#1b2a42;color:#cfd8e6;font-weight:600;min-height:46px}
+footer .nav button.on{background:var(--blue);color:#fff}
+.clock{text-align:right;font-size:13px;line-height:1.2;min-width:110px}.clock b{font-size:17px;color:#fff;display:block}
+footer .lock,footer .fs{min-height:46px;padding:0 14px;border-radius:8px;background:#2a3b58;color:#fff;font-weight:700}
+/* register */
+.reg{display:grid;grid-template-columns:minmax(290px,30%) 138px 1fr 116px;height:100%}
+.order{display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);min-height:0}
+.ohead{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--panel2);font-weight:700;gap:8px}
+.olabel{font-weight:700;padding:8px 4px;text-align:left}.olabel span{color:var(--blue);font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;margin-right:6px}.badge.g{background:#d4f2e1;color:#106b3b}.badge.r{background:#fde0e0;color:#a11}.badge.b{background:#dbe8ff;color:#1f4fa0}
+.lines{flex:1;overflow-y:auto}
+.line{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #edf0f5;font-size:16px;cursor:pointer}
+.line.sel{background:#cfe3ff}.line.neg .ln-name{color:var(--red)}
+.ln-name{font-weight:600}.qty{color:var(--blue);font-weight:700}.ln-sub{font-size:12px;color:var(--mut);font-weight:400}
+.ln-note{font-size:12px;color:var(--green);font-weight:600}.ln-amt{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.ln-disc{font-size:13px;color:var(--green)}
+.ltools{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:6px;background:#e9eef6}
+.ltools button{min-height:46px;border-radius:8px;background:#fff;font-weight:700;font-size:14px}
+.sum{padding:8px 14px;background:var(--panel2);font-size:15px;font-variant-numeric:tabular-nums}
+.sum .r{display:flex;justify-content:space-between;padding:1px 0}
+.sum .tot{font-size:26px;font-weight:800;color:var(--blue);padding:5px 0;border-top:1px solid var(--line);margin-top:4px}
+.sum .due{font-size:19px;font-weight:800}.sum .due.chg{color:var(--red)}
+.tenders3{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;background:var(--panel2)}
+.tenders3 button{min-height:62px;border-radius:8px;font-size:19px;font-weight:800}
+.cats{display:flex;flex-direction:column;overflow-y:auto;background:#d4dcea;gap:4px;padding:5px}
+.cat{min-height:62px;flex-shrink:0;border-radius:8px;background:#f6f8fb;font-weight:700;font-size:14px;padding:4px 6px;border-left:7px solid var(--cc)}
+.cat.on{background:var(--cc);color:#fff}
+.prods{display:flex;flex-direction:column;min-height:0;padding:6px;gap:6px}
+.grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));grid-auto-rows:78px;gap:5px;align-content:start}
+.pb{border-radius:8px;color:#fff;font-weight:800;font-size:13px;padding:4px 6px;line-height:1.15;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;text-transform:uppercase;box-shadow:inset 0 -3px 0 rgba(0,0,0,.2);overflow:hidden}
+.pb small{font-weight:600;opacity:.92;margin-top:3px;font-size:12px}
+.gbar{display:flex;gap:6px}.gbar input,.gbar select{font-size:17px;padding:8px 12px;border-radius:8px;border:1px solid var(--line);min-height:48px;background:#fff}.gbar input{flex:1;min-width:0}.gbar select{max-width:45%}
+.quick{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:60px;gap:5px}
+.qk{border-radius:8px;background:#bfe3ee;font-weight:800;font-size:12px;padding:3px;text-transform:uppercase;color:#13304a;line-height:1.15}
+.qk.empty{background:transparent;border:1px dashed #b9c5d8}
+.side{display:flex;flex-direction:column;gap:4px;padding:4px;background:#1b2a42}
+.side button{flex:1;border-radius:8px;font-weight:700;font-size:14px;min-height:48px;padding:2px 4px;line-height:1.15}
+/* pay */
+.pay{display:grid;grid-template-columns:minmax(260px,30%) 1fr minmax(240px,26%) 116px;height:100%}
+.tend{padding:8px;overflow:auto;background:#e4eaf3}
+.tend h4{margin:12px 2px 6px;color:var(--mut)}
+.tg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tb{min-height:62px;border-radius:10px;background:var(--green);color:#fff;font-weight:800;font-size:17px}
+.qc{display:grid;grid-template-columns:1fr 1fr;gap:6px}.qc button{min-height:54px;border-radius:8px;background:#fff;font-weight:800;font-size:18px;border:1px solid var(--line)}.qc button small{display:block;font-size:11px;color:var(--mut)}
+.pmid{display:flex;flex-direction:column;padding:8px;gap:8px;min-height:0}
+.ptable{flex:1;background:#fff;border-radius:10px;overflow:auto;border:1px solid var(--line)}
+.phead,.prow{display:grid;grid-template-columns:1fr 110px 70px;align-items:center;padding:10px 12px;font-size:16px}
+.phead{background:#1d3f8a;color:#fff;font-weight:700;position:sticky;top:0}.prow{border-bottom:1px solid #eef1f6}
+.pbig{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center}
+.pbig small{display:block;color:var(--mut)}.pbig b{font-size:40px;font-variant-numeric:tabular-nums}
+.psum{background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-end;min-height:0}
+.plines{flex:1;overflow:auto;font-size:14px}.plines div{display:flex;justify-content:space-between;padding:6px 12px;border-bottom:1px solid #f0f2f6}
+/* modals */
+.mback{position:fixed;inset:0;background:rgba(5,12,25,.55);display:flex;align-items:center;justify-content:center;z-index:50}
+.mbox{background:#fff;border-radius:16px;padding:20px;width:min(560px,94vw);max-height:94vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.mbox.sm{width:min(460px,94vw)}.mbox.kpm{width:min(400px,94vw)}.mbox.wide{width:min(900px,96vw)}.mbox.tm{width:min(760px,96vw)}
+.mtitle{font-size:21px;font-weight:800;margin-bottom:8px}.msub{color:var(--mut);margin-bottom:10px;font-size:15px}
+.mbtns{display:flex;gap:10px;margin-top:14px}.mbtns .btn{flex:1}.mbtns.col{flex-direction:column}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kp button{min-height:62px;font-size:24px;font-weight:800;border-radius:10px;background:#e7ecf4}
+.kpd{font-size:34px;font-weight:800;text-align:right;padding:10px 14px;background:#f1f4f9;border-radius:10px;margin-bottom:10px;min-height:62px;font-variant-numeric:tabular-nums;border:2px solid transparent}
+.kpd.fresh{border-color:var(--blue);background:#e6efff}
+.tmod{display:grid;grid-template-columns:1fr 300px;gap:18px;align-items:stretch}
+.tmod .bal{font-size:15px;color:var(--mut);font-weight:700}.tmod .balv{font-size:54px;font-weight:900;text-align:right;margin-bottom:16px}
+.big-in{width:100%;font-size:20px;padding:12px 14px;border-radius:10px;border:1px solid var(--line);margin-bottom:10px}
+.findr{max-height:52vh;overflow:auto}
+.fr{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;padding:12px;border-bottom:1px solid #eef1f6;font-size:16px}.fr small{display:block;color:var(--mut);font-size:12px}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin:10px 0}
+.arow{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eef1f6;gap:8px}
+.seg{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}.seg button{padding:10px 14px;border-radius:8px;background:#e2e8f2;font-weight:700;min-height:44px}.seg button.on{background:var(--blue);color:#fff}
+.ageres{font-size:20px;font-weight:800;text-align:center;padding:8px;margin-top:8px;border-radius:8px}.ageres.ok{background:#d4f2e1;color:#106b3b}.ageres.bad{background:#fde0e0;color:#a11}
+.done{text-align:center}.check{width:84px;height:84px;border-radius:50%;background:var(--green);color:#fff;font-size:50px;display:flex;align-items:center;justify-content:center;margin:4px auto 10px}
+.change{background:#fff4dc;border-radius:12px;padding:12px;margin:10px 0;font-size:18px}.change b{display:block;font-size:48px}
+.qacts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+#toast{position:fixed;top:14px;left:50%;transform:translate(-50%,-120px);background:#14213d;color:#fff;padding:14px 22px;border-radius:12px;font-weight:700;font-size:17px;z-index:99;transition:transform .2s;max-width:90vw;text-align:center}
+#toast.show{transform:translate(-50%,0)}#toast.bad{background:var(--red)}
+/* admin screens */
+.split{display:grid;grid-template-columns:minmax(280px,33%) 1fr;height:100%}
+.listp{display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);min-height:0}
+.lhead{display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--panel2)}
+.lhead input,.lhead select{font-size:17px;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:46px;background:#fff}
+.ilist{flex:1;overflow:auto}
+.il{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:10px 12px;background:#fff;border-bottom:1px solid #eef1f6}
+.il.on{background:#cfe3ff}.il small{display:block;color:var(--mut);font-size:12px;margin-top:2px}.il .r{text-align:right;white-space:nowrap}.il small.warn{color:var(--red)}
+.ibanner{background:#fff4dc;border-bottom:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:14px}.ibanner b:first-child{font-size:16px}
+.lfoot{padding:8px 12px;color:var(--mut);font-size:13px;background:var(--panel2);display:flex;gap:8px;align-items:center}
+.edp{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.ehead{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line);gap:12px}.etitle{font-size:21px;font-weight:800}
+.ekpis{display:flex;gap:20px}.ekpis div{text-align:right}.ekpis small{display:block;color:var(--mut);font-size:12px}.ekpis b{font-size:20px}
+.tabs{display:flex;gap:4px;padding:8px 12px 0;background:var(--panel2);flex-wrap:wrap}.tabs button{padding:12px 18px;border-radius:10px 10px 0 0;background:#c9d4e5;font-weight:700}.tabs button.on{background:var(--panel);color:var(--blue)}
+.ebody{flex:1;overflow:auto;padding:16px 18px}
+.ebar{display:flex;gap:8px;padding:8px 12px;background:var(--panel2);border-top:1px solid var(--line)}.ebar .btn{flex-direction:row}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-bottom:14px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut);font-weight:700}.fld.wide{grid-column:span 2}
+.fld input,.fld select,.fld textarea,.tbl input,.tbl select{font-size:17px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;min-height:44px;width:100%}
+.tog{display:flex;align-items:center;gap:10px;font-size:16px;padding:7px 0;cursor:pointer;font-weight:600}.tog input{width:26px;height:26px;accent-color:var(--blue);flex-shrink:0}
+.togs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:2px 20px;margin:6px 0 14px}
+h4{margin:14px 0 6px}h2{margin:4px 0 6px}
+.sw{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px}.swb{width:46px;height:40px;border-radius:8px;color:#fff;font-size:11px;font-weight:700;border:3px solid transparent}.swb.on{border-color:#111}
+.days{display:flex;gap:4px;flex-wrap:wrap}.day{padding:10px 12px;border-radius:8px;background:#e2e8f2;font-weight:700;min-width:54px}.day.on{background:var(--blue);color:#fff}
+.tbl{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:15px;margin-bottom:12px}
+.tbl th{background:#1d3f8a;color:#fff;text-align:left;padding:9px 10px;font-weight:700}.tbl td{padding:7px 10px;border-bottom:1px solid #eef1f6}.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+.mini td{padding:3px 8px}
+.rep{height:100%;display:flex;flex-direction:column}
+.rbar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel2);flex-wrap:wrap}.rbar .seg{margin:0}.rbar input{font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line)}
+.rbody{flex:1;overflow:auto;padding:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#fff;border-radius:12px;padding:12px 14px;border:1px solid var(--line)}.card small{color:var(--mut);font-weight:700;display:block}.card b{font-size:24px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start}
+.sett{display:grid;grid-template-columns:210px 1fr;height:100%}
+.stabs{display:flex;flex-direction:column;gap:4px;padding:8px;background:var(--panel2)}.stabs button{padding:14px;border-radius:8px;text-align:left;font-weight:700;background:#e9eef6}.stabs button.on{background:var(--blue);color:#fff}
+.sbody{overflow:auto;padding:16px 20px}
+.crow{display:flex;align-items:center;gap:10px;background:#fff;padding:8px 10px;border-radius:10px;margin-bottom:6px}.crow input[type=color]{width:48px;height:40px;border:0;padding:0;background:none}.crow small{color:var(--mut)}
+.sec{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--line)}.sec .btn{margin:4px 6px 4px 0}
+label.btn{cursor:pointer}
+.mmitems{background:#fff;border:1px solid var(--line);border-radius:10px;max-height:240px;overflow:auto;margin-bottom:10px}
+.mmitems div{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid #eef1f6}
+/* login */
+.login{height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#23406e,#0b1424)}
+.lbox{background:#fff;border-radius:20px;padding:26px;width:min(380px,92vw);text-align:center}.lbox h1{margin:0 0 4px;font-size:24px}
+.pin{font-size:40px;letter-spacing:10px;min-height:58px;background:#f1f4f9;border-radius:10px;margin:12px 0}
+.lbox .btn{width:100%;margin-top:10px;min-height:60px;font-size:20px}
+#print{display:none}
+#osk{position:fixed;left:0;right:0;bottom:0;z-index:80;background:#1b2a42;padding:8px;display:none;box-shadow:0 -6px 20px rgba(0,0,0,.35)}#osk.on{display:block}
+#osk .r{display:flex;gap:6px;margin-bottom:6px;justify-content:center}#osk button{flex:1;max-width:92px;min-height:54px;border-radius:8px;background:#e9eef6;font-size:21px;font-weight:700;color:#14213d}
+#osk button.w{max-width:150px;background:#c9d4e5;font-size:16px}#osk button.sp{max-width:none;flex:5}#osk button.ok{background:var(--green);color:#fff}#osk button.x{background:var(--red);color:#fff}#osk button.on{background:var(--blue);color:#fff}
+body.osk-on #app{height:calc(100vh - var(--oskh,330px))}body.osk-on .mback{align-items:flex-start;padding-top:14px;bottom:var(--oskh,330px)}
+#hist{position:fixed;left:50%;transform:translateX(-50%);top:10px;pointer-events:none;background:#14213d;color:#fff;padding:12px 16px;border-radius:12px;font-weight:700;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.35);display:none}#hist.on{display:block}#hist small{display:block;font-weight:600;opacity:.8}.pbar{height:8px;background:#33415c;border-radius:4px;margin-top:8px;overflow:hidden}.pbar i{display:block;height:100%;background:#1e9e5a}
+.rc{width:72mm;font:12px/1.35 "Courier New",monospace;color:#000}.rc .c{text-align:center}.rc .r{display:flex;justify-content:space-between;gap:6px}.rc .b{font-weight:700;font-size:14px}.rc hr{border:0;border-top:1px dashed #000;margin:5px 0}.rc .sm{font-size:11px}
+@media print{body{background:#fff;overflow:visible;height:auto}#app,#modal,#toast{display:none!important}#print{display:block}@page{size:80mm auto;margin:3mm}}
+</style>
+</head>
+<body>
+<div id="app"></div><div id="modal"></div><div id="toast"></div><div id="print"></div><div id="hist"></div><div id="osk"></div>
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const r2=x=>Math.round((+x+(x<0?-Number.EPSILON:Number.EPSILON))*100)/100;
+const money=x=>{x=r2(x||0);return (x<0?'-':'')+Math.abs(x).toFixed(2)};
+const localDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const money2=x=>{x=r2(x||0);return (x<0?'-':'')+Math.abs(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const sum=(a,f=x=>x)=>a.reduce((s,x)=>s+(+f(x)||0),0);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const fmtDT=t=>new Date(t).toLocaleString([],{month:'2-digit',day:'2-digit',year:'2-digit',hour:'numeric',minute:'2-digit'});
+const getP=(o,p)=>p.split('.').reduce((a,k)=>a==null?a:a[k],o);
+function setP(o,p,v){const ks=p.split('.');const last=ks.pop();const t=ks.reduce((a,k)=>a[k],o);t[last]=v;}
+const PALETTE=['#d9481c','#1f9d55','#0f7c8c','#1aa3c4','#2563c9','#1d3f8a','#6b4fc8','#a23aa8','#c2317a','#b7791f','#4a5a75','#2f855a'];
+const DAYS='Sun Mon Tue Wed Thu Fri Sat'.split(' ');
+const TENDERS=['Cash','Credit','Debit','EBT Food','Check','Gift Card','Other'];
+const CARDLIKE=['Credit','Debit','EBT Food','Gift Card'];
+let AC;function beep(f=880,ms=110){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.08;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+ms/1000);}catch(e){}}
+let toastT;function toast(m,bad){const t=$('#toast');t.textContent=m;t.className='show'+(bad?' bad':'');clearTimeout(toastT);toastT=setTimeout(()=>t.className='',2800);}
+function download(name,text,type='text/plain'){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800);}
+const csvCell=v=>{v=String(v??'');return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+const toCSV=rows=>rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
+function parseCSV(t){const rows=[];let row=[],f='',q=false;for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}else if(c==='"')q=true;else if(c===','){row.push(f);f='';}else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f='';}else f+=c;}if(f!==''||row.length){row.push(f);rows.push(row);}return rows.filter(r=>r.some(x=>String(x).trim()!==''));}
+
+/* ---------- storage (IndexedDB, works offline from a local file) ---------- */
+const DB={db:null,mem:false,
+ open(){return new Promise((res,rej)=>{if(!window.indexedDB)return rej('no indexedDB');const q=indexedDB.open('store-pos',1);q.onupgradeneeded=()=>{const d=q.result;d.createObjectStore('products',{keyPath:'sku'});d.createObjectStore('orders',{keyPath:'id'});d.createObjectStore('kv');};q.onsuccess=()=>{this.db=q.result;res()};q.onerror=()=>rej(q.error)})},
+ tx(store,mode,fn){if(this.mem)return Promise.resolve();return new Promise((res,rej)=>{const t=this.db.transaction(store,mode);const os=t.objectStore(store);const r=fn(os);t.oncomplete=()=>res(r&&r.result);t.onerror=()=>rej(t.error)})},
+ all(store){if(this.mem)return Promise.resolve([]);return new Promise((res,rej)=>{const q=this.db.transaction(store).objectStore(store).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})},
+ get(key){if(this.mem)return Promise.resolve(undefined);return new Promise((res,rej)=>{const q=this.db.transaction('kv').objectStore('kv').get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})},
+ put(store,val,key){return this.tx(store,'readwrite',os=>key===undefined?os.put(val):os.put(val,key)).catch(e=>toast('Could not save: '+e,1))},
+ del(store,key){return this.tx(store,'readwrite',os=>os.delete(key))},
+ clear(store){return this.tx(store,'readwrite',os=>os.clear())},
+ putMany(store,arr){return this.tx(store,'readwrite',os=>{arr.forEach(v=>os.put(v))})}
+};
+const DESK=!!(window.posAPI&&window.posAPI.isDesktop);
+if(DESK){const api=window.posAPI;Object.assign(DB,{mem:false,open:()=>Promise.resolve(),all:s=>api.db('all',s),get:k=>api.db('get','kv',k),
+ put:(s,v,k)=>api.db('put',s,v,k).catch(e=>toast('Could not save: '+e.message,1)),del:(s,k)=>api.db('del',s,k),clear:s=>api.db('clear',s),putMany:(s,a)=>api.db('putMany',s,a)})}
+let ORDV=0;const DC={ord:null,rep:null,det:{},im:{},ordLoading:0,repLoading:0};
+function bumpOrders(){ORDV++;DC.ord=null;DC.rep=null;DC.im={}}
+const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts'];
+const saveT={};
+function saveKV(k,delay=0){clearTimeout(saveT[k]);saveT[k]=setTimeout(()=>DB.put('kv',clone(S[k]),k),delay);}
+
+/* ---------- state ---------- */
+const S={products:[],orders:[],settings:null,discounts:[],mixmatch:[],users:[],held:[],invlog:[],payouts:[],
+ cart:null,user:null,pin:'',screen:'register',cat:null,sel:null,edit:null,editOrig:null,dirty:false,itemTab:'details',itemQ:'',itemCat:'',
+ ordSel:null,ordQ:'',ordRange:'today',rep:{range:'today',from:'',to:''},promoTab:'disc',gq:'',cfg:{},printers:[],gsub:'',mmEdit:null,mmDirty:false,setTab:'store',kp:null,discTarget:null};
+function newCart(){return{lines:[],discounts:[],payments:[],label:'',ageOk:false}}
+let IDX=new Map(),EX=new Map();const norm=s=>String(s??'').trim().toUpperCase().replace(/^0+/,'');
+const upcCheck=d=>{let s=0;const r=d.split('').reverse();r.forEach((c,i)=>{s+=(+c)*(i%2===0?3:1)});return String((10-s%10)%10)};
+const hasValidCheck=c=>/^\d{8}$|^\d{12,14}$/.test(c)&&upcCheck(c.slice(0,-1))===c.slice(-1);
+function upcEtoA(c){c=String(c);if(c.length===8){if(!/^[01]/.test(c))return null;}else if(c.length===7)c=c+'?';else if(c.length===6)c='0'+c+'?';else return null;
+ const ns=c[0],d=c.slice(1,7),x=d[5];let m;if('012'.includes(x))m=d.slice(0,2)+x+'0000'+d.slice(2,5);else if(x==='3')m=d.slice(0,3)+'00000'+d.slice(3,5);else if(x==='4')m=d.slice(0,4)+'00000'+d[4];else m=d.slice(0,5)+'0000'+x;
+ const a=ns+m;return a+upcCheck(a)}
+function codeKeys(c){c=String(c).trim().toUpperCase();const k=[norm(c)];if(/^\d+$/.test(c)){if(hasValidCheck(c))k.push(norm(c.slice(0,-1)));else if(c.length===11||c.length===12||c.length===7)k.push(norm(c+upcCheck(c)));const e=upcEtoA(c);if(e)k.push(norm(e),norm(e.slice(0,-1)))}return k}
+function reindex(){EX=new Map(S.products.map(p=>[String(p.sku).trim().toUpperCase(),p]));IDX=new Map();S.products.forEach(p=>{const k=norm(p.sku);if(!IDX.has(k))IDX.set(k,p)});S.products.forEach(p=>codeKeys(p.sku).slice(1).forEach(k=>{if(k&&!IDX.has(k))IDX.set(k,p)}))}
+function findSku(s){if(s==null||s==='')return null;const u=String(s).trim().toUpperCase();if(EX.has(u))return EX.get(u);for(const k of codeKeys(u)){const p=IDX.get(k);if(p)return p}return null}
+const isAdmin=()=>S.user&&S.user.role==='admin';
+/* ---------- per-user permissions (Owner always has everything) ---------- */
+const PERMS=[
+ ['Register',[['disc','Give discounts / coupons'],['price','Change prices'],['ret','Returns (negative quantity)'],['remove','Remove items from a sale'],['clear','Clear a whole sale'],['misc','Misc. sale (no barcode)'],['fee','Remove the card fee'],['payout','Pay outs from the drawer'],['nosale','Open drawer without a sale']]],
+ ['Transactions',[['txn_view','Look up past transactions'],['refund','Refund transactions'],['approve','Approve other users (enter PIN for them)']]],
+ ['Items & inventory',[['items_view','See items (read only)'],['items_edit','Add and edit items & prices'],['stock','Add / adjust inventory'],['items_delete','Delete items'],['promos','Manage promos & discounts']]],
+ ['Reports',[['reports_view','See reports'],['reports_print','Print, PDF or export reports']]],
+ ['Admin',[['settings','Settings, users, printers & backups']]]];
+const PERM_LABEL=Object.fromEntries(PERMS.flatMap(g=>g[1]));
+const PERM_KEYS=Object.keys(PERM_LABEL);
+const ROLE_PRESET={
+ admin:Object.fromEntries(PERM_KEYS.map(k=>[k,true])),
+ manager:Object.fromEntries(PERM_KEYS.map(k=>[k,k!=='settings'])),
+ cashier:{txn_view:true}};
+function can(perm,u=S.user){if(!u)return false;if(u.role==='admin')return true;const p=u.perms||ROLE_PRESET[u.role]||{};return !!p[perm]}
+const isMgr=()=>can('approve');
+const PERM_NAMES=PERM_LABEL;
+function needMgr(action,then){
+ if(can(action)){then(S.user?S.user.name:'');return}
+ keypad({title:'🔒 Manager approval needed',mode:'pin',okLabel:'Approve',sub:`${esc(PERM_LABEL[action]||action)} — ${esc(S.user.name)} isn't allowed to do this. A manager must enter their PIN.`,
+  onOk:pin=>{const m=S.users.find(u=>pin&&String(u.pin)===String(pin)&&can('approve',u)&&can(action,u));
+   if(!m){beep(300,300);toast('That PIN cannot approve this',1);return}
+   if(['disc','price','ret','remove','clear','misc','fee'].includes(action)){S.cart.approvals=S.cart.approvals||[];S.cart.approvals.push({action,by:m.name,cashier:S.user.name,time:Date.now()})}
+   toast('Approved by '+m.name);then(m.name)}})}
+const catColor=n=>(S.settings.categories.find(c=>c.name===n)||{}).color||'#2563c9';
+const defaultTaxes=()=>S.settings.taxGroups.filter(g=>g.def).map(g=>g.id);
+
+function defaultSettings(){return{
+ storeName:'Vape & Smoke Studio',address:'',phone:'',footer:'Thank you! Come again.',
+ cardMin:2,cardFee:{type:'%',value:3,label:'CARD FEE'},ageMin:21,afterSale:'ask',nextOrder:235210,
+ osk:'auto',logo:'',labelSize:'2.25x1.25',
+ taxGroups:[{id:'A',name:'Tax',rate:7,type:'%',show:true,def:true},{id:'B',name:'VAPE',rate:0,type:'%',show:false,def:false},{id:'C',name:'Vape Tax',rate:30,type:'%',show:true,def:false},{id:'D',name:'Tariff',rate:3,type:'%',show:true,def:true}],
+ categories:[['Novelty','#a23aa8'],['Water','#1aa3c4'],['Drinks','#0f7c8c'],['Edibles & Vape','#2563c9'],['Hookah','#b7791f'],['Hookah Accessories','#c2317a'],['E Cig Accessories','#4a5a75'],['Disposable E-Cig','#6b4fc8'],['E-Juice','#1d3f8a'],['Candy','#d9481c'],['Glass','#2f855a'],['Tobacco','#8a5a2b']].map(([name,color])=>({name,color})),
+ quickKeys:[
+  {type:'item',sku:'SODA75'},{type:'act',act:'remove'},{type:'act',act:'disc10'},{type:'item',sku:'PIPE4'},{type:'item',sku:'PIPE6'},{type:'item',sku:'GLASS'},{type:'item',sku:'CHILLUM'},
+  {type:'item',sku:'SW-099'},{type:'item',sku:'SW-119'},{type:'item',sku:'SW-129'},{type:'item',sku:'SW-139'},{type:'item',sku:'SW-149'},{type:'item',sku:'SW-169'},{type:'item',sku:'SW-249'},
+  {type:'act',act:'drawer'},{type:'act',act:'age'},{type:'item',sku:'BM-PT'},{type:'item',sku:'BM-WT'},{type:'item',sku:'COIL'},{type:'item',sku:'COIL699'},{type:'item',sku:'COILPK'}]
+}}
+function blankItem(sku){return{sku:sku||'',name:'',label:'',price:0,cost:0,stock:0,cat:(S.settings.categories[0]||{}).name||'',sub:'',color:'',taxes:defaultTaxes(),ageCheck:false,show:true,discontinued:false,nonInventory:false,ebt:false,priceOverride:true,pricePrompt:false,low:0,vendor:'',promo:{on:false,buy:2,amount:0,max:0,start:'',end:'',days:[]}}}
+function ensureItem(p){const b=blankItem(p.sku);const o={...b,...p};o.promo={...b.promo,...(p.promo||{})};if(!Array.isArray(o.promo.days))o.promo.days=[];if(!Array.isArray(o.taxes))o.taxes=b.taxes;o.sku=String(o.sku);return o}
+function seedProducts(){
+ const T=['A','D'],V=['A','C','D'];
+ const P=(sku,name,price,cost,cat,sub,stock,o={})=>ensureItem({sku,name,label:o.label||name,price,cost,stock,cat,sub,color:o.color||'',taxes:o.taxes||T,ageCheck:!!o.age,ebt:!!o.ebt,promo:o.promo,sample:true});
+ const L=[
+  P('008660007322','ZIG ZAG BLUE ULTRA THIN',3.49,1.59,'Tobacco','Rolling Accessories',25,{age:true,label:'ZIG ZAG BLUE ULTRA THI',promo:{on:true,buy:2,amount:5,max:0,start:'',end:'',days:[]}}),
+  P('SW-099','SWISHER SWEET',0.99,0.5,'Tobacco','Cigars',100,{age:true}),
+  ...[1.19,1.29,1.39,1.49,1.69,2.49].map(v=>P('SW-'+String(Math.round(v*100)).padStart(3,'0'),'SWISHER SWEET $'+v.toFixed(2),v,v*0.55,'Tobacco','Cigars',100,{age:true})),
+  P('BM-PT','BLACK & MILD PT',1.49,0.8,'Tobacco','Cigars',60,{age:true}),
+  P('BM-WT','BLACK & MILD WOOD TIP',1.69,0.9,'Tobacco','Cigars',60,{age:true}),
+  P('SODA75','SODA .75c',0.75,0.3,'Drinks','Soda',48,{ebt:true}),
+  P('WATER','WATER',1.5,0.4,'Water','',48,{ebt:true}),
+  P('ED-HB',"HALF BAK'D GUMMY $3.99",3.99,1.8,'Edibles & Vape','Gummies',30,{color:'#d9481c',age:true}),
+  P('ED-BZ','BITEZ GUMMIES $5.99',5.99,2.8,'Edibles & Vape','Gummies',30,{color:'#0f7c8c',age:true}),
+  P('ED-BZJ','BITEZ GUMMIES 10ct JAR',24.99,12,'Edibles & Vape','Gummies',12,{color:'#0f7c8c',age:true}),
+  P('ED-RTM','ROAD TRIP MINI PK',9.99,5,'Edibles & Vape','Gummies',20,{color:'#1aa3c4',age:true}),
+  P('ED-RTG','ROAD TRIP GUMMY PACK',14.99,7,'Edibles & Vape','Gummies',20,{color:'#1f9d55',age:true}),
+  P('ED-JAR','JAR GUMMIES $35.99',35.99,18,'Edibles & Vape','Gummies',10,{color:'#0f7c8c',age:true}),
+  P('ED-BB1','BLEND BOTANICALS SINGLE',4.99,2.2,'Edibles & Vape','Botanicals',40,{color:'#1aa3c4',age:true}),
+  P('ED-BB6','BLEND BOTANICALS 6',24.99,12,'Edibles & Vape','Botanicals',12,{color:'#1aa3c4',age:true}),
+  P('ED-SB1','SCRIPT BOTANICALS 1',5.99,2.6,'Edibles & Vape','Botanicals',30,{color:'#2563c9',age:true}),
+  P('ED-MM','MIND MELT',9.99,4.5,'Edibles & Vape','Gummies',20,{color:'#2563c9',age:true}),
+  P('ED-CH','CHOCOLATE',12.99,6,'Edibles & Vape','Chocolate',15,{color:'#2563c9',age:true}),
+  ...[9.99,19.99,22.99,29.99,35.99,39.99].map(v=>P('VP-'+Math.round(v*100),'VAPE $'+v.toFixed(2),v,v*0.5,'Edibles & Vape','Vape',20,{color:'#5c6f96',taxes:V,age:true})),
+  ...['BAJA SPLASH','BLUE RAZZ ICE','CHERRY FUSE','CHERRY STRAZZ','DRAGON STRAWNANA','MANGO MAGIC'].map((f,i)=>P('ADJ40K-'+(i+1),'ADJUST 40K '+f,19.99,10,'Disposable E-Cig','Adjust',10,{taxes:V,age:true,color:'#6b4fc8'})),
+  P('HK-TOB','HOOKAH TOBACCO',14.99,8,'Hookah','Tobacco',20,{age:true}),
+  P('HK-COAL','HOOKAH COALS',6.99,3,'Hookah Accessories','',20),
+  P('COIL','COIL',4.99,2,'E Cig Accessories','Coils',30,{age:true}),
+  P('COIL699','COIL $6.99',6.99,3,'E Cig Accessories','Coils',30,{age:true}),
+  P('COILPK','COILS PACK',14.99,7,'E Cig Accessories','Coils',15,{age:true}),
+  P('EJ-MKT','MRKTPLCE VAPE JUICE',17.99,8,'E-Juice','',15,{taxes:V,age:true}),
+  P('PIPE4','4" PIPE',9.99,3,'Glass','Pipes',20,{age:true}),
+  P('PIPE6','6" CLEAR PIPE',14.99,5,'Glass','Pipes',15,{age:true}),
+  P('GLASS','GLASS',19.99,7,'Glass','Pipes',15,{age:true}),
+  P('CHILLUM','CHILLUM',7.99,2.5,'Glass','Pipes',20,{age:true}),
+  P('CANDY','CANDY',1.99,0.9,'Candy','',50,{ebt:true}),
+  P('HOSTESS','HOSTESS',2.49,1.2,'Candy','',30,{ebt:true}),
+  P('UNCLERAYS','UNCLE RAYS',1.99,0.9,'Candy','',30,{ebt:true}),
+  P('ENH','ENHANCE PILLS',9.99,3,'Novelty','',20,{age:true})
+ ];
+ return L;
+}
+const seedDiscounts=()=>[['$1.00 Coupon','$',1],['$2.00 Coupon','$',2],['$2.50 Coupon','$',2.5],['$5 Coupon','$',5],['$0.50 Coupon','$',.5],['10%','%',10],['15%','%',15],['20%','%',20],['30%','%',30],['Armed Forces','%',10],['Complimentary','%',100]].map(([name,type,value])=>({id:uid(),name,type,value}));
+const seedMM=()=>[{id:uid(),name:'Disposable 2 For $37.00',active:true,buy:2,amount:37.38,max:0,start:'',end:'',days:[],skus:[1,2,3,4,5,6].map(i=>'ADJ40K-'+i)}];
+const seedUsers=()=>[{id:uid(),name:'Owner',pin:'1234',role:'admin'},{id:uid(),name:'Cashier',pin:'1111',role:'cashier'}];
+const ROLE_NAMES={admin:'Owner / Admin',manager:'Manager',cashier:'Cashier'};
+
+/* ---------- math: promos, discounts, tax ---------- */
+function promoActive(pr,now){if(!pr)return false;if(pr.active===false)return false;const d=now.toISOString?new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10):'';if(pr.start&&d<pr.start)return false;if(pr.end&&d>pr.end)return false;if(pr.days&&pr.days.length&&!pr.days.includes(now.getDay()))return false;return true}
+function calc(cart){
+ const L=cart.lines,now=new Date();
+ const ext=L.map(l=>r2(l.price*l.qty));const subtotal=r2(sum(ext));
+ const disc=L.map(()=>0),notes=L.map(()=>'');
+ const units=[];L.forEach((l,i)=>{if(l.misc||l.fee||!(l.qty>0)||!Number.isInteger(l.qty))return;for(let k=0;k<l.qty;k++)units.push({i,sku:l.sku,price:l.price,used:false})});
+ for(const mm of S.mixmatch){if(!promoActive(mm,now)||!(mm.buy>0))continue;const set=new Set(mm.skus);const pool=units.filter(u=>!u.used&&set.has(u.sku)).sort((a,b)=>b.price-a.price);let g=0;
+  while(pool.length>=mm.buy&&(!mm.max||g<mm.max)){const grp=pool.splice(0,mm.buy);const s=sum(grp,u=>u.price);const d=s-mm.amount;if(d<=0.004)break;grp.forEach(u=>{u.used=true;disc[u.i]+=d*u.price/s;notes[u.i]=mm.name});g++}}
+ const by={};units.filter(u=>!u.used).forEach(u=>(by[u.sku]=by[u.sku]||[]).push(u));
+ for(const sku in by){const p=findSku(sku);const pr=p&&p.promo;if(!pr||!pr.on||!(pr.buy>0)||!promoActive(pr,now))continue;const us=by[sku];let groups=Math.floor(us.length/pr.buy);if(pr.max>0)groups=Math.min(groups,pr.max);
+  for(let g=0;g<groups;g++){const grp=us.slice(g*pr.buy,(g+1)*pr.buy);const s=sum(grp,u=>u.price);const d=s-pr.amount;if(d<=0.004)continue;grp.forEach(u=>{disc[u.i]+=d*u.price/s;notes[u.i]=`${pr.buy} for $${money(pr.amount)}`})}}
+ L.forEach((l,i)=>{if(!l.disc||l.qty<=0)return;const base=ext[i]-disc[i];const d=l.disc.type==='%'?base*l.disc.value/100:Math.min(l.disc.value,base);disc[i]+=Math.max(0,d);notes[i]=(notes[i]?notes[i]+' + ':'')+l.disc.name});
+ const elig=L.map((l,i)=>l.fee||l.qty<=0?0:Math.max(0,ext[i]-disc[i]));let es=sum(elig);
+ for(const od of cart.discounts||[]){if(es<=0.004)break;const d=od.type==='%'?es*od.value/100:Math.min(od.value,es);L.forEach((l,i)=>{if(!elig[i])return;const sh=elig[i]/es*d;disc[i]+=sh;elig[i]-=sh});es-=d}
+ const net=L.map((l,i)=>ext[i]-disc[i]);
+ const groups=S.settings.taxGroups,tg={};groups.forEach(g=>tg[g.id]=0);
+ const lineTax=L.map((l,i)=>{let t=0;(l.taxes||[]).forEach(id=>{const g=groups.find(x=>x.id===id);if(!g||!g.rate)return;const v=g.type==='$'?g.rate*l.qty:net[i]*g.rate/100;tg[id]+=v;t+=v});return t});
+ const taxByGroup=groups.map(g=>({id:g.id,name:g.name,amount:r2(tg[g.id]),show:g.show})).filter(x=>Math.abs(x.amount)>0.004);
+ const tax=r2(sum(taxByGroup,t=>t.amount)),discount=r2(sum(disc)),total=r2(subtotal-discount+tax);
+ const paid=r2(sum(cart.payments,p=>p.amount)),balance=r2(total-paid);
+ const ebtTotal=r2(sum(L.map((l,i)=>l.ebt?net[i]+lineTax[i]:0)));
+ return{subtotal,discount,tax,taxByGroup,total,paid,balance,ebtTotal,itemCount:sum(L.filter(l=>!l.fee),l=>l.qty),lineDisc:disc,lineNet:net,lineTax,lineNotes:notes};
+}
+
+/* ---------- modal plumbing ---------- */
+const CB=new Map();let cbn=0;
+function cb(fn){const id='c'+(++cbn);CB.set(id,fn);return id}
+function openModal(html,cls=''){$('#modal').innerHTML=`<div class="mback"><div class="mbox ${cls}">${html}</div></div>`}
+function closeModal(){$('#modal').innerHTML='';CB.clear();S.kp=null;if(OSK.el&&!document.body.contains(OSK.el))oskHide()}
+const modalOpen=()=>!!$('#modal').firstChild;
+const cancelBtn=(t='Cancel')=>`<button class="btn" data-a="cb" data-id="${cb(closeModal)}">${t}</button>`;
+function confirmBox(msg,ok,onOk,{danger=false,cancel='Cancel'}={}){openModal(`<div class="mtitle">${msg}</div><div class="mbtns">${cancelBtn(cancel)}<button class="btn ${danger?'red':'green'}" id="mok" data-a="cb" data-id="${cb(()=>{closeModal();onOk()})}">${ok}</button></div>`,'sm')}
+function promptText(title,val,onOk,ph=''){openModal(`<div class="mtitle">${title}</div><input class="big-in" id="ptxt" data-enter="ok" value="${esc(val||'')}" placeholder="${esc(ph)}" autocomplete="off"><div class="mbtns">${cancelBtn()}<button class="btn green" id="mok" data-a="cb" data-id="${cb(()=>{const v=$('#ptxt').value;closeModal();onOk(v)})}">OK</button></div>`,'sm');setTimeout(()=>{const i=$('#ptxt');i&&(i.focus(),i.select())},40)}
+function keypad({title,mode='money',value='',onOk,onKey,extra='',sub='',okLabel='OK'}){
+ S.kp={mode,buf:value===''||value==null?'':String(value),onOk,onKey,fresh:value!==''&&value!=null};
+ const k4=mode==='money'?'00':(mode==='dec'?'.':'C');
+ const keys=[7,8,9,4,5,6,1,2,3,k4,0,'⌫'];
+ openModal(`<div class="mtitle">${title}</div>${sub?`<div class="msub">${sub}</div>`:''}<div class="kpd ${S.kp.fresh?'fresh':''}" id="kpd">${kpDisp()}</div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div>${extra}<div class="mbtns">${cancelBtn()}<button class="btn green" id="mok" data-a="kpOk">${okLabel}</button></div>`,'kpm');
+}
+function kpVal(){const k=S.kp;if(!k)return 0;if(k.mode==='money')return(+(k.buf||0))/100;if(k.mode==='dec')return parseFloat(k.buf||'0')||0;if(k.mode==='int')return parseInt(k.buf||'0',10)||0;return k.buf}
+function kpDisp(){const k=S.kp;if(k.mode==='money')return'$'+money(kpVal());if(k.mode==='pin')return'•'.repeat(k.buf.length)||'&nbsp;';if(k.mode==='dob'){const b=k.buf.padEnd(8,'_');return b.slice(0,2)+'/'+b.slice(2,4)+'/'+b.slice(4)}return esc(k.buf)||'0'}
+function kpPress(key){const k=S.kp;if(!k)return;if(k.fresh&&key!=='⌫'){k.buf='';}k.fresh=false;
+ if(key==='⌫')k.buf=k.buf.slice(0,-1);else if(key==='C'||key==='Clear')k.buf='';
+ else if(key==='.'){if(!k.buf.includes('.'))k.buf+=k.buf?'.':'0.'}
+ else{const max=k.mode==='dob'?8:10;if(k.mode==='dec'&&/\.\d\d$/.test(k.buf))return;if(k.buf.length<max)k.buf+=key}
+ if(k.mode==='money')k.buf=k.buf.replace(/^0+/,'');
+ const d=$('#kpd');if(d){d.innerHTML=kpDisp();d.classList.remove('fresh')}if(k.onKey)k.onKey()}
+
+/* ---------- rendering ---------- */
+const TITLES={register:'Register',pay:'Pay',items:'Item Details',orders:'Transactions',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
+function render(){
+ if(!S.user){$('#app').innerHTML=renderLogin();return}
+ if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
+ const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
+ $('#app').innerHTML=`<main>${f()}</main>${footer()}`;tick();saveCart();
+ if(S.screen==='register'){requestAnimationFrame(()=>{const el=document.querySelector('.line.sel');el&&el.scrollIntoView({block:'nearest'})})}
+}
+let cartT;function saveCart(){clearTimeout(cartT);cartT=setTimeout(()=>DB.put('kv',clone(S.cart),'cart'),300)}
+function footer(){
+ const tabs=[['register','Register'],['items','Items','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['promos','Promos','promos'],['settings','Settings','settings']];
+ return `<footer><div class="who"><b>${esc(TITLES[S.screen])}</b><span>Logged in: ${esc(S.user.name)}</span></div>
+ <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${S.screen===t[0]||(S.screen==='pay'&&t[0]==='register')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
+ <div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
+}
+function tick(){const el=$('#clock');if(!el)return;const n=new Date();el.innerHTML=`<b>${n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}</b>${n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'})}`}
+function renderLogin(){const def=S.users.some(u=>u.pin==='1234'&&u.role==='admin');
+ return `<div class="login"><div class="lbox">${S.settings.logo?`<img src="${S.settings.logo}" style="max-width:220px;max-height:90px;margin-bottom:6px">`:''}<h1>${esc(S.settings.storeName)}</h1><div class="hint">Enter your PIN</div><div class="pin" id="pinD">${'•'.repeat(S.pin.length)||'&nbsp;'}</div>
+ <div class="kp">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-a="pinK" data-k="${k}">${k}</button>`).join('')}</div>
+ <button class="btn green" data-a="pinOk">Sign In</button><div class="warn" id="pinMsg" style="margin-top:8px"></div>
+ ${def?'<div class="hint" style="margin-top:8px">First time: owner PIN is <b>1234</b>. Change it in Settings → Users.</div>':''}</div></div>`}
+
+/* register */
+const QA={remove:['Remove Line','red'],disc:['Discount','amber'],disc10:['10% Off','blue'],drawer:['Open Drawer','slate'],age:['Age Check','slate'],misc:['Misc Sale','slate'],qty:['Qty','slate'],find:['Find Item','slate'],payout:['Pay Out','slate']};
+const btnP=p=>`<button class="pb" style="background:${p.color||catColor(p.cat)}" data-a="prod" data-sku="${esc(p.sku)}">${esc(p.label||p.name)}<small>$${money(p.price)}</small></button>`;
+function quickKeysHtml(edit){return S.settings.quickKeys.map((q,i)=>{
+ const da=edit?`data-a="qkSlot" data-i="${i}"`:'';
+ if(!q)return edit?`<button class="qk empty" ${da}>+</button>`:`<div class="qk empty"></div>`;
+ if(q.type==='act'){const a=QA[q.act]||['?','slate'];return `<button class="qk ${a[1]}" ${da||`data-a="qa" data-v="${q.act}"`}>${a[0]}</button>`}
+ const p=findSku(q.sku);if(!p)return edit?`<button class="qk empty" ${da}>(missing)</button>`:`<div class="qk empty"></div>`;
+ return `<button class="qk" ${da||`data-a="prod" data-sku="${esc(p.sku)}"`}>${esc(p.label||p.name)}</button>`}).join('')}
+const GRID_MAX=120;
+function gridItems(){const q=S.gq.trim().toUpperCase();let l=S.products.filter(p=>p.show!==false&&!p.discontinued);
+ if(q)l=l.filter(p=>(p.label||'').toUpperCase().includes(q)||p.name.toUpperCase().includes(q)||String(p.sku).toUpperCase().includes(q));else{l=l.filter(p=>p.cat===S.cat);if(S.gsub)l=l.filter(p=>(p.sub||'')===S.gsub)}
+ return l.sort((a,b)=>(!!b.color-!!a.color)||(a.label||a.name).localeCompare(b.label||b.name))}
+function gridHtml(){const l=gridItems();const more=l.length>GRID_MAX;return l.slice(0,GRID_MAX).map(btnP).join('')+(more?`<div class="empty" style="grid-column:1/-1">Showing ${GRID_MAX} of ${l.length} — search or pick a subcategory to narrow</div>`:'')+(l.length?'':`<div class="empty" style="grid-column:1/-1">${S.gq?'No items match':'No items in this category'}</div>`)}
+function renderRegister(){
+ const c=calc(S.cart);const cats=S.settings.categories.filter(k=>!k.hide);if(!S.cat||!cats.find(k=>k.name===S.cat))S.cat=(cats[0]||{}).name;
+ const subs=[...new Set(S.products.filter(p=>p.cat===S.cat&&p.sub&&p.show!==false&&!p.discontinued).map(p=>p.sub))].sort();
+ return `<div class="reg"><section class="order">${orderPanel(c)}</section>
+ <nav class="cats">${cats.map(k=>`<button class="cat ${k.name===S.cat?'on':''}" style="--cc:${k.color}" data-a="cat" data-v="${esc(k.name)}">${esc(k.name)}</button>`).join('')}</nav>
+ <section class="prods"><div class="gbar"><input id="gq" data-in="gq" data-enter="gq" placeholder="🔍 Search all items or scan…" value="${esc(S.gq)}" autocomplete="off"><button class="btn sm" data-a="gqClear" title="Clear search">✕</button>${subs.length>1&&!S.gq?`<select data-in="gsub"><option value="">All ${esc(S.cat)} (${subs.length} groups)</option>${subs.map(x=>`<option ${S.gsub===x?'selected':''}>${esc(x)}</option>`).join('')}</select>`:''}</div><div class="grid" id="grid">${gridHtml()}</div><div class="quick">${quickKeysHtml(false)}</div></section>
+ <aside class="side">${sideHtml()}</aside></div>`}
+function lineHtml(l,i,c){const d=c.lineDisc[i];return `<div class="line ${S.sel===i?'sel':''} ${l.qty<0?'neg':''}" data-a="selLine" data-i="${i}"><div><div class="ln-name">${esc(l.name)} ${l.qty!==1?`<span class="qty">× ${l.qty}</span>`:''}</div>${l.qty!==1?`<div class="ln-sub">@ $${money(l.price)}${l.qty<0?' · RETURN':''}</div>`:''}${c.lineNotes[i]?`<div class="ln-note">${esc(c.lineNotes[i])}</div>`:''}</div><div class="ln-amt">${money(l.price*l.qty)}${d>0.004?`<div class="ln-disc">-${money(d)}</div>`:''}</div></div>`}
+function orderPanel(c){const L=S.cart.lines;
+ return `<div class="ohead"><button class="olabel" data-a="label">Sale ${S.cart.label?'· '+esc(S.cart.label):'<span>+ label</span>'}</button><span>${S.cart.ageOk?'<span class="badge g">ID ✓</span>':''}#${S.settings.nextOrder}</span></div>
+ <div class="lines">${L.length?L.map((l,i)=>lineHtml(l,i,c)).join(''):'<div class="empty">Scan an item or tap a button to start</div>'}</div>
+ ${S.sel!=null&&L[S.sel]?`<div class="ltools">${[['minus','−'],['plus','+'],['qty','Qty'],['price','Price'],['disc','Disc'],['ret','Return'],['remove','Remove']].map(([v,t])=>`<button class="${v==='remove'?'red':''}" data-a="lt" data-v="${v}">${t}</button>`).join('')}</div>`:''}
+ ${summaryHtml(c)}
+ <div class="tenders3"><button class="green" data-a="goPay">Cash</button><button class="green" data-a="cardQuick" data-v="Credit">Credit</button><button class="green" data-a="cardQuick" data-v="Debit">Debit</button><button class="amber" data-a="splitPay">Split</button></div>`}
+function summaryHtml(c){const rows=[['Item Count',c.itemCount],['Subtotal',money(c.subtotal)]];if(c.discount)rows.push(['Discount','-'+money(c.discount)]);c.taxByGroup.forEach(t=>rows.push([t.name,money(t.amount)]));if(!c.taxByGroup.length)rows.push(['Tax','0.00']);
+ const refund=c.total<0;const lab=refund?'Refund Due':(c.balance<0?'Change':'Balance Due');
+ return `<div class="sum">${rows.map(r=>`<div class="r"><span>${esc(r[0])}</span><span>${r[1]}</span></div>`).join('')}<div class="r tot"><span>Total</span><span>$${money(c.total)}</span></div>${c.paid?`<div class="r"><span>Paid</span><span>${money(c.paid)}</span></div>`:''}<div class="r due ${refund||c.balance<0?'chg':''}"><span>${lab}</span><span>$${money(Math.abs(c.balance))}</span></div></div>`}
+function sideHtml(){const held=S.held.length;const hasFee=S.cart.lines.some(l=>l.fee);const b=[];
+ if(S.screen==='pay')b.push(['go','Register','teal','register']);else b.push(['goPay','Pay','green']);
+ b.push(['find','Find Items','slate'],['misc','Misc. Sale','blue'],['fee',hasFee?'Remove Card Fee':'Card Fee','blue'],['disc','Discounts','amber'],['save','Hold Sale','slate'],['get',`Get Held${held?` (${held})`:''}`,'slate'],['clear','Clear All','red']);
+ return b.map(([a,t,c,v])=>`<button class="${c}" data-a="${a}" ${v?`data-v="${v}"`:''}>${t}</button>`).join('')}
+
+/* pay */
+function renderPay(){const c=calc(S.cart);const bal=c.balance;
+ const qc=[];if(bal>0){qc.push(bal);const n1=Math.ceil(bal-0.001);if(n1>bal+0.004)qc.push(n1);const n5=Math.ceil(bal/5)*5;if(n5>n1&&n5>bal+0.004)qc.push(n5);[10,20,50,100].forEach(v=>{if(v>bal&&!qc.includes(v))qc.push(v)})}
+ return `<div class="pay">
+ <section class="tend"><div class="tg">${TENDERS.map(t=>`<button class="tb" data-a="tender" data-v="${t}">${t}</button>`).join('')}<button class="tb amber" data-a="disc">Discounts</button><button class="tb slate" data-a="payout">Pay Out</button><button class="tb amber" data-a="splitPay">Split Cash + Card</button><button class="tb slate" data-a="split">Split Evenly</button></div>
+ <h4>Quick Cash Payments</h4><div class="qc">${qc.slice(0,7).map((v,i)=>`<button data-a="qcash" data-v="${v}">${i===0?'<small>Exact</small>':''}$${money(v)}</button>`).join('')||'<div class="hint">Nothing due</div>'}</div></section>
+ <section class="pmid"><div class="pbig"><small>${c.total<0?'Refund due to customer':'Balance Due'}</small><b>$${money(Math.abs(bal))}</b></div>
+ <div class="ptable"><div class="phead"><span>Payment Type</span><span>Amount</span><span></span></div>${S.cart.payments.map((p,i)=>`<div class="prow"><span>${esc(p.type)}${p.ref?` <small class="hint">${esc(p.ref)}</small>`:''}</span><span>$${money(p.amount)}</span><button class="btn sm red" data-a="rmPay" data-i="${i}">✕</button></div>`).join('')||'<div class="empty">No payments yet. Tap a payment type.</div>'}</div></section>
+ <section class="psum"><div class="plines">${S.cart.lines.map(l=>`<div><span>${l.qty!==1?l.qty+' × ':''}${esc(l.name)}</span><span>${money(l.price*l.qty)}</span></div>`).join('')}</div>${summaryHtml(c)}</section>
+ <aside class="side">${sideHtml()}</aside></div>`}
+
+/* ---------- register actions ---------- */
+function addItem(p,{qty=1,price=null}={}){
+ if(S.screen!=='register'&&S.screen!=='pay')S.screen='register';
+ if(p.ageCheck&&!S.cart.ageOk)return ageCheck(()=>addItem(p,{qty,price}));
+ if(price===null&&(p.pricePrompt||!(p.price>0)))return keypad({title:`Price for ${esc(p.name)}`,onOk:v=>{if(v>0)addItem(p,{qty,price:v})}});
+ const pr=price??p.price;
+ const ex=S.cart.lines.findIndex(l=>l.sku===p.sku&&!l.misc&&l.price===pr&&!l.disc&&l.qty>0);
+ if(ex>=0){S.cart.lines[ex].qty+=qty;S.sel=ex}
+ else{S.cart.lines.push({sku:p.sku,name:p.name,price:pr,origPrice:p.price,qty,cost:+p.cost||0,taxes:[...(p.taxes||[])],cat:p.cat,ebt:!!p.ebt,inv:!p.nonInventory});S.sel=S.cart.lines.length-1}
+ beep(1000,50);render();
+}
+function removeLine(i){S.cart.lines.splice(i,1);S.sel=null;if(!S.cart.lines.length)S.cart.discounts=[];render()}
+function ageCheck(then){const min=S.settings.ageMin;
+ keypad({title:`Age check — ${min}+`,mode:'dob',sub:'Enter date of birth from the ID (MM DD YYYY)',okLabel:'Check DOB',
+  extra:`<div class="ageres" id="ageRes">&nbsp;</div><div class="mbtns"><button class="btn amber" style="flex:1" data-a="cb" data-id="${cb(()=>{closeModal();S.cart.ageOk=true;then&&then()})}">ID checked — customer is ${min}+</button></div>`,
+  onKey:()=>{const a=ageFrom(S.kp.buf),el=$('#ageRes');if(!el)return;if(a==null){el.innerHTML='&nbsp;';el.className='ageres';return}el.textContent=a>=min?`Age ${a} — OK to sell`:`Age ${a} — UNDER ${min}, DO NOT SELL`;el.className='ageres '+(a>=min?'ok':'bad')},
+  onOk:(v)=>{const a=ageFrom(v);if(a==null){toast('Enter the full date of birth (8 digits)',1);return}if(a<min){beep(260,450);toast(`Customer is ${a} — under ${min}. Sale not allowed.`,1);return}S.cart.ageOk=true;then&&then()}});
+}
+function ageFrom(b){if(!b||b.length!==8)return null;const m=+b.slice(0,2),d=+b.slice(2,4),y=+b.slice(4);const dt=new Date(y,m-1,d);if(dt.getMonth()!==m-1||dt.getDate()!==d||y<1900)return null;const n=new Date();let a=n.getFullYear()-y;if(n.getMonth()<m-1||(n.getMonth()===m-1&&n.getDate()<d))a--;return a}
+function discountModal(){const L=S.cart.lines;if(!L.length){toast('Add items first');return}
+ const line=S.sel!=null?L[S.sel]:null;if(!line)S.discTarget='order';else if(!S.discTarget)S.discTarget='line';const tgt=S.discTarget;
+ const applied=[...S.cart.discounts.map((d,i)=>({...d,kind:'order',i})),...L.map((l,i)=>l.disc?{...l.disc,kind:'line',i,lname:l.name}:null).filter(Boolean)];
+ openModal(`<div class="mtitle">Discounts</div>${line?`<div class="seg">${['line','order'].map(k=>`<button class="${tgt===k?'on':''}" data-a="cb" data-id="${cb(()=>{S.discTarget=k;discountModal()})}">${k==='line'?'This item: '+esc(line.name):'Whole order'}</button>`).join('')}</div>`:'<div class="msub">Applies to the whole order. Select a line first to discount one item.</div>'}
+ <div class="dgrid">${S.discounts.map(d=>`<button class="btn amber" data-a="cb" data-id="${cb(()=>applyDisc(d,tgt))}">${esc(d.name)}<small>${d.type==='%'?d.value+'%':'$'+money(d.value)}</small></button>`).join('')}
+ <button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();keypad({title:'Custom $ off',onOk:v=>{if(v>0)applyDisc({name:'$'+money(v)+' off',type:'$',value:v},tgt)}})})}">Custom $</button>
+ <button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();keypad({title:'Custom % off',mode:'dec',onOk:v=>{if(v>0&&v<=100)applyDisc({name:v+'% off',type:'%',value:v},tgt)}})})}">Custom %</button></div>
+ ${applied.length?`<h4>Applied</h4>${applied.map(a=>`<div class="arow"><span>${esc(a.name)} — ${a.kind==='order'?'whole order':esc(a.lname)}</span><button class="btn sm red" data-a="cb" data-id="${cb(()=>{if(a.kind==='order')S.cart.discounts.splice(a.i,1);else delete L[a.i].disc;render();discountModal()})}">Remove</button></div>`).join('')}`:''}
+ <div class="mbtns"><button class="btn green" data-a="cb" data-id="${cb(()=>{closeModal();S.discTarget=null})}">Done</button></div>`,'wide')}
+function applyDisc(d,tgt,by){const dz={name:d.name,type:d.type,value:+d.value};if(by&&by!==(S.user&&S.user.name))dz.by=by;if(tgt==='line'&&S.sel!=null&&S.cart.lines[S.sel])S.cart.lines[S.sel].disc=dz;else S.cart.discounts=[dz];closeModal();S.discTarget=null;render();toast(`${d.name} applied`)}
+const RC_CSS=w=>`.rc{width:${w}mm;padding:0 2mm;font:12px/1.35 "Courier New",monospace;color:#000}.rc .c{text-align:center}.rc .r{display:flex;justify-content:space-between;gap:6px}.rc .b{font-weight:700;font-size:14px}.rc hr{border:0;border-top:1px dashed #000;margin:5px 0}.rc .sm{font-size:11px}`;
+/* Text receipts for raw printers: converts the receipt layout into ESC/POS (Epson, Bixolon, Citizen, Xprinter, Rongta, Munbyn, HPRT, SNBC, Sewoo, POS-80/58 clones…) or Star line-mode commands. */
+const ASCII_MAP={'—':'-','–':'-','’':"'",'‘':"'",'“':'"','”':'"','•':'*','…':'...','✓':'v','×':'x','·':'-',' ':' '};
+const toAscii=t=>String(t).replace(/[—–’‘“”•…✓×· ]/g,c=>ASCII_MAP[c]).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'?');
+function rcLines(html,cols){const d=new DOMParser().parseFromString(`<div id="x">${html}</div>`,'text/html');const root=d.querySelector('.rc')||d.getElementById('x');const out=[];
+ const clean=t=>toAscii(t.replace(/\s+/g,' ').trim());
+ const wrap=(t)=>{const r=[];t=String(t);while(t.length>cols){let k=t.lastIndexOf(' ',cols);if(k<cols*0.5)k=cols;r.push(t.slice(0,k).trimEnd());t=t.slice(k).trimStart()}r.push(t);return r};
+ function block(el,inh){let cur='',bold=false;const push=()=>{if(cur.trim()||cur===''&&false){wrap(clean(cur)).forEach(t=>out.push({t,align:inh.align,bold:inh.bold||bold,big:inh.big}))}cur='';bold=false};
+  for(const n of el.childNodes){if(n.nodeType===3){cur+=n.textContent;continue}if(n.nodeType!==1)continue;const tag=n.tagName,cls=n.classList;
+   if(tag==='BR'){if(cur.trim())push();else out.push({t:''});continue}
+   if(tag==='HR'){if(cur.trim())push();out.push({t:'-'.repeat(cols)});continue}
+   if(tag==='DIV'||tag==='P'){if(cur.trim())push();node(n,inh);continue}
+   if(tag==='B'||tag==='STRONG'){bold=true;cur+=n.textContent;continue}
+   cur+=n.textContent}
+  if(cur.trim())push()}
+ function node(el,inh){const cls=el.classList;const ni={...inh};if(cls.contains('c'))ni.align='c';if(cls.contains('b'))ni.bold=true;
+  if(cls.contains('r')){const sp=[...el.children];const L=clean(sp[0]?sp[0].textContent:''),R=clean(sp[1]?sp[1].textContent:'');
+   if(L.length+R.length+1<=cols)out.push({t:L+' '.repeat(cols-L.length-R.length)+R,bold:ni.bold});else{const w=wrap(L);w.forEach((t,i)=>{if(i<w.length-1)out.push({t,bold:ni.bold});else{if(t.length+R.length+1<=cols)out.push({t:t+' '.repeat(cols-t.length-R.length)+R,bold:ni.bold});else{out.push({t,bold:ni.bold});out.push({t:' '.repeat(Math.max(0,cols-R.length))+R,bold:ni.bold})}}})}return}
+  block(el,ni)}
+ node(root,{align:'l',bold:false});
+ const sn=toAscii(S.settings.storeName).trim();const first=out.find(l=>l.t.trim());if(first&&first.t.trim()===sn&&first.align==='c')first.big=true;
+ while(out.length&&!out[out.length-1].t.trim())out.pop();return out}
+function rcBytes(html,{feed=true}={}){const c=S.cfg,star=c.cmdSet==='star';const cols=+c.cols||(+c.paper===58?32:48);const B=[];const add=(...a)=>a.flat().forEach(x=>B.push(x));const txt=t=>{for(const ch of t)B.push(ch.charCodeAt(0)&255)};
+ add(27,64);if(!star)add(27,116,0); // init, code page 437
+ const lr=html.includes('data-logo')&&!star?logoRaster():null;if(lr){add(27,97,1,29,118,48,0,lr.bw&255,lr.bw>>8,lr.h&255,lr.h>>8);for(const b of lr.data)B.push(b);add(10)}
+ let al=null,bo=null,bg=null;
+ for(const l of rcLines(html,cols)){const a=l.align==='c'?1:0;if(a!==al){add(star?[27,29,97,a]:[27,97,a]);al=a}
+  const b=!!l.bold;if(b!==bo){add(star?(b?[27,69]:[27,70]):[27,69,b?1:0]);bo=b}
+  const g=!!l.big;if(g!==bg){add(star?[27,105,g?1:0,0]:[29,33,g?1:0]);bg=g}
+  txt(l.t);add(10)}
+ add(star?[27,29,97,0]:[27,97,0]);if(bo)add(star?[27,70]:[27,69,0]);if(bg)add(star?[27,105,0,0]:[29,33,0]);
+ const fl=Math.max(0,Math.min(10,+c.feed||0));
+ if(feed&&c.cut!==false){if(star){for(let i=0;i<fl;i++)add(10);add(27,100,3)}else add(27,100,fl,29,86,1)}else if(feed){add(27,100,fl)}
+ return B}
+const rawMode=()=>DESK&&S.cfg.rcptConn&&S.cfg.rcptConn!=='driver';
+async function printHtml(html){if(rawMode()){try{const r=await posAPI.rawPrint(rcBytes(html));if(!r.ok)toast('Printer: '+(r.error||'could not print'),1);return r.ok}catch(e){toast('Printer: '+e.message,1);return false}}
+ if(DESK){const w=+S.cfg.paper===58?50:74;try{const r=await posAPI.print(html,RC_CSS(w));if(!r.ok)toast('Printer: '+(r.error||'could not print'),1);return r.ok}catch(e){toast('Printer: '+e.message,1);return false}}$('#print').innerHTML=html;setTimeout(()=>window.print(),60);return true}
+const noSaleSlip=()=>`<div class="rc"><div class="c"><b>NO SALE</b><br>${fmtDT(Date.now())}<br>${esc(S.user?S.user.name:'')}</div></div>`;
+async function openDrawer(){if(!DESK){printHtml(noSaleSlip());return}const m=S.cfg.drawerMode||'raw';if(m==='none')return;if(m==='driver'){printHtml(noSaleSlip());return}const r=await posAPI.openDrawer();if(!r.ok)toast('Cash drawer: '+r.error,1)}
+const cleanScan=c=>String(c).replace(/[\x00-\x1f\x7f]/g,'').trim().replace(/^\][A-Za-z][0-9A-Za-z]/,'');
+function onScan(code){code=cleanScan(code);if(!code)return;S.lastScan={code,time:Date.now()};const ls=$('#lastScan');if(ls){const p=findSku(code);ls.innerHTML=`<b>${esc(code)}</b> — ${p?'matches '+esc(p.name):'<span class="warn">not in your items</span>'}`}
+ if(!S.user||modalOpen())return;
+ if(S.screen==='items'){const p=findSku(code);if(p)openItem(p.sku);else if(can('items_edit'))newItem(code);return}
+ if(S.screen==='orders'){const p=findSku(code);S.ordQ=p?p.sku:code;const i=$('#ordQ');if(i)i.value=S.ordQ;if(DESK)updOrd();else render();if(!p)toast('That barcode is not in your items — searching transactions for it');return}
+ if(S.screen==='register'||S.screen==='pay'){const p=findSku(code);if(p){if(p.discontinued)toast(`${p.name} is marked discontinued`);addItem(p)}else notFound(code);return}
+ if(S.screen==='promos'&&S.promoTab==='mm'&&S.mmEdit){const p=findSku(code);if(p)mmAddSku(p.sku);return}
+ const p=findSku(code);if(p){S.screen='register';addItem(p)}else notFound(code)}
+function notFound(code){beep(300,300);openModal(`<div class="mtitle">Item not found</div><div class="msub">Barcode <b>${esc(code)}</b> isn't in your items yet.</div><div class="mbtns col">${can('items_edit')?`<button class="btn blue" data-a="cb" data-id="${cb(()=>{closeModal();newItem(code)})}">Add as a new item</button>`:''}<button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();A.misc()})}">Ring as Misc. Sale</button>${cancelBtn()}</div>`,'sm')}
+
+function tenderModal(type){const c=calc(S.cart);const bal=c.balance;
+ if(!S.cart.lines.length){toast('No items in the order');return}
+ if(Math.abs(bal)<0.005){finishSale();return}
+ if(bal<0){confirmBox(`Give the customer <b>$${money(-bal)}</b> back as ${esc(type)}?`,'Refund',()=>addPay(type,bal));return}
+ let max=bal;if(type==='EBT Food'){const lim=r2(c.ebtTotal-sum(S.cart.payments.filter(p=>p.type==='EBT Food'),p=>p.amount));if(lim<=0){toast('No EBT-eligible items in this order',1);return}max=Math.min(bal,lim)}
+ S.kp={mode:'dec',buf:money(max),fresh:true,onKey:null,onOk:null};
+ const keys=[7,8,9,4,5,6,1,2,3,'Clear',0,'.'];
+ openModal(`<div class="tmod"><div><div class="bal">Balance</div><div class="balv">$${money(bal)}</div><div class="bal">${esc(type)} Amount:</div><div class="kpd fresh" id="kpd">${kpDisp()}</div>${type==='EBT Food'?`<div class="hint">EBT-eligible max: $${money(max)}</div>`:''}${CARDLIKE.includes(type)&&S.settings.cardMin>0?`<div class="hint">Card minimum: $${money(S.settings.cardMin)}</div>`:''}</div>
+ <div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div></div></div>
+ <div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(closeModal)}">Cancel</button><span class="flex"></span><button class="btn green" style="flex:2" id="mok" data-a="cb" data-id="${cb(()=>{const a=r2(kpVal());closeModal();tender(type,a)})}">Pay</button></div>`,'tm')}
+function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
+ if(!S.cart.lines.length){toast('No items in the order');return}
+ if(Math.abs(bal)<0.005){finishSale();return}
+ if(bal<0){confirmBox(`Give the customer <b>$${money(-bal)}</b> back as ${esc(type)}?`,'Refund',()=>addPay(type,bal));return}
+ let a=r2(amt==null?bal:amt);if(!(a>0))return;
+ if(type!=='Cash'&&a>bal)a=bal;
+ if(type==='EBT Food'){const lim=r2(c.ebtTotal-sum(S.cart.payments.filter(p=>p.type==='EBT Food'),p=>p.amount));if(lim<=0){toast('No EBT-eligible items in this order',1);return}a=Math.min(a,lim)}
+ const card=CARDLIKE.includes(type);
+ const go=()=>{if(card)cardApprove(type,a);else addPay(type,a)};
+ if((type==='Credit'||type==='Debit')&&a<S.settings.cardMin)confirmBox(`Card minimum is $${money(S.settings.cardMin)}.<br>This charge is $${money(a)}. Continue anyway?`,'Continue',go);else go()}
+function addPay(type,a,last4){const pe={type,amount:r2(a),time:Date.now()};if(last4)pe.last4=last4;S.cart.payments.push(pe);const c=calc(S.cart);
+ if((c.total>=0&&c.balance<=0.004)||(c.total<0&&Math.abs(c.balance)<0.005))finishSale();else{S.screen='pay';render()}}
+function finishSale(){const c=calc(S.cart),cart=S.cart;
+ const change=c.total>=0?r2(c.paid-c.total):0;
+ const o={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:cart.label,
+  lines:cart.lines.map((l,i)=>({sku:l.sku,name:l.name,qty:l.qty,price:l.price,origPrice:l.origPrice??l.price,cost:+l.cost||0,cat:l.cat||'',taxes:l.taxes||[],misc:!!l.misc,fee:!!l.fee,inv:!!l.inv,disc:r2(c.lineDisc[i]),net:r2(c.lineNet[i]),tax:r2(c.lineTax[i]),note:c.lineNotes[i]||''})),
+  subtotal:c.subtotal,discount:c.discount,taxes:c.taxByGroup,tax:c.tax,total:c.total,payments:cart.payments,change,status:c.total<0?'refund':'paid',ageOk:cart.ageOk,approvals:cart.approvals||[]};
+ for(const l of o.lines){if(!l.inv)continue;const p=findSku(l.sku);if(p&&!p.nonInventory){p.stock=r2((+p.stock||0)-l.qty);DB.put('products',p)}}
+ S.orders.push(o);DB.put('orders',o);DC.det[o.id]=o;bumpOrders();saveKV('settings');
+ S.cart=newCart();S.sel=null;S.screen='register';render();beep(1300,90);
+ const mode=S.settings.afterSale,cash=o.payments.some(p=>p.type==='Cash');const auto=mode==='always'||(mode==='cash'&&cash);
+ if(auto)printReceipt(o);
+ if(cash&&DESK&&S.cfg.drawerOnCash!==false){if((S.cfg.drawerMode||'raw')==='raw')openDrawer();else if(S.cfg.drawerMode==='driver'&&!auto)printHtml(noSaleSlip())}
+ openModal(`<div class="done"><div class="check">✓</div><div class="mtitle">Transaction #${o.num} complete</div>${change>0.004?`<div class="change">Change due<b>$${money(change)}</b></div>`:''}${o.total<0?`<div class="change">Refund to customer<b>$${money(-o.total)}</b></div>`:''}
+ <div class="mbtns col"><button class="btn blue" style="min-height:64px" data-a="cb" data-id="${cb(()=>{closeModal();printReceipt(o)})}">${auto?'Print Another Copy':'Print Receipt'}</button><button class="btn green" style="min-height:64px" id="mok" data-a="cb" data-id="${cb(closeModal)}">${auto?'Done':'No Receipt — Done'}</button></div></div>`,'sm')}
+function receiptHtml(o){const s=S.settings;const tend={};o.payments.forEach(p=>{const k=p.type+(p.last4?' ****'+p.last4:'');tend[k]=(tend[k]||0)+p.amount});
+ return `<div class="rc">${s.logo?`<div class="c" data-logo="1"><img src="${s.logo}" style="max-width:62mm;max-height:28mm"></div>`:''}<div class="c"><b style="font-size:15px">${esc(s.storeName)}</b>${s.address?'<br>'+esc(s.address).replace(/\n/g,'<br>'):''}${s.phone?'<br>'+esc(s.phone):''}</div><hr>
+ ${o.status==='refund'?`<div class="c b">*** REFUND ***</div>${o.refundOf?`<div>Refund of transaction #${o.refundOf}</div>`:''}`:''}<div>Transaction #${o.num}${o.label?' · '+esc(o.label):''}</div><div>${fmtDT(o.time)}</div><div>Cashier: ${esc(o.user)}</div><hr>
+ ${o.lines.map(l=>`<div class="r"><span>${esc(l.name)}</span><span>${money(l.price*l.qty)}</span></div>${l.qty!==1?`<div class="sm">  ${l.qty} @ ${money(l.price)}</div>`:''}${Math.abs(l.disc)>0.004?`<div class="r sm"><span>  ${esc(l.note||'Discount')}</span><span>-${money(l.disc)}</span></div>`:''}`).join('')}<hr>
+ <div class="r"><span>Subtotal</span><span>${money(o.subtotal)}</span></div>${Math.abs(o.discount)>0.004?`<div class="r"><span>You saved</span><span>-${money(o.discount)}</span></div>`:''}
+ ${o.taxes.map(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false?'':`<div class="r"><span>${esc(t.name)}</span><span>${money(t.amount)}</span></div>`}).join('')}
+ ${o.taxes.some(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false})?`<div class="r"><span>Other tax</span><span>${money(sum(o.taxes.filter(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false}),t=>t.amount))}</span></div>`:''}
+ <div class="r b"><span>TOTAL</span><span>$${money(o.total)}</span></div>
+ ${Object.entries(tend).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}${o.change>0.004?`<div class="r b"><span>CHANGE</span><span>${money(o.change)}</span></div>`:''}
+ <div class="sm">Items: ${sum(o.lines.filter(l=>!l.fee),l=>l.qty)}</div><hr><div class="c">${esc(s.footer).replace(/\n/g,'<br>')}</div><br></div>`}
+const printReceipt=o=>printHtml(receiptHtml(o));
+
+/* ---------- items screen ---------- */
+const marginTxt=e=>e.price>0?(((e.price-(+e.cost||0))/e.price)*100).toFixed(2)+'%':'—';
+function F(o,obj,label,path,opt={}){const v=getP(obj,path);const t=opt.t||(opt.num?'num':'str');const at=`data-o="${o}" data-f="${path}" data-t="${t}"`;
+ if(t==='bool')return `<label class="tog"><input type="checkbox" ${at} ${v?'checked':''}><span>${label}</span></label>`;
+ if(opt.opts)return `<label class="fld ${opt.wide?'wide':''}"><span>${label}</span><select ${at}>${opt.opts.map(x=>{const[val,txt]=Array.isArray(x)?x:[x,x];return `<option value="${esc(val)}" ${String(val)===String(v)?'selected':''}>${esc(txt)}</option>`}).join('')}</select></label>`;
+ if(opt.area)return `<label class="fld ${opt.wide?'wide':''}"><span>${label}</span><textarea rows="3" ${at}>${esc(v)}</textarea></label>`;
+ return `<label class="fld ${opt.wide?'wide':''}"><span>${label}</span><input ${t==='num'?'type="number" step="any" inputmode="decimal"':`type="${opt.type||'text'}"`} ${opt.list?`list="${opt.list}"`:''} ${opt.ro?'readonly':''} ${at} value="${esc(v??'')}" autocomplete="off"></label>`}
+const daysHtml=(o,obj,f)=>{const days=getP(obj,f)||[];return `<div class="fld"><span>Days (none selected = every day)</span><div class="days">${DAYS.map((n,i)=>`<button class="day ${days.includes(i)?'on':''}" data-a="day" data-o="${o}" data-f="${f}" data-d="${i}">${n}</button>`).join('')}</div></div>`};
+function itemListHtml(){const q=S.itemQ.trim().toUpperCase();let list=S.products;if(S.itemCat)list=list.filter(p=>p.cat===S.itemCat);if(q)list=list.filter(p=>p.name.toUpperCase().includes(q)||p.sku.toUpperCase().includes(q));
+ list=[...list].sort((a,b)=>a.name.localeCompare(b.name));const tot=list.length;
+ return list.slice(0,300).map(p=>`<button class="il ${S.editOrig===p.sku?'on':''}" data-a="openItem" data-sku="${esc(p.sku)}"><span><b>${esc(p.name)}</b><small>${esc(p.sku)} · ${esc(p.cat)}${p.discontinued?' · discontinued':''}</small></span><span class="r"><b>$${money(p.price)}</b><small class="${!p.nonInventory&&p.stock<=(p.low||0)?'warn':''}">${p.nonInventory?'not tracked':p.stock+' in stock'}</small></span></button>`).join('')+(tot>300?`<div class="empty">Showing 300 of ${tot}. Search to narrow.</div>`:'')+(tot===0?'<div class="empty">No items found</div>':'')}
+function renderItems(){
+ if(!S.edit){const p=[...S.products].sort((a,b)=>a.name.localeCompare(b.name))[0];if(p){S.edit=clone(p);S.editOrig=p.sku}else{S.edit=blankItem('');S.editOrig=null}}
+ const e=S.edit,cats=S.settings.categories.map(c=>c.name);
+ return `<div class="split"><section class="listp"><div class="lhead"><input id="itemQ" data-in="itemQ" data-enter="itemQ" placeholder="Search or scan…" value="${esc(S.itemQ)}" autocomplete="off"><select data-in="itemCat"><option value="">All categories</option>${cats.map(c=>`<option ${S.itemCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="ilist" id="itemList">${itemListHtml()}</div><div class="lfoot">${S.products.length} items</div></section>
+ <section class="edp"><div class="ehead"><div><div class="etitle">${esc(e.name||'New item')}</div><div class="hint">${S.editOrig?'SKU '+esc(S.editOrig):'Not saved yet'}${S.dirty?' · <b style="color:var(--amber)">unsaved changes</b>':''}</div></div><div class="ekpis"><div><small>Price</small><b>$${money(e.price)}</b></div><div><small>Margin</small><b id="margin">${marginTxt(e)}</b></div><div><small>In stock</small><b>${e.nonInventory?'—':e.stock}</b></div></div></div>
+ <div class="tabs">${[['details','Details'],['pricing','Pricing & Tax'],['promo','Promo'],['inventory','Inventory']].map(([k,t])=>`<button class="${S.itemTab===k?'on':''}" data-a="itemTab" data-v="${k}">${t}</button>`).join('')}</div>
+ <div class="ebody"><fieldset style="border:0;padding:0;margin:0;min-width:0" ${can('items_edit')?'':'disabled'}>${can('items_edit')?'':'<p class="warn" style="margin-top:0">Read only — you can look but not change items.</p>'}${itemTabHtml(e)}</fieldset></div>
+ <div class="ebar">${can('items_delete')?'<button class="btn red" data-a="delItem">Delete</button>':''}${can('items_edit')?'<button class="btn" data-a="dupItem">Duplicate</button>':''}${can('stock')?'<button class="btn slate" data-a="adjItem">Adjust Stock</button>':''}<button class="btn" data-a="labelItem">🏷 Print Labels</button><span class="flex"></span>${can('items_edit')?'<button class="btn blue" data-a="newItem">New Item</button><button class="btn green" data-a="saveItem">Save</button>':''}</div></section></div>`}
+function itemTabHtml(e){const f=(l,p,o)=>F('edit',e,l,p,o);
+ if(S.itemTab==='details')return `<div class="fgrid"><div class="fld" style="flex-direction:row;align-items:flex-end;gap:6px"><div style="flex:1">${f('SKU / Barcode *','sku')}</div><button class="btn" style="min-height:44px;padding:4px 10px" data-a="genSku" title="Make a new barcode for this item"><span style="font-size:20px;line-height:1">▥</span><small>New barcode</small></button></div>${f('Item name *','name',{wide:1})}${f('Button label','label')}${f('Category *','cat',{opts:S.settings.categories.map(c=>c.name)})}${f('Subcategory','sub',{list:'subs'})}${f('Vendor','vendor')}</div><datalist id="subs">${[...new Set(S.products.map(p=>p.sub).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+  <div class="fld"><span>Barcode</span><div id="bcPrev" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;display:inline-block;max-width:340px">${e.sku?barcodeSVG(e.sku,{h:50}):'<span class="hint">No SKU yet — scan the item, type its barcode, or tap New barcode</span>'}</div></div>
+ <div class="fld"><span>Button color</span><div class="sw">${['',...PALETTE].map(c=>`<button class="swb ${(e.color||'')===c?'on':''}" style="background:${c||catColor(e.cat)}" data-a="color" data-v="${c}">${c?'':'Cat'}</button>`).join('')}</div></div>
+  <div class="togs">${f('Show on register','show',{t:'bool'})}${f(`Age check required (${S.settings.ageMin}+)`,'ageCheck',{t:'bool'})}${f('EBT / SNAP eligible','ebt',{t:'bool'})}${f('Allow price override','priceOverride',{t:'bool'})}${f('Ask for price when sold','pricePrompt',{t:'bool'})}${f('Discontinued','discontinued',{t:'bool'})}</div>`;
+ if(S.itemTab==='pricing')return `<div class="fgrid">${f('Price *','price',{num:1})}${f('Cost (what you pay)','cost',{num:1})}</div><h4>Tax groups</h4><div class="hint">Turn on every tax that applies to this item. Rates are set in Settings → Tax Groups.</div><div class="togs">${S.settings.taxGroups.map(g=>`<label class="tog"><input type="checkbox" data-tax="${g.id}" ${e.taxes.includes(g.id)?'checked':''}><span>${esc(g.name)} (${g.type==='$'?'$'+money(g.rate)+' each':g.rate+'%'})</span></label>`).join('')}</div>`;
+ if(S.itemTab==='promo'){const pr=e.promo;const mms=S.mixmatch.filter(m=>m.skus.includes(S.editOrig));
+  return `<div class="togs">${f('On sale (multi-buy deal)','promo.on',{t:'bool'})}</div><div class="fgrid">${f('Buy quantity','promo.buy',{num:1})}${f('For $ (total for the group)','promo.amount',{num:1})}${f('Max deals per sale (0 = no limit)','promo.max',{num:1})}${f('Start date','promo.start',{type:'date'})}${f('End date','promo.end',{type:'date'})}</div>${daysHtml('edit',e,'promo.days')}
+  <p class="hint">Example: Buy 2 for $5.00 — every 2 of this item ring up at $5.00 together.</p>${mms.length?`<h4>Also in mix &amp; match deals</h4>${mms.map(m=>`<div>• ${esc(m.name)}${m.active?'':' (inactive)'}</div>`).join('')}`:''}`}
+ const ms=S.editOrig?monthlySales(S.editOrig):null;const logs=S.invlog.filter(x=>x.sku===S.editOrig).slice(-15).reverse();const mn='Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');const y=new Date().getFullYear();
+ return `<div class="togs">${f('Not tracked (non-inventory item)','nonInventory',{t:'bool'})}</div><div class="fgrid">${S.editOrig?f('Qty in stock (use Adjust Stock)','stock',{num:1,ro:1}):f('Starting stock','stock',{num:1})}${f('Low stock alert at','low',{num:1})}</div>
+ ${ms?`<h4>Units sold by month</h4><table class="tbl"><tr><th></th>${mn.map(m=>`<th class="n">${m}</th>`).join('')}</tr><tr><td>${y}</td>${ms.cur.map(v=>`<td class="n">${v}</td>`).join('')}</tr><tr><td>${y-1}</td>${ms.prev.map(v=>`<td class="n">${v}</td>`).join('')}</tr></table>`:''}
+ ${logs.length?`<h4>Recent stock adjustments</h4><table class="tbl"><tr><th>When</th><th>Change</th><th>Reason</th><th>By</th><th class="n">New qty</th></tr>${logs.map(l=>`<tr><td>${fmtDT(l.time)}</td><td>${l.change>0?'+':''}${l.change}</td><td>${esc(l.reason)}</td><td>${esc(l.user)}</td><td class="n">${l.after}</td></tr>`).join('')}</table>`:''}`}
+function monthlySales(sku){if(DESK){if(DC.im[sku])return DC.im[sku];if(!DC.im['~'+sku]){DC.im['~'+sku]=1;posAPI.itemMonthly(sku).then(m=>{DC.im[sku]=m;if(S.screen==='items'&&S.itemTab==='inventory'&&S.editOrig===sku)render()})}return null}const y=new Date().getFullYear();const cur=Array(12).fill(0),prev=Array(12).fill(0);for(const o of S.orders){const d=new Date(o.time),yy=d.getFullYear();if(yy!==y&&yy!==y-1)continue;for(const l of o.lines)if(l.sku===sku)(yy===y?cur:prev)[d.getMonth()]+=l.qty}return{cur,prev}}
+function guardDirty(fn){if(S.dirty)confirmBox('Discard unsaved changes to this item?','Discard',()=>{S.dirty=false;fn()},{danger:true});else fn()}
+function openItem(sku){guardDirty(()=>{const p=findSku(sku);if(!p)return;S.edit=clone(p);S.editOrig=p.sku;S.dirty=false;S.screen='items';render()})}
+function newItem(sku){guardDirty(()=>{S.edit=blankItem(sku||'');S.editOrig=null;S.dirty=!!sku;S.itemTab='details';S.screen='items';render();if(sku)toast('New item — fill in the name and price, then Save')})}
+
+/* ---------- orders screen ---------- */
+const RANGES=[['today','Today'],['yesterday','Yesterday'],['week','This Week'],['month','This Month'],['lastmonth','Last Month'],['year','Year to Date'],['all','All Time'],['custom','Custom']];
+function rangeOf(r,from,to){const now=new Date();const sod=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};const eod=sod(now).getTime()+86400000-1;let a,b=eod;
+ switch(r){case'today':a=sod(now);break;case'yesterday':a=sod(now);a.setDate(a.getDate()-1);b=sod(now).getTime()-1;break;case'week':a=sod(now);a.setDate(a.getDate()-a.getDay());break;case'month':a=new Date(now.getFullYear(),now.getMonth(),1);break;case'lastmonth':a=new Date(now.getFullYear(),now.getMonth()-1,1);b=new Date(now.getFullYear(),now.getMonth(),1).getTime()-1;break;case'year':a=new Date(now.getFullYear(),0,1);break;case'custom':a=from?new Date(from+'T00:00:00'):new Date(0);b=to?new Date(to+'T23:59:59.999').getTime():eod;break;default:a=new Date(0)}
+ return[a.getTime(),b]}
+function ordFiltered(){const[a,b]=rangeOf(S.ordRange);const q=S.ordQ.trim().toUpperCase();let l=S.orders.filter(o=>o.time>=a&&o.time<=b);if(q)l=l.filter(o=>String(o.num).includes(q)||(o.label||'').toUpperCase().includes(q)||o.lines.some(x=>x.name.toUpperCase().includes(q)||String(x.sku).toUpperCase()===q));return l.sort((x,y)=>y.time-x.time)}
+function ordListHtml(l){return l.slice(0,400).map(o=>`<button class="il ${S.ordSel===o.id?'on':''}" data-a="ordSel" data-v="${o.id}"><span><b>#${o.num}</b> ${o.status==='refund'?'<span class="badge r">REFUND</span>':o.status==='refunded'?'<span class="badge b">refunded</span>':''}<small>${fmtDT(o.time)} · ${esc(o.user)}${o.label?' · '+esc(o.label):''}</small></span><span class="r"><b>$${money(o.total)}</b><small>${esc([...new Set(o.payments.map(p=>p.type+(p.last4?' ••'+p.last4:'')))].join(', '))}</small></span></button>`).join('')||'<div class="empty">No transactions</div>'}
+function getOrder(id){return (DESK&&DC.det[id])||S.orders.find(o=>o.id===id)}
+function ordSkuQ(){const q=S.ordQ.trim();if(q.length<4||/^\d{1,4}$/.test(q))return null;const p=findSku(q);return p?p.sku:null}
+function ordKey(){const[a,b]=rangeOf(S.ordRange);return[a,b,S.ordQ.trim(),ORDV].join('|')}
+async function loadOrd(){const[a,b]=rangeOf(S.ordRange);const key=ordKey();if(DC.ord&&DC.ord.key===key)return;const sku=ordSkuQ();const r=await posAPI.ordersQuery({a,b,q:S.ordQ.trim(),sku});r.rows.forEach(o=>DC.det[o.id]=o);DC.ord={key,...r}}
+function ordData(){if(!DESK){const l=ordFiltered();return{rows:l,count:l.length,total:sum(l,o=>o.total),ready:true}}
+ if(DC.ord&&DC.ord.key===ordKey())return{...DC.ord,ready:true};
+ if(!DC.ordLoading){DC.ordLoading=1;loadOrd().catch(e=>toast('Could not load transactions: '+e.message,1)).finally(()=>{DC.ordLoading=0;if(S.screen==='orders')updOrd()})}
+ return{rows:[],count:0,total:0,ready:false}}
+function ordItemBanner(d){if(!d.item)return'';const it=d.item;const p=findSku(it.sku);const ago=t=>{if(!t)return'never';const days=Math.floor((Date.now()-t)/86400000);return days<=0?'today':days===1?'yesterday':days+' days ago'};
+ return `<div class="ibanner"><b>${esc(p?p.name:it.sku)}</b><small class="hint">Item search — showing every date</small><span>Last sold: <b>${it.last?fmtDT(it.last):'never'}</b> (${ago(it.last)})</span><span>${Number(it.qty).toLocaleString()} sold in ${Number(it.orders).toLocaleString()} transactions · ${Number(it.qty30).toLocaleString()} in the last 30 days${p&&!p.nonInventory?` · ${p.stock} in stock`:''}</span></div>`}
+function ordFoot(d){return d.ready?`${d.count.toLocaleString()} transactions · $${Number(d.total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${d.count>d.rows.length?` · showing newest ${d.rows.length}`:''}`:'Loading…'}
+function updOrd(){const el=$('#ordList');if(!el){render();return}const d=ordData();el.innerHTML=d.ready?ordItemBanner(d)+ordListHtml(d.rows):'<div class="empty">Loading…</div>';$('#ordFoot').textContent=ordFoot(d)}
+function renderOrders(){const d=ordData();const l=d.rows;const sel=getOrder(S.ordSel);
+ return `<div class="split"><section class="listp"><div class="lhead"><input id="ordQ" data-in="ordQ" placeholder="Scan item · transaction # · card last 4 · name" value="${esc(S.ordQ)}" autocomplete="off"><select data-in="ordRange">${RANGES.filter(r=>r[0]!=='custom').map(([k,t])=>`<option value="${k}" ${S.ordRange===k?'selected':''}>${t}</option>`).join('')}</select></div><div class="ilist" id="ordList">${d.ready?ordItemBanner(d)+ordListHtml(l):'<div class="empty">Loading…</div>'}</div><div class="lfoot" id="ordFoot">${ordFoot(d)}</div></section>
+ <section class="edp">${sel?orderDetail(sel):'<div class="empty big">Select a transaction to see details, reprint or refund</div>'}</section></div>`}
+function orderDetail(o){const tend={};o.payments.forEach(p=>{const k=p.type+(p.last4?' ••••'+p.last4:'');tend[k]=(tend[k]||0)+p.amount});
+ return `<div class="ehead"><div><div class="etitle">Transaction #${o.num} ${o.status==='refund'?'<span class="badge r">REFUND</span>':o.status==='refunded'?`<span class="badge b">refunded in #${o.refundNum}</span>`:''}</div><div class="hint">${fmtDT(o.time)} · ${esc(o.user)}${o.label?' · '+esc(o.label):''}${o.ageOk?' · ID checked':''}</div></div><div class="ekpis"><div><small>Total</small><b>$${money(o.total)}</b></div></div></div>
+ <div class="ebody">${(o.approvals||[]).length?`<div class="sec" style="padding:8px 12px;margin-bottom:10px"><b>Manager approvals:</b> ${o.approvals.map(a=>`${esc(PERM_NAMES[a.action]||a.action)} — approved by <b>${esc(a.by)}</b> for ${esc(a.cashier||'')}`).join(' · ')}</div>`:''}<table class="tbl"><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Discount</th><th class="n">Net</th></tr>${o.lines.map(l=>`<tr><td>${esc(l.name)}<div class="hint">${esc(l.sku)}${l.note?' · '+esc(l.note):''}</div></td><td class="n">${l.qty}</td><td class="n">${money(l.price)}</td><td class="n">${l.disc?'-'+money(l.disc):''}</td><td class="n">${money(l.net)}</td></tr>`).join('')}</table>
+ <div class="cols"><table class="tbl"><tr><th>Totals</th><th class="n"></th></tr><tr><td>Subtotal</td><td class="n">${money(o.subtotal)}</td></tr><tr><td>Discount</td><td class="n">-${money(o.discount)}</td></tr>${o.taxes.map(t=>`<tr><td>${esc(t.name)}</td><td class="n">${money(t.amount)}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${money(o.total)}</b></td></tr></table>
+ <table class="tbl"><tr><th>Payments</th><th class="n"></th></tr>${Object.entries(tend).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('')}${o.change?`<tr><td>Change given</td><td class="n">${money(o.change)}</td></tr>`:''}</table></div></div>
+ <div class="ebar"><button class="btn blue" data-a="reprint">Reprint Receipt</button><span class="flex"></span>${o.status==='paid'&&can('refund')?'<button class="btn red" data-a="refund">Refund Transaction</button>':''}</div>`}
+
+/* ---------- reports ---------- */
+function report(a,b){const os=S.orders.filter(o=>o.time>=a&&o.time<=b&&o.status!=='void');const R={n:0,refN:0,refunds:0,gross:0,disc:0,tax:0,total:0,tend:{},cats:{},items:{},taxes:{},cost:0};
+ for(const o of os){if(o.status==='refund'){R.refN++;R.refunds+=o.total}else R.n++;R.gross+=o.subtotal;R.disc+=o.discount;R.tax+=o.tax;R.total+=o.total;
+  o.payments.forEach(p=>R.tend[p.type]=(R.tend[p.type]||0)+p.amount);if(o.change)R.tend.Cash=(R.tend.Cash||0)-o.change;
+  o.taxes.forEach(t=>R.taxes[t.name]=(R.taxes[t.name]||0)+t.amount);
+  o.lines.forEach(l=>{const c=l.fee?'Fees':(l.cat||'Other');const k=R.cats[c]=R.cats[c]||{qty:0,sales:0,cost:0};k.qty+=l.qty;k.sales+=l.net;k.cost+=(l.cost||0)*l.qty;R.cost+=(l.cost||0)*l.qty;if(!l.fee){const key=l.sku+'|'+l.name;const it=R.items[key]=R.items[key]||{sku:l.sku,name:l.name,cat:l.cat,qty:0,sales:0,cost:0};it.qty+=l.qty;it.sales+=l.net;it.cost+=(l.cost||0)*l.qty}})}
+ R.net=R.gross-R.disc;R.payouts=S.payouts.filter(p=>p.time>=a&&p.time<=b);R.payTot=sum(R.payouts,p=>p.amount);R.cashExpected=(R.tend.Cash||0)-R.payTot;return R}
+const PAGE_CSS=`@page{margin:12mm}body{font:11px/1.35 "Segoe UI",Arial,sans-serif;color:#111;margin:0}h1{font-size:20px;margin:0}h2{font-size:13px;margin:14px 0 4px;border-bottom:2px solid #1d3f8a;color:#1d3f8a;padding-bottom:2px}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1d3f8a;padding-bottom:6px;margin-bottom:8px}.hd small{color:#555;display:block}
+.k{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0}.k div{border:1px solid #bbb;border-radius:6px;padding:6px 8px}.k small{display:block;color:#555;font-size:10px}.k b{font-size:15px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}th{background:#e8edf6;text-align:left;padding:4px 6px;font-size:10.5px}td{padding:3px 6px;border-bottom:1px solid #ddd}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}tfoot td{font-weight:700;border-top:2px solid #333}.ft{margin-top:12px;color:#666;font-size:9.5px}`;
+function reportPageHtml(R,a,b,{allItems=false}={}){const lab=(RANGES.find(r=>r[0]===S.rep.range)||[])[1]||'';const m=money2;const pct=(s,c)=>s?(((s-c)/s)*100).toFixed(1)+'%':'—';
+ const d1=new Date(Math.max(a,R.firstTime||a)),d2=new Date(Math.min(b,Date.now()));const range=S.rep.range==='all'?'All time':`${d1.toLocaleDateString()}${d1.toDateString()!==d2.toDateString()?' – '+d2.toLocaleDateString():''}`;
+ const T=(head,rows,foot)=>`<table><thead><tr>${head.map((h,i)=>`<th class="${i?'n':''}">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td class="${i?'n':''}">${c}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${head.length}">None</td></tr>`}</tbody>${foot?`<tfoot><tr>${foot.map((c,i)=>`<td class="${i?'n':''}">${c}</td>`).join('')}</tr></tfoot>`:''}</table>`;
+ const tend=Object.entries(R.tend).sort((x,y)=>y[1]-x[1]);const taxes=Object.entries(R.taxes);const cats=Object.entries(R.cats).sort((x,y)=>y[1].sales-x[1].sales);
+ const items=Object.values(R.items).sort((x,y)=>y.sales-x.sales);const shown=allItems?items:items.slice(0,50);
+ return `<div class="hd"><div style="display:flex;gap:10px;align-items:center">${S.settings.logo?`<img src="${S.settings.logo}" style="max-height:48px;max-width:140px">`:''}<div><h1>${esc(S.settings.storeName)}</h1><small>${esc(S.settings.address||'').replace(/\n/g,' · ')}</small></div></div><div style="text-align:right"><b style="font-size:15px">Sales Report — ${esc(lab)}</b><small>${esc(range)}</small><small>Printed ${fmtDT(Date.now())} by ${esc(S.user?S.user.name:'')}</small></div></div>
+ <div class="k"><div><small>Net sales</small><b>$${m(R.net)}</b></div><div><small>Total collected</small><b>$${m(R.total)}</b></div><div><small>Transactions</small><b>${R.n.toLocaleString()}</b></div><div><small>Average sale</small><b>$${m(R.n?R.total/R.n:0)}</b></div>
+ <div><small>Discounts</small><b>$${m(R.disc)}</b></div><div><small>Tax collected</small><b>$${m(R.tax)}</b></div><div><small>Gross profit</small><b>$${m(R.net-R.cost)}</b></div><div><small>Cash expected*</small><b>$${m(R.cashExpected)}</b></div></div>
+ <div class="two"><div><h2>Payments</h2>${T(['Type','Amount'],[...tend.map(([k,v])=>[esc(k),m(v)]),...(R.payTot?[['Pay outs','-'+m(R.payTot)]]:[])],['Total',m(sum(tend,x=>x[1])-(R.payTot||0))])}
+ <h2>Taxes</h2>${T(['Tax','Amount'],taxes.map(([k,v])=>[esc(k),m(v)]),['Total',m(R.tax)])}
+ ${R.refN?`<h2>Refunds</h2>${T(['','Amount'],[[R.refN+' refunds',m(R.refunds)]])}`:''}
+ ${(R.payouts||[]).length?`<h2>Pay outs</h2>${T(['When / reason','Amount'],R.payouts.map(p=>[fmtDT(p.time)+' — '+esc(p.reason),m(p.amount)]))}`:''}</div>
+ <div><h2>Sales by category</h2>${T(['Category','Qty','Sales','Margin'],cats.map(([k,v])=>[esc(k),Math.round(v.qty*100)/100,m(v.sales),pct(v.sales,v.cost)]),['Total',Math.round(sum(cats,x=>x[1].qty)),m(sum(cats,x=>x[1].sales)),pct(sum(cats,x=>x[1].sales),sum(cats,x=>x[1].cost))])}</div></div>
+ <h2>${allItems?`All items sold (${items.length.toLocaleString()})`:`Top ${shown.length} items by sales`}</h2>${T(['Item','SKU','Qty','Sales','Cost','Profit','Margin'],shown.map(i=>[esc(i.name),esc(i.sku),Math.round(i.qty*100)/100,m(i.sales),m(i.cost),m(i.sales-i.cost),pct(i.sales,i.cost)]))}
+ <div class="ft">*Cash expected = cash taken minus change given and pay outs. Add your starting drawer amount when counting. Margin uses the cost recorded on each sale.</div>`}
+async function pickPrinter(title,onGo){let pr=[];if(DESK){try{pr=await posAPI.printers()}catch(e){}}
+ let sel=S.cfg.reportPrinter&&pr.some(p=>p.name===S.cfg.reportPrinter)?S.cfg.reportPrinter:(pr.find(p=>p.isDefault)||pr[0]||{}).name||'';let opt={allItems:false,copies:1};
+ const draw=()=>openModal(`<div class="mtitle">${title}</div>${DESK?(pr.length?`<div class="msub">Choose a printer</div><div class="findr">${pr.map(p=>`<button class="fr" style="${p.name===sel?'background:#cfe3ff':''}" data-a="cb" data-id="${cb(()=>{sel=p.name;draw()})}"><span><b>${p.name===sel?'✓ ':''}${esc(p.name)}</b>${p.isDefault?'<small>Windows default</small>':''}</span></button>`).join('')}</div>`:'<p class="warn">No printers are installed in Windows. Add one in Windows Settings → Printers, or use Save as PDF.</p>'):''}
+ <label class="tog"><input type="checkbox" id="optAll" ${opt.allItems?'checked':''}><span>Include every item sold (longer report)</span></label>
+ <div class="mbtns">${cancelBtn()}${DESK?`<button class="btn" data-a="cb" data-id="${cb(()=>{opt.allItems=$('#optAll').checked;closeModal();onGo({pdf:true,...opt})})}">Save as PDF</button>`:''}<button class="btn green" id="mok" ${DESK&&!pr.length?'disabled style="opacity:.5"':''} data-a="cb" data-id="${cb(()=>{opt.allItems=$('#optAll').checked;closeModal();onGo({printer:sel,...opt})})}">Print</button></div>`,'wide');
+ draw()}
+function addPayouts(R,a,b){R.payouts=S.payouts.filter(p=>p.time>=a&&p.time<=b);R.payTot=sum(R.payouts,p=>p.amount);R.cashExpected=(R.tend.Cash||0)-R.payTot;return R}
+function reportData(a,b){if(!DESK)return report(a,b);const key=[a,b,ORDV,S.payouts.length].join('|');if(DC.rep&&DC.rep.key===key)return DC.rep.R;
+ if(!DC.repLoading){DC.repLoading=1;posAPI.report(a,b).then(R=>{DC.rep={key,R:addPayouts(R,a,b)}}).catch(e=>{toast('Report failed: '+e.message,1);DC.rep={key,R:addPayouts({n:0,refN:0,refunds:0,gross:0,disc:0,tax:0,total:0,net:0,tend:{},cats:{},items:{},taxes:{},cost:0},a,b)}}).finally(()=>{DC.repLoading=0;if(S.screen==='reports')render()})}
+ return null}
+function renderReports(){const r=S.rep;const[a,b]=rangeOf(r.range,r.from,r.to);const R=reportData(a,b);
+ if(!R)return `<div class="rep"><div class="rbar"><div class="seg">${RANGES.map(([k,t])=>`<button class="${r.range===k?'on':''}" data-a="repRange" data-v="${k}">${t}</button>`).join('')}</div></div><div class="empty big">Crunching the numbers…</div></div>`;const pct=(s,c)=>s?(((s-c)/s)*100).toFixed(1)+'%':'—';
+ const items=Object.values(R.items).sort((x,y)=>y.qty-x.qty).slice(0,30);const low=S.products.filter(p=>!p.nonInventory&&!p.discontinued&&p.stock<=(p.low||0)).sort((x,y)=>x.stock-y.stock).slice(0,30);
+ return `<div class="rep"><div class="rbar"><div class="seg">${RANGES.map(([k,t])=>`<button class="${r.range===k?'on':''}" data-a="repRange" data-v="${k}">${t}</button>`).join('')}</div>${r.range==='custom'?`<input type="date" data-in="repFrom" value="${r.from}"> to <input type="date" data-in="repTo" value="${r.to}">`:''}<span class="flex"></span>${can('reports_print')?`<button class="btn" data-a="repCsv" title="Export item sales to a spreadsheet">CSV</button><button class="btn green" data-a="repPdf">⬇ PDF</button><button class="btn" data-a="repPrint" title="Short summary on the receipt printer">🧾 Receipt</button><button class="btn blue" data-a="repPage">🖨 Print</button>`:''}</div>
+ <div class="rbody"><div class="cards"><div class="card"><small>Net sales</small><b>$${money2(R.net)}</b></div><div class="card"><small>Total collected</small><b>$${money2(R.total)}</b></div><div class="card"><small>Transactions</small><b>${R.n.toLocaleString()}</b></div><div class="card"><small>Average sale</small><b>$${money2(R.n?R.total/R.n:0)}</b></div><div class="card"><small>Discounts</small><b>$${money2(R.disc)}</b></div><div class="card"><small>Tax collected</small><b>$${money2(R.tax)}</b></div><div class="card"><small>Gross profit</small><b>$${money2(R.net-R.cost)}</b></div><div class="card"><small>Cash expected in drawer*</small><b>$${money2(R.cashExpected)}</b></div></div>
+ <div class="cols"><div><table class="tbl"><tr><th>Payments</th><th class="n">Amount</th></tr>${Object.entries(R.tend).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money2(v)}</td></tr>`).join('')||'<tr><td colspan=2>None</td></tr>'}${R.payTot?`<tr><td>Pay outs</td><td class="n">-${money2(R.payTot)}</td></tr>`:''}</table>
+ <table class="tbl"><tr><th>Taxes</th><th class="n">Amount</th></tr>${Object.entries(R.taxes).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money2(v)}</td></tr>`).join('')||'<tr><td colspan=2>None</td></tr>'}</table>
+ ${R.refN?`<table class="tbl"><tr><th>Refunds</th><th class="n"></th></tr><tr><td>${R.refN} refunds</td><td class="n">${money2(R.refunds)}</td></tr></table>`:''}
+ ${R.payouts.length?`<table class="tbl"><tr><th>Pay out</th><th>Reason</th><th class="n">Amount</th></tr>${R.payouts.map(p=>`<tr><td>${fmtDT(p.time)}</td><td>${esc(p.reason)}</td><td class="n">${money2(p.amount)}</td></tr>`).join('')}</table>`:''}</div>
+ <div><table class="tbl"><tr><th>Category</th><th class="n">Qty</th><th class="n">Sales</th><th class="n">Margin</th></tr>${Object.entries(R.cats).sort((x,y)=>y[1].sales-x[1].sales).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${v.qty}</td><td class="n">${money2(v.sales)}</td><td class="n">${pct(v.sales,v.cost)}</td></tr>`).join('')||'<tr><td colspan=4>No sales</td></tr>'}</table></div></div>
+ <div class="cols"><table class="tbl"><tr><th>Top items</th><th class="n">Qty</th><th class="n">Sales</th><th class="n">Margin</th></tr>${items.map(i=>`<tr><td>${esc(i.name)}</td><td class="n">${i.qty}</td><td class="n">${money2(i.sales)}</td><td class="n">${pct(i.sales,i.cost)}</td></tr>`).join('')||'<tr><td colspan=4>No sales</td></tr>'}</table>
+ <table class="tbl"><tr><th>Low stock</th><th class="n">In stock</th><th class="n">Alert at</th></tr>${low.map(p=>`<tr><td>${esc(p.name)}</td><td class="n">${p.stock}</td><td class="n">${p.low||0}</td></tr>`).join('')||'<tr><td colspan=3>Nothing low</td></tr>'}</table></div>
+ <p class="hint">*Cash expected = cash taken minus change and pay outs. Add your starting drawer amount when counting.</p></div></div>`}
+
+/* ---------- promos ---------- */
+function renderPromos(){const tabs=`<div class="tabs">${[['disc','Discount Buttons'],['mm','Mix & Match'],['item','Item Deals']].map(([k,t])=>`<button class="${S.promoTab===k?'on':''}" data-a="promoTab" data-v="${k}">${t}</button>`).join('')}</div>`;
+ if(S.promoTab==='disc')return `<div class="edp" style="height:100%">${tabs}<div class="ebody"><h2>Discount & coupon buttons</h2><p class="hint">These show up when the cashier taps Discounts. Changes save automatically.</p><table class="tbl"><tr><th>Name</th><th>Type</th><th>Value</th><th></th></tr>${S.discounts.map((d,i)=>`<tr><td>${inp('discs',i+'.name',d.name)}</td><td>${sel('discs',i+'.type',d.type,[['$','$ off'],['%','% off']])}</td><td>${inp('discs',i+'.value',d.value,'num')}</td><td><button class="btn sm red" data-a="discDel" data-i="${i}">Delete</button></td></tr>`).join('')}</table><button class="btn blue" data-a="discAdd">+ Add discount</button></div></div>`;
+ if(S.promoTab==='item'){const l=S.products.filter(p=>p.promo&&p.promo.on);return `<div class="edp" style="height:100%">${tabs}<div class="ebody"><h2>Items with a multi-buy deal</h2><p class="hint">Set these on each item's Promo tab.</p><table class="tbl"><tr><th>Item</th><th>Deal</th><th>Dates</th><th></th></tr>${l.map(p=>`<tr><td>${esc(p.name)}</td><td>${p.promo.buy} for $${money(p.promo.amount)}</td><td>${esc(p.promo.start||'any')} – ${esc(p.promo.end||'any')}</td><td><button class="btn sm" data-a="openItemPromo" data-sku="${esc(p.sku)}">Edit</button></td></tr>`).join('')||'<tr><td colspan=4>None yet</td></tr>'}</table></div></div>`}
+ const m=S.mmEdit;
+ return `<div class="split"><section class="listp">${tabs}<div class="ilist">${S.mixmatch.map(x=>`<button class="il ${m&&m.id===x.id?'on':''}" data-a="mmSel" data-v="${x.id}"><span><b>${esc(x.name)}</b><small>Buy ${x.buy} for $${money(x.amount)} · ${x.skus.length} items</small></span><span class="r">${x.active?'<span class="badge g">Active</span>':'<span class="badge r">Off</span>'}</span></button>`).join('')||'<div class="empty">No deals yet</div>'}</div><div class="lfoot"><button class="btn blue" data-a="mmNew">+ New deal</button></div></section>
+ <section class="edp">${m?`<div class="ebody"><div class="fgrid">${F('mm',m,'Deal name','name',{wide:1})}${F('mm',m,'Buy quantity','buy',{num:1})}${F('mm',m,'For $ (total)','amount',{num:1})}${F('mm',m,'Max deals per sale (0 = no limit)','max',{num:1})}${F('mm',m,'Start date','start',{type:'date'})}${F('mm',m,'End date','end',{type:'date'})}</div><div class="togs">${F('mm',m,'Active','active',{t:'bool'})}</div>${daysHtml('mm',m,'days')}
+ <h4>Items in this deal (any mix counts)</h4><div class="mmitems" id="mmItems">${mmItemsHtml()}</div>
+ <div class="fgrid"><label class="fld wide"><span>Add items — search or scan</span><input id="mmQ" data-in="mmQ" placeholder="Name or SKU" autocomplete="off"></label><label class="fld"><span>Or add a whole category</span><select id="mmCat"><option value="">Choose…</option>${S.settings.categories.map(c=>`<option>${esc(c.name)}</option>`).join('')}</select></label></div><button class="btn sm" data-a="mmAddCat">Add category</button><div class="findr" id="mmR"></div></div>
+ <div class="ebar"><button class="btn red" data-a="mmDel">Delete deal</button><span class="flex"></span><button class="btn green" data-a="mmSave">Save deal</button></div>`:'<div class="empty big">Pick a deal or make a new one.<br><br>Example: any 2 disposables for $37.</div>'}</section></div>`}
+function mmItemsHtml(){const m=S.mmEdit;return m.skus.map(s=>{const p=findSku(s);return `<div><span>${esc(p?p.name:s)} <small class="hint">${esc(s)}${p?' · $'+money(p.price):''}</small></span><button class="btn sm red" data-a="mmRm" data-sku="${esc(s)}">Remove</button></div>`}).join('')||'<div class="empty">No items yet</div>'}
+function mmAddSku(sku){const m=S.mmEdit;if(!m||m.skus.includes(sku))return;m.skus.push(sku);S.mmDirty=true;const el=$('#mmItems');if(el)el.innerHTML=mmItemsHtml();toast('Added '+(findSku(sku)||{}).name)}
+const inp=(o,f,v,t='str',im='')=>`<input data-o="${o}" data-f="${f}" data-t="${t}" ${t==='num'?'type="number" step="any" inputmode="decimal"':''} ${im?`inputmode="${im}"`:''} value="${esc(v??'')}" autocomplete="off">`;
+const sel=(o,f,v,opts)=>`<select data-o="${o}" data-f="${f}">${opts.map(([a,b])=>`<option value="${esc(a)}" ${String(a)===String(v)?'selected':''}>${esc(b)}</option>`).join('')}</select>`;
+const chk=(o,f,v)=>`<input type="checkbox" style="width:26px;height:26px" data-o="${o}" data-f="${f}" data-t="bool" ${v?'checked':''}>`;
+
+/* ---------- settings ---------- */
+const SETT={
+ store:()=>{const s=S.settings,f=(l,p,o)=>F('set',s,l,p,o);return `<h2>Store & receipt</h2><p class="hint">Changes save automatically.</p><div class="sec"><h4 style="margin-top:0">Store logo</h4><div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;min-width:160px;min-height:70px;display:flex;align-items:center;justify-content:center">${s.logo?`<img src="${s.logo}" style="max-width:260px;max-height:110px">`:'<span class="hint">No logo</span>'}</div><div><label class="btn blue"><input type="file" accept="image/*" data-file="logo" hidden>${s.logo?'Change logo':'Upload logo'}</label>${s.logo?'<button class="btn red" data-a="logoDel">Remove</button>':''}<p class="hint">PNG or JPG. Prints at the top of receipts and reports and shows on the sign-in screen. A black logo on a white background prints best on receipt printers.</p></div></div></div><div class="fgrid">${f('Store name','storeName',{wide:1})}${f('Phone','phone')}${f('Address (shows on receipt)','address',{area:1,wide:1})}${f('Receipt footer','footer',{area:1,wide:1})}</div>
+ <div class="fgrid">${f('On-screen keyboard','osk',{opts:[['auto','Show when typing (touch screen)'],['off','Off (I use a real keyboard)']]})}${f('Ask for card last 4 digits','askLast4',{opts:[[true,'Yes — so receipts can be found by card'],[false,'No']]})}${f('After a sale','afterSale',{opts:[['ask','Ask to print receipt'],['always','Always print receipt'],['cash','Print for cash sales only']]})}${f('Minimum age for age-check items','ageMin',{num:1})}${f('Card minimum ($)','cardMin',{num:1})}${f('Card fee type','cardFee.type',{opts:[['%','% of total'],['$','Flat $']]})}${f('Card fee amount','cardFee.value',{num:1})}${f('Card fee name on receipt','cardFee.label')}${f('Next order number','nextOrder',{num:1})}</div>
+ <p class="hint">Tip: most receipt printers open the cash drawer when they print. Turn on “open cash drawer” in the printer's Windows driver settings.</p>`},
+ tax:()=>`<h2>Tax groups</h2><p class="hint">Each item picks which groups apply (Items → Pricing &amp; Tax). Tax is figured on the price after discounts. Changes save automatically.</p><table class="tbl"><tr><th>Group</th><th>Name</th><th>Rate</th><th>Type</th><th>On receipt</th><th>On for new items</th></tr>${S.settings.taxGroups.map((g,i)=>`<tr><td>${esc(g.id)}</td><td>${inp('set',`taxGroups.${i}.name`,g.name)}</td><td>${inp('set',`taxGroups.${i}.rate`,g.rate,'num')}</td><td>${sel('set',`taxGroups.${i}.type`,g.type,[['%','% of price'],['$','$ per item']])}</td><td>${chk('set',`taxGroups.${i}.show`,g.show)}</td><td>${chk('set',`taxGroups.${i}.def`,g.def)}</td></tr>`).join('')}</table><button class="btn" data-a="taxAdd">+ Add tax group</button>`,
+ cats:()=>{const cnt={};S.products.forEach(p=>cnt[p.cat]=(cnt[p.cat]||0)+1);return `<h2>Categories</h2><p class="hint">This order is the order of the category buttons on the register. Tap the color square to change a color.</p>${S.settings.categories.map((c,i)=>`<div class="crow"><input type="color" data-o="set" data-f="categories.${i}.color" value="${esc(c.color)}"><b>${esc(c.name)}</b><small>${cnt[c.name]||0} items</small><label class="tog" style="padding:0 8px"><input type="checkbox" data-o="set" data-f="categories.${i}.hide" data-t="bool" ${c.hide?'checked':''}><span>Hide on register</span></label><span class="flex"></span><button class="btn sm" data-a="catMove" data-i="${i}" data-v="-1">▲</button><button class="btn sm" data-a="catMove" data-i="${i}" data-v="1">▼</button><button class="btn sm" data-a="catRen" data-i="${i}">Rename</button><button class="btn sm red" data-a="catDel" data-i="${i}">Delete</button></div>`).join('')}<button class="btn blue" data-a="catAdd">+ Add category</button>`},
+ qk:()=>`<h2>Quick keys</h2><p class="hint">The buttons under the item grid on the register. Tap a key to change it.</p><div class="quick" style="max-width:900px">${quickKeysHtml(true)}</div><p><button class="btn" data-a="qkRow" data-v="1">+ Add a row</button> <button class="btn" data-a="qkRow" data-v="-1">− Remove last row</button></p>`,
+ users:()=>{const seen={},dup=new Set();S.users.forEach(u=>{if(seen[u.pin])dup.add(u.pin);seen[u.pin]=1});
+ return `<h2>Users & PINs</h2><p class="hint">Pick a starting role, then tap <b>Permissions</b> to choose exactly what each person can do. The <b>Owner</b> can always do everything. When someone tries something they aren't allowed to, a user with <b>Approve</b> permission can enter their PIN for them. Changes save automatically.</p>
+ <table class="tbl"><tr><th>Name</th><th>PIN</th><th>Role</th><th>Permissions</th><th></th></tr>${S.users.map((u,i)=>{const n=PERM_KEYS.filter(k=>can(k,u)).length;return `<tr><td>${inp('users',i+'.name',u.name)}</td><td>${inp('users',i+'.pin',u.pin,'str','numeric')}${dup.has(u.pin)?'<div class="warn">This PIN is used twice</div>':''}</td><td><select data-a2="role" data-i="${i}">${[['admin','Owner'],['manager','Manager'],['cashier','Cashier']].map(([v,t])=>`<option value="${v}" ${u.role===v?'selected':''}>${t}</option>`).join('')}</select></td><td><button class="btn sm ${u.role==='admin'?'':'blue'}" data-a="userPerms" data-i="${i}">${u.role==='admin'?'Everything':`${n} of ${PERM_KEYS.length}${u.perms?' · custom':''}`}</button></td><td><button class="btn sm red" data-a="userDel" data-i="${i}">Delete</button></td></tr>`}).join('')}</table><button class="btn blue" data-a="userAdd">+ Add user</button>`},
+ printers:()=>{const c=S.cfg;const pr=S.printers;const sel=(f,v,opts)=>`<select data-cfg="${f}">${opts.map(([a,b])=>`<option value="${esc(a)}" ${String(a)===String(v)?'selected':''}>${esc(b)}</option>`).join('')}</select>`;const ck=(f,v,t)=>`<label class="tog"><input type="checkbox" data-cfg="${f}" ${v?'checked':''}><span>${t}</span></label>`;
+ const rc=['driver','winraw'].includes(c.rcptConn||'driver');const defName=(pr.find(p=>p.isDefault)||{}).name||'';const rName=c.printer||defName;
+ return `<h2>Printers & cash drawer</h2>
+ <div class="sec"><h4 style="margin-top:0">Printers on this computer</h4>${pr.length?`<table class="tbl"><tr><th>Printer</th><th>Used for</th><th></th></tr>${pr.map((p,i)=>`<tr><td><b>${esc(p.name)}</b>${p.isDefault?' <span class="badge b">Windows default</span>':''}</td><td>${rc&&p.name===rName?'<span class="badge g">Receipts</span>':''}${(c.reportPrinter||defName)===p.name?'<span class="badge g">Reports</span>':''}${c.labelPrinter===p.name?'<span class="badge g">Labels</span>':''}</td><td style="white-space:nowrap"><button class="btn sm" data-a="usePr" data-v="receipt" data-i="${i}">Receipts</button> <button class="btn sm" data-a="usePr" data-v="report" data-i="${i}">Reports</button> <button class="btn sm" data-a="usePr" data-v="label" data-i="${i}">Labels</button> <button class="btn sm blue" data-a="testPr" data-i="${i}">Test</button></td></tr>`).join('')}</table>`:'<p class="warn">No printers are installed in Windows yet.</p>'}
+ <button class="btn green" data-a="addPrinter">➕ Add a printer</button><button class="btn" data-a="hwRefresh">Refresh list</button><p class="hint">Add a printer opens Windows printer setup. Plug the printer in (or turn it on for network printers), add it there, then tap the Store POS button on the taskbar to come back and tap Refresh list.</p></div>
+ <div class="sec"><h4 style="margin-top:0">Receipt printer</h4>
+ <div class="fgrid"><label class="fld wide"><span>How it's connected</span>${sel('rcptConn',c.rcptConn||'driver',[['driver','Windows printer — use its driver (USB, any brand with a Windows driver)'],['winraw','Windows printer — send receipt commands directly (Generic / Text Only driver, fastest)'],['network','Network / Wi-Fi / Ethernet printer (IP address)'],['serial','Serial or USB-COM port printer']])}</label></div>
+ <div class="fgrid">${['driver','winraw'].includes(c.rcptConn||'driver')?`<label class="fld wide"><span>Printer</span>${sel('printer',c.printer||'',[['','Windows default printer'+(pr.find(p=>p.isDefault)?` (${pr.find(p=>p.isDefault).name})`:'')],...pr.map(p=>[p.name,p.name])])}</label>`:''}
+ ${c.rcptConn==='network'?`<label class="fld"><span>Printer IP address</span><input data-cfg="netHost" value="${esc(c.netHost||'')}" placeholder="192.168.1.100" inputmode="decimal"></label><label class="fld"><span>Port</span><input data-cfg="netPort" value="${esc(c.netPort||9100)}" inputmode="numeric"></label>`:''}
+ ${c.rcptConn==='serial'?`<label class="fld"><span>COM port</span>${sel('comPort',c.comPort||'',[['','Choose…'],...(S.comPorts||[]).map(p=>[p,p]),...(c.comPort&&!(S.comPorts||[]).includes(c.comPort)?[[c.comPort,c.comPort]]:[])])}</label><label class="fld"><span>Speed (baud)</span>${sel('comBaud',c.comBaud||9600,[[9600,'9600'],[19200,'19200'],[38400,'38400'],[57600,'57600'],[115200,'115200']])}</label><label class="fld"><span>Flow control</span>${sel('comFlow',c.comFlow||'none',[['none','None'],['rtscts','RTS/CTS (hardware)'],['xonxoff','XON/XOFF']])}</label>`:''}
+ <label class="fld"><span>Paper width</span>${sel('paper',c.paper||80,[[80,'80 mm (3 1/8")'],[58,'58 mm (2 1/4")']])}</label></div>
+ ${c.rcptConn&&c.rcptConn!=='driver'?`<div class="fgrid"><label class="fld wide"><span>Printer language</span>${sel('cmdSet',c.cmdSet||'escpos',[['escpos','ESC/POS — Epson & most brands'],['star','Star Line Mode — Star TSP / SP']])}</label><label class="fld wide"><span>Characters per line</span>${sel('cols',c.cols||(+c.paper===58?32:48),[[48,'48 (80 mm, most printers)'],[42,'42 (80 mm, Epson TM-T88 / large font)'],[32,'32 (58 mm)']])}</label><label class="fld"><span>Blank lines before cut</span>${sel('feed',c.feed??4,[[0,'0'],[2,'2'],[3,'3'],[4,'4'],[5,'5'],[6,'6']])}</label></div>${ck('cut',c.cut!==false,'Cut paper after each receipt (turn off if your printer has no cutter)')}`:''}
+ ${['driver','winraw'].includes(c.rcptConn||'driver')&&!pr.length?'<p class="warn">No printers found. Install the receipt printer driver in Windows, then tap Refresh.</p>':''}
+ <button class="btn" data-a="hwRefresh">Refresh printers & ports</button><button class="btn blue" data-a="hwTestPrint">Test print</button>
+ <p class="hint">Not sure? Most USB receipt printers work with the first option once their Windows driver is installed. If receipts print blank, tiny or slow, choose the second option. Network printers print their IP address on a self-test page (hold FEED while turning the printer on).</p></div>
+ <div class="sec"><h4 style="margin-top:0">Cash drawer</h4><div class="fgrid"><label class="fld wide"><span>How the drawer opens</span>${sel('drawerMode',c.drawerMode||'raw',[['raw','Plugged into the receipt printer — send open command'],['driver','Printer driver opens it when anything prints'],['none','No cash drawer']])}</label>${(c.drawerMode||'raw')==='raw'&&c.cmdSet!=='star'?`<label class="fld"><span>Drawer connector</span>${sel('drawerPin',c.drawerPin||2,[[2,'Pin 2 (standard)'],[5,'Pin 5 (second drawer)']])}</label>`:''}</div>${ck('drawerOnCash',c.drawerOnCash!==false,'Open drawer automatically on cash sales')}<button class="btn blue" data-a="hwTestDrawer">Test drawer</button></div>
+ <div class="sec"><h4 style="margin-top:0">Barcode labels</h4><div class="fgrid"><label class="fld"><span>Label printer</span>${sel('labelPrinter',c.labelPrinter||'',[['','Choose…'],...pr.map(p=>[p.name,p.name])])}</label><label class="fld"><span>Label size (inches)</span><select data-o="set" data-f="labelSize">${Object.keys(LABEL_SIZES).map(k=>`<option ${S.settings.labelSize===k?'selected':''}>${k}</option>`).join('')}</select></label></div><p class="hint">Works with label printers like Zebra, DYMO, Rollo, Brother and Munbyn. Set the same label size in the printer's Windows settings. Print labels from Items → Print Labels.</p></div>`},
+ hw:()=>{const c=S.cfg;const pr=S.printers;const sel=(f,v,opts)=>`<select data-cfg="${f}">${opts.map(([a,b])=>`<option value="${esc(a)}" ${String(a)===String(v)?'selected':''}>${esc(b)}</option>`).join('')}</select>`;const ck=(f,v,t)=>`<label class="tog"><input type="checkbox" data-cfg="${f}" ${v?'checked':''}><span>${t}</span></label>`;
+ return `<h2>Hardware & backups</h2><p class="hint">These settings belong to this computer. Changes save automatically.</p>
+ <div class="sec"><h4 style="margin-top:0">Barcode scanner</h4><p class="hint">Any USB scanner that types like a keyboard works with no setup (Honeywell, Zebra/Symbol, Datalogic, Socket, Inateck, Tera, Netum, Eyoyo and other brands, wired, wireless or Bluetooth). It can end codes with Enter, Tab or nothing. If your scanner is set to USB-COM / virtual serial mode, pick its COM port here.</p>
+ <div class="fgrid"><label class="fld"><span>COM-port scanner</span>${sel('scanCom',c.scanCom||'',[['','None (keyboard-style scanner)'],...(S.comPorts||[]).map(p=>[p,p]),...(c.scanCom&&!(S.comPorts||[]).includes(c.scanCom)?[[c.scanCom,c.scanCom]]:[])])}</label>${c.scanCom?`<label class="fld"><span>Speed (baud)</span>${sel('scanBaud',c.scanBaud||9600,[[9600,'9600'],[19200,'19200'],[38400,'38400'],[57600,'57600'],[115200,'115200']])}</label>`:''}</div>
+ ${c.scanCom?`<p class="hint">COM scanner: <b>${esc((S.scanState||{}).status||'off')}</b>${(S.scanState||{}).error?` <span class="warn">${esc(S.scanState.error)}</span>`:''}</p>`:''}
+ <div class="card" style="margin-top:6px"><small>Scan test — scan any barcode now</small><div id="lastScan" style="font-size:17px;margin-top:4px">${S.lastScan?esc(S.lastScan.code):'Waiting for a scan…'}</div></div></div>
+ <div class="sec"><h4 style="margin-top:0">App</h4>${ck('kiosk',c.kiosk,'Full-screen lock mode (cashiers can’t close or leave the POS)')}${ck('autoStart',c.autoStart,'Start Store POS when Windows starts')}<p class="hint">Version ${esc(c.version||'')}</p><button class="btn red" data-a="hwExit">Exit Store POS</button></div>
+ <div class="sec"><h4 style="margin-top:0">Automatic backups</h4><p class="hint">A full backup is saved once a day (last 30 kept). Add a USB stick or OneDrive folder so a dead hard drive can't take your data.</p>
+ <table class="tbl mini"><tr><td>Last backup</td><td><b>${c.lastBackup?fmtDT(c.lastBackup):'not yet'}</b> ${c.lastBackupError?`<div class="warn">${esc(c.lastBackupError)}</div>`:''}</td></tr><tr><td>Backups on this PC</td><td>${esc(c.backupRoot||'')}</td></tr><tr><td>Extra backup folder</td><td>${c.backupDir?esc(c.backupDir):'<span class="warn">none set</span>'}</td></tr><tr><td>Database file</td><td>${esc((c.dataDir||'')+'\\pos.db')}</td></tr></table>
+ <button class="btn green" data-a="hwBackup">Back up now</button><button class="btn" data-a="hwBackupDir">Choose extra backup folder</button><button class="btn" data-a="hwOpen" data-v="backups">Open backups folder</button><button class="btn" data-a="hwOpen" data-v="data">Open data folder</button><p class="hint">To restore, use Import / Backup → Restore from backup and pick a pos-backup file.</p></div>`},
+ data:()=>`<h2>Import / backup</h2>
+ <div class="sec"><h4 style="margin-top:0">Import items from your old POS</h4><p class="hint">Export your item list from the old system as CSV or Excel → “Save as CSV”. Needs columns for SKU/barcode, item name and price. Cost, quantity, category and subcategory are used if present. Existing SKUs are updated, new ones are added.</p><label class="btn blue"><input type="file" accept=".csv,.txt,.tsv" data-file="csv" hidden>Import items CSV</label><button class="btn" data-a="exportCsv">Export items CSV</button></div>
+ ${DESK?`<div class="sec"><h4 style="margin-top:0">Software update</h4><p>Running version <b>${esc(S.cfg.appVersion||'')}</b>${S.cfg.runningUpdate?` (updated — installed version ${esc(S.cfg.bundledVersion)})`:''}</p>${S.cfg.rolledBack?`<p class="warn">Update ${esc(S.cfg.rolledBack)} did not start, so the installed version is running. Send this to support.</p>`:''}<p class="hint">Got a <b>.posupdate</b> file? Put it in Downloads or on a USB stick, then tap Install update. Your items, sales and settings are kept, and a backup is made first.</p>${S.updAvail?`<div class="sec" style="background:#d4f2e1"><b>Version ${esc(S.updAvail.version)} is available.</b> ${esc(S.updAvail.notes||'')}<br><button class="btn green" data-a="dlUpdate">Download & install</button></div>`:''}<button class="btn green" data-a="installUpdate">Install update file…</button><button class="btn" data-a="chkUpdate">Check online</button>
+ <div class="fgrid" style="margin-top:8px"><label class="fld wide"><span>Online update address (optional)</span><input data-cfg="updateUrl" value="${esc(S.cfg.updateUrl||'')}" placeholder="https://…/latest.json"></label></div><p class="hint">Easiest: double-click a .posupdate file on this PC, or tap Install update file.</p>${S.cfg.hasPrevious?'<button class="btn" data-a="undoUpdate">Go back to previous version</button>':''}</div>`:''}
+ <div class="sec"><h4 style="margin-top:0">Load from old POS / Backup</h4><p class="hint"><b>Moving from Exatouch?</b> Use “Restore from backup” and pick <b>exatouch-items-import.json</b>.</p><p class="hint">Everything is saved on this computer. Make a backup regularly (USB stick or cloud folder) so a dead hard drive can't take your sales history with it.</p>${DESK?`<button class="btn green" data-a="hwBackup">Back up now</button><button class="btn" data-a="restoreDb">Restore a backup (.db.gz)</button><label class="btn"><input type="file" accept=".json" data-file="backup" hidden>Load items file (.json)</label>`:`<button class="btn green" data-a="exportBackup">Download full backup</button><label class="btn"><input type="file" accept=".json" data-file="backup" hidden>Restore from backup</label>`}</div>
+ <div class="sec"><h4 style="margin-top:0">Clean up</h4><p class="hint">${S.products.filter(p=>p.sample).length} sample items are loaded for testing.</p><button class="btn" data-a="wipeSample">Remove sample items</button><button class="btn red" data-a="wipeItems">Delete ALL items</button><button class="btn red" data-a="wipeSales">Delete ALL sales history</button></div>
+ <div class="sec"><div class="hint" id="stinfo">${S.products.length.toLocaleString()} items · ${(DESK&&S.stats?S.stats.orders:S.orders.length).toLocaleString()} transactions saved${DESK&&S.stats&&S.stats.firstOrder?' · history since '+new Date(S.stats.firstOrder).toLocaleDateString():''}${DB.mem?' · <b class="warn">STORAGE NOT AVAILABLE — nothing is being saved</b>':''}</div></div>`
+};
+function renderSettings(){const tabs=[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(DESK?[['printers','Printers & Drawer'],['hw','Scanner, App & Backups']]:[]),['data','Import / Backup']];
+ return `<div class="sett"><nav class="stabs">${tabs.map(([k,t])=>`<button class="${S.setTab===k?'on':''}" data-a="setTab" data-v="${k}">${t}</button>`).join('')}</nav><section class="sbody">${SETT[S.setTab]()}</section></div>`}
+
+/* ---------- import / export ---------- */
+const HMAP={sku:['sku','upc','barcode','bar code','item number','item #','item code','plu','code','upc code'],name:['item name','name','description','item description','product','product name','item','receipt description'],price:['price','retail','retail price','sell price','unit price','selling price','regular price'],cost:['cost','unit cost','vendor cost','avg cost','average cost','last cost'],stock:['qty in stock','qty','quantity','stock','on hand','qty on hand','in stock','quantity on hand'],cat:['category','department','dept'],sub:['subcategory','sub category','sub-category'],label:['button label']};
+const FIELDN={sku:'SKU',name:'Name',price:'Price',cost:'Cost',stock:'Qty in stock',cat:'Category',sub:'Subcategory',label:'Button label'};
+/* ---------- store logo ---------- */
+function prepLogo(dataUrl){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{const W=384,sc=Math.min(1,W/im.width,200/im.height);const w=Math.max(8,Math.round(im.width*sc)),h=Math.max(8,Math.round(im.height*sc));
+ const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);res(c.toDataURL('image/png'))};im.onerror=()=>rej(new Error('That file is not a picture'));im.src=dataUrl})}
+let LOGO_RASTER=null,LOGO_SRC='';
+function logoRaster(){const src=S.settings&&S.settings.logo;if(!src)return null;if(LOGO_SRC===src)return LOGO_RASTER;LOGO_SRC=src;LOGO_RASTER=null;
+ const im=new Image();im.onload=()=>{const maxW=+S.cfg.paper===58?320:384;const sc=Math.min(1,maxW/im.width);const w=Math.round(im.width*sc)&~7||8,h=Math.round(im.height*sc)||8;
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);const d=x.getImageData(0,0,w,h).data;
+  const g=new Float32Array(w*h);for(let i=0;i<w*h;i++){const a=d[i*4+3]/255;g[i]=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])*a+255*(1-a)}
+  const bw=w/8,out=new Uint8Array(bw*h);for(let y=0;y<h;y++)for(let x2=0;x2<w;x2++){const i=y*w+x2,o=g[i],n=o<128?0:255,e=o-n;if(n===0)out[y*bw+(x2>>3)]|=0x80>>(x2&7);
+   if(x2+1<w)g[i+1]+=e*7/16;if(y+1<h){if(x2>0)g[i+w-1]+=e*3/16;g[i+w]+=e*5/16;if(x2+1<w)g[i+w+1]+=e/16}}
+  LOGO_RASTER={bw,h,data:out}};im.src=src;return null}
+const FILE={
+ async logo(dataUrl){try{S.settings.logo=await prepLogo(dataUrl);saveKV('settings');LOGO_SRC='';logoRaster();render();toast('Logo saved')}catch(e){toast(e.message,1)}},
+ csv(text){const first=text.split(/\r?\n/)[0]||'';const rows=first.includes('\t')&&!first.includes(',')?text.split(/\r?\n/).filter(r=>r.trim()).map(r=>r.split('\t')):parseCSV(text);
+  if(rows.length<2){toast('That file has no rows',1);return}
+  const head=rows[0].map(h=>String(h).trim().toLowerCase());const map={},used=new Set();
+  for(const[k,names]of Object.entries(HMAP)){let i=-1;for(const n of names){i=head.findIndex((h,j)=>h===n&&!used.has(j));if(i>=0)break}if(i>=0){map[k]=i;used.add(i)}}
+  for(const[k,names]of Object.entries(HMAP)){if(map[k]!=null)continue;const i=head.findIndex((h,j)=>!used.has(j)&&names.some(n=>n.length>=4&&h.includes(n)));if(i>=0){map[k]=i;used.add(i)}}
+  if(map.sku==null||map.name==null||map.price==null){openModal(`<div class="mtitle">Couldn't match the columns</div><div class="msub">The file needs a SKU/barcode column, an item name column and a price column.<br><br>Columns found: ${head.map(esc).join(', ')}</div><div class="mbtns">${cancelBtn('OK')}</div>`,'sm');return}
+  const num=v=>{const n=parseFloat(String(v??'').replace(/[$,\s]/g,''));return isNaN(n)?null:n};const str=(r,k)=>map[k]!=null?String(r[map[k]]??'').trim():null;
+  const items=[];for(const r of rows.slice(1)){const sku=str(r,'sku'),name=str(r,'name');if(!sku||!name)continue;items.push({sku,name,price:num(r[map.price]),cost:map.cost!=null?num(r[map.cost]):null,stock:map.stock!=null?num(r[map.stock]):null,cat:str(r,'cat'),sub:str(r,'sub'),label:str(r,'label')})}
+  const upd=items.filter(i=>findSku(i.sku)).length,hasSample=S.products.some(p=>p.sample);
+  openModal(`<div class="mtitle">Import ${items.length} items</div><div class="msub">${items.length-upd} new · ${upd} update existing items</div><table class="tbl mini">${Object.entries(map).map(([k,i])=>`<tr><td>${FIELDN[k]}</td><td>← “${esc(rows[0][i])}”</td></tr>`).join('')}</table>${hasSample?'<label class="tog"><input type="checkbox" id="rmSample" checked><span>Remove the sample items first</span></label>':''}<div class="mbtns">${cancelBtn()}<button class="btn green" data-a="cb" data-id="${cb(()=>{const rm=!!($('#rmSample')&&$('#rmSample').checked);doImport(items,rm)})}">Import</button></div>`,'sm')},
+ backup(text){let d;try{d=JSON.parse(text)}catch(e){toast('That is not a valid backup file',1);return}if(!d||!Array.isArray(d.products)){toast('That is not a valid backup file',1);return}
+  confirmBox(`Restore this backup?<br><small>${d.products.length} items, ${(d.orders||[]).length} orders, made ${d.exported?fmtDT(d.exported):'?'}. ${DESK&&!(d.orders||[]).length?'Items, settings and promos are replaced. Your sales history is kept.':'This REPLACES everything on this computer.'}</small>`,'Restore',()=>restore(d),{danger:true})}
+};
+async function removeSample(){const gone=S.products.filter(p=>p.sample);for(const p of gone)await DB.del('products',p.sku);S.products=S.products.filter(p=>!p.sample);reindex();
+ S.settings.quickKeys=S.settings.quickKeys.map(q=>q&&q.type==='item'&&!findSku(q.sku)?null:q);S.mixmatch.forEach(m=>m.skus=m.skus.filter(s=>findSku(s)));S.mixmatch=S.mixmatch.filter(m=>m.skus.length);saveKV('settings');saveKV('mixmatch');S.edit=null;return gone.length}
+async function doImport(items,rm){closeModal();if(rm)await removeSample();const cats=new Set(S.settings.categories.map(c=>c.name));const changed=[];
+ for(const it of items){let p=findSku(it.sku);if(!p){p=blankItem(it.sku);S.products.push(p);IDX.set(norm(p.sku),p)}
+  p.name=it.name;if(it.label)p.label=it.label;else if(!p.label)p.label=it.name;if(it.price!=null)p.price=it.price;if(it.cost!=null)p.cost=it.cost;if(it.stock!=null)p.stock=it.stock;if(it.sub!=null)p.sub=it.sub;
+  let cat=it.cat||p.cat||'Uncategorized';if(!cats.has(cat)){cats.add(cat);S.settings.categories.push({name:cat,color:PALETTE[S.settings.categories.length%PALETTE.length]})}p.cat=cat;delete p.sample;changed.push(p)}
+ await DB.putMany('products',changed);saveKV('settings');reindex();S.edit=null;render();toast(`Imported ${items.length} items`)}
+async function restore(d){const withOrders=!DESK||(Array.isArray(d.orders)&&d.orders.length>0);await DB.clear('products');if(withOrders)await DB.clear('orders');S.products=d.products.map(ensureItem);if(withOrders){S.orders=d.orders||[];await DB.putMany('orders',S.orders)}await DB.putMany('products',S.products);bumpOrders();
+ for(const k of KV_KEYS){if(d[k]!==undefined){S[k]=d[k];await DB.put('kv',d[k],k)}}S.settings={...defaultSettings(),...S.settings};reindex();S.edit=null;S.cat=null;S.cart=newCart();S.mmEdit=null;render();toast(`Loaded ${S.products.length} items`)}
+
+/* ---------- actions ---------- */
+const A={
+ pinK(d){const k=d.k;if(k==='C')S.pin='';else if(k==='⌫')S.pin=S.pin.slice(0,-1);else if(S.pin.length<8)S.pin+=k;const el=$('#pinD');if(el)el.innerHTML='•'.repeat(S.pin.length)||'&nbsp;'},
+ pinOk(){const u=S.users.find(u=>String(u.pin)===S.pin&&S.pin);S.pin='';if(!u){$('#pinD').innerHTML='&nbsp;';$('#pinMsg').textContent='Wrong PIN';beep(300,250);return}S.user=u;S.screen='register';render()},
+ lock(){if(S.dirty){toast('Save or discard your item changes first',1);return}S.user=null;S.pin='';closeModal();render()},
+ fullscreen(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{})},
+ go(d){const need={items:'items_view',orders:'txn_view',reports:'reports_view',promos:'promos',settings:'settings'}[d.v];if(need&&!can(need)){toast(`${S.user.name} doesn't have access to that`,1);return}if(S.screen==='items'&&d.v!=='items'&&S.dirty){guardDirty(()=>{S.screen=d.v;render()});return}if(S.screen==='promos'&&S.mmDirty&&d.v!=='promos'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.screen=d.v;render()},{danger:true});return}S.screen=d.v;render()},
+ goPay(){if(!S.cart.lines.length){toast('Add items first');return}S.screen='pay';render()},
+ cardQuick(d){if(!S.cart.lines.length){toast('Add items first');return}tenderModal(d.v)},
+ tender(d){tenderModal(d.v)},
+ qcash(d){tender('Cash',+d.v)},
+ rmPay(d){const p=S.cart.payments[+d.i];if(!p)return;confirmBox(`Remove ${esc(p.type)} payment of $${money(p.amount)}?${CARDLIKE.includes(p.type)?'<br><br><b>Also void it on the card terminal.</b>':''}`,'Remove',()=>{S.cart.payments.splice(+d.i,1);render()},{danger:true})},
+ splitPay(){if(!S.cart.lines.length){toast('Add items first');return}const c=calc(S.cart);if(c.balance<=0.004)return;
+  keypad({title:'Split payment — cash part',sub:`Total due <b>$${money(c.balance)}</b>. Enter how much the customer pays in <b>cash</b>.<br>The rest goes on a card next.`,okLabel:'Next',
+   onOk:v=>{v=r2(v);if(!(v>0))return;if(v>=c.balance-0.004){tender('Cash',v);return}
+    S.cart.payments.push({type:'Cash',amount:v,time:Date.now()});S.screen='pay';render();splitRest()}})},
+ split(){const c=calc(S.cart);if(c.balance<=0)return;keypad({title:'Split evenly — how many ways?',mode:'int',onOk:n=>{if(n>1)toast(`Each person pays $${money(Math.ceil(c.balance/n*100)/100)}. Tap their payment type and key in that amount.`)}})},
+ cat(d){S.cat=d.v;S.gsub='';S.gq='';render()},
+ gqClear(){S.gq='';render()},
+ prod(d){const p=findSku(d.sku);if(p)addItem(p)},
+ selLine(d){const i=+d.i;S.sel=S.sel===i?null:i;render()},
+ lt(d){const i=S.sel,l=S.cart.lines[i];if(!l)return;const v=d.v;
+  if(v==='plus'){l.qty+=l.qty<0?-1:1;render()}
+  else if(v==='minus'){const nq=l.qty<0?l.qty+1:l.qty-1;if(nq===0)needMgr('remove',()=>removeLine(i));else{l.qty=nq;render()}}
+  else if(v==='qty')keypad({title:`Quantity — ${esc(l.name)}`,mode:'int',onOk:q=>{if(q>0){l.qty=l.qty<0?-q:q;render()}}});
+  else if(v==='price'){const p=findSku(l.sku);if(p&&p.priceOverride===false&&!can('items_edit')){toast('Price override is turned off for this item',1);return}needMgr('price',by=>keypad({title:`New price — ${esc(l.name)}`,sub:`Regular price $${money(l.origPrice??l.price)}`,onOk:pr=>{l.price=r2(pr);if(l.price!==l.origPrice)l.priceBy=by;render()}}))}
+  else if(v==='disc')needMgr('disc',()=>discountModal());
+  else if(v==='ret'){if(l.qty<0){l.qty=-l.qty;render()}else needMgr('ret',()=>{l.qty=-l.qty;render()})}
+  else if(v==='remove')needMgr('remove',()=>removeLine(i))},
+ qa(d){const v=d.v;if(v==='remove'){const i=S.sel!=null?S.sel:S.cart.lines.length-1;if(i>=0&&S.cart.lines[i])needMgr('remove',()=>removeLine(i))}
+  else if(v==='disc')needMgr('disc',()=>discountModal());else if(v==='disc10'){if(!S.cart.lines.length){toast('Add items first');return}const tg=S.sel!=null?'line':'order';needMgr('disc',by=>applyDisc({name:'10%',type:'%',value:10},tg,by))}
+  else if(v==='drawer')needMgr('nosale',()=>openDrawer());else if(v==='age')ageCheck(()=>{toast('Age verified for this order');render()});else if(v==='misc')A.misc();else if(v==='qty')A.lt({v:'qty'});else if(v==='find')A.find();else if(v==='payout')A.payout()},
+ find(){openModal(`<div class="mtitle">Find item</div><input class="big-in" id="findQ" data-in="findQ" data-enter="find" placeholder="Type a name or SKU" autocomplete="off"><div class="findr" id="findR"></div><div class="mbtns">${cancelBtn('Close')}</div>`,'wide');setTimeout(()=>{const i=$('#findQ');i&&i.focus()},40);IN.findQ($('#findQ'))},
+ findPick(d){const p=findSku(d.sku);closeModal();if(p)addItem(p)},
+ misc(){needMgr('misc',()=>A.misc2())},
+ misc2(){keypad({title:'Misc. sale amount',onOk:v=>{if(!(v>0))return;S.cart.lines.push({sku:'MISC',name:'MISC SALE',price:r2(v),origPrice:r2(v),qty:1,cost:0,taxes:defaultTaxes(),misc:true,cat:'Misc',inv:false});S.sel=S.cart.lines.length-1;if(S.screen!=='pay')S.screen='register';render()}})},
+ fee(){const i=S.cart.lines.findIndex(l=>l.fee);if(i>=0){needMgr('fee',()=>{S.cart.lines.splice(i,1);S.sel=null;render()});return}if(!S.cart.lines.length){toast('Add items first');return}const c=calc(S.cart),f=S.settings.cardFee;const amt=f.type==='%'?r2(c.total*f.value/100):r2(f.value);if(!(amt>0))return;
+  S.cart.lines.push({sku:'FEE',name:f.label||'CARD FEE',price:amt,origPrice:amt,qty:1,cost:0,taxes:[],misc:true,fee:true,cat:'Fees',inv:false});render()},
+ disc(){needMgr('disc',()=>discountModal())},
+ label(){promptText('Ticket label (customer name or note)',S.cart.label,v=>{S.cart.label=v.trim();render()})},
+ save(){if(!S.cart.lines.length){toast('Nothing to save');return}if(S.cart.payments.length){toast('This order has payments — finish it instead',1);return}
+  const go=lab=>{S.held.push({id:uid(),label:lab||S.cart.label||'',time:Date.now(),user:S.user.name,cart:clone(S.cart)});saveKV('held');S.cart=newCart();S.sel=null;S.screen='register';render();toast('Sale on hold — tap Get Held to bring it back')};
+  if(S.cart.label)go(S.cart.label);else promptText('Name this held sale','',go,'Customer name')},
+ get(){if(!S.held.length){toast('No saved transactions');return}
+  openModal(`<div class="mtitle">Saved transactions</div>${S.held.map((h,i)=>{const c=calc(h.cart);return `<div class="arow"><span><b>${esc(h.label||'(no label)')}</b> — $${money(c.total)}<div class="hint">${fmtDT(h.time)} · ${esc(h.user)} · ${h.cart.lines.length} lines</div></span><span><button class="btn sm red" data-a="cb" data-id="${cb(()=>{S.held.splice(i,1);saveKV('held');closeModal();A.get();render()})}">Delete</button> <button class="btn sm green" data-a="cb" data-id="${cb(()=>{if(S.cart.lines.length){toast('Finish or save the current order first',1);return}S.cart=h.cart;S.held.splice(i,1);saveKV('held');closeModal();S.sel=null;S.screen='register';render()})}">Open</button></span></div>`}).join('')}<div class="mbtns">${cancelBtn('Close')}</div>`,'sm')},
+ clear(){if(!S.cart.lines.length&&!S.cart.payments.length)return;needMgr('clear',()=>A.clear2())},
+ clear2(){confirmBox(`Clear the whole order?${S.cart.payments.length?'<br><br><b>This order has payments.</b> Return any cash and void card payments on the terminal.':''}`,'Clear All',()=>{S.cart=newCart();S.sel=null;S.screen='register';render()},{danger:true})},
+ payout(){needMgr('payout',by=>A.payout2(by))},
+ payout2(by){keypad({title:'Pay out cash from the drawer',onOk:v=>{if(!(v>0))return;promptText(`Reason for $${money(v)} pay out`,'',reason=>{const p={id:uid(),time:Date.now(),amount:r2(v),reason:reason.trim()||'Pay out',user:S.user.name,approvedBy:by&&by!==S.user.name?by:''};S.payouts.push(p);saveKV('payouts');if(DESK&&(S.cfg.drawerMode||'raw')==='raw')openDrawer();printHtml(`<div class="rc"><div class="c"><b>PAY OUT</b></div><hr><div class="r b"><span>Amount</span><span>$${money(p.amount)}</span></div><div>${esc(p.reason)}</div><div>${fmtDT(p.time)} · ${esc(p.user)}</div><br><div>Signature: ____________</div><br></div>`);toast('Pay out recorded')},'e.g. Vendor delivery')}})},
+ cb(d){const f=CB.get(d.id);if(f)f(d)},
+ kpK(d){kpPress(d.k)},
+ kpOk(){const k=S.kp;if(!k)return;const v=k.mode==='dob'?k.buf:kpVal();const f=k.onOk;closeModal();f&&f(v)},
+ // items
+ openItem(d){openItem(d.sku)},
+ openItemPromo(d){S.itemTab='promo';openItem(d.sku)},
+ newItem(){newItem('')},
+ itemTab(d){S.itemTab=d.v;render()},
+ color(d){S.edit.color=d.v;S.dirty=true;render()},
+ day(d,el){const o=OBJ[d.o]();const arr=getP(o,d.f);const n=+d.d;const i=arr.indexOf(n);if(i>=0)arr.splice(i,1);else arr.push(n);el.classList.toggle('on');if(d.o==='edit')S.dirty=true;if(d.o==='mm')S.mmDirty=true},
+ saveItem(){if(!can('items_edit')){toast(`${S.user.name} isn't allowed to do that`,1);return}const e=S.edit;e.sku=String(e.sku||'').trim();e.name=String(e.name||'').trim();
+  if(!e.sku||!e.name){toast('SKU and item name are required',1);return}if(!(e.price>=0)){toast('Price is required',1);return}
+  const ex=findSku(e.sku);if(ex&&ex.sku!==S.editOrig){toast('Another item already uses that SKU',1);return}
+  if(!e.label)e.label=e.name;e.price=r2(e.price);delete e.sample;
+  const orig=S.editOrig;if(orig&&orig!==e.sku){S.products=S.products.filter(p=>p.sku!==orig);DB.del('products',orig);S.settings.quickKeys.forEach(q=>{if(q&&q.sku===orig)q.sku=e.sku});S.mixmatch.forEach(m=>m.skus=m.skus.map(s=>s===orig?e.sku:s));saveKV('settings');saveKV('mixmatch')}
+  const rec=clone(e);const i=S.products.findIndex(p=>p.sku===rec.sku);if(i>=0)S.products[i]=rec;else S.products.push(rec);DB.put('products',rec);reindex();S.editOrig=rec.sku;S.dirty=false;render();toast('Saved')},
+ delItem(){if(!can('items_delete')){toast(`${S.user.name} isn't allowed to do that`,1);return}if(!S.editOrig){S.edit=null;S.dirty=false;render();return}const sku=S.editOrig;confirmBox(`Delete <b>${esc(S.edit.name)}</b>?<br><small>Past sales keep their records.</small>`,'Delete',()=>{S.products=S.products.filter(p=>p.sku!==sku);DB.del('products',sku);reindex();S.edit=null;S.editOrig=null;S.dirty=false;render();toast('Deleted')},{danger:true})},
+ dupItem(){if(!can('items_edit')){toast(`${S.user.name} isn't allowed to do that`,1);return}guardDirty(()=>{const c=clone(S.edit);c.sku='';c.name=c.name+' COPY';c.stock=0;delete c.sample;S.edit=c;S.editOrig=null;S.dirty=true;S.itemTab='details';render();toast('Copy made — enter a new SKU, then Save')})},
+ adjItem(){if(!can('stock')){toast(`${S.user.name} isn't allowed to do that`,1);return}if(!S.editOrig){toast('Save the item first',1);return}if(S.dirty){toast('Save your changes first',1);return}const p=findSku(S.editOrig);if(p.nonInventory){toast('This item is not tracked',1);return}
+  const reasons=['Received from vendor','Count correction','Damaged','Expired','Theft / missing','Other'];
+  const apply=sign=>{const q=kpVal();const r=$('#adjR').value;if(!(q>0)){toast('Enter a quantity',1);return}closeModal();const before=+p.stock||0;p.stock=r2(before+sign*q);DB.put('products',p);S.invlog.push({time:Date.now(),sku:p.sku,name:p.name,change:sign*q,reason:r,user:S.user.name,before,after:p.stock,cost:p.cost});saveKV('invlog');S.edit.stock=p.stock;render();toast(`Stock now ${p.stock}`)};
+  keypad({title:`Adjust stock — ${esc(p.name)}`,mode:'int',sub:`Currently ${p.stock} in stock`,extra:`<label class="fld" style="margin-top:10px"><span>Reason</span><select id="adjR">${reasons.map(r=>`<option>${r}</option>`).join('')}</select></label><div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(()=>apply(-1))}">− Remove</button><button class="btn green" data-a="cb" data-id="${cb(()=>apply(1))}">+ Add</button></div>`,okLabel:'Add',onOk:null});
+  S.kp.onOk=null;const ok=$('#mok');if(ok)ok.remove()},
+ // orders
+ ordSel(d){S.ordSel=d.v;render()},
+ reprint(){const o=getOrder(S.ordSel);if(o)printReceipt(o)},
+ refund(){const o=getOrder(S.ordSel);if(!o||o.status!=='paid')return;if(!can('refund')){toast(`${S.user.name} isn't allowed to refund`,1);return}
+  const t={};o.payments.forEach(p=>t[p.type]=(t[p.type]||0)+p.amount);if(o.change)t.Cash=(t.Cash||0)-o.change;const list=Object.entries(t).filter(([k,v])=>Math.abs(v)>0.004);
+  confirmBox(`Refund transaction #${o.num} for <b>$${money(o.total)}</b>?<br><br>${list.map(([k,v])=>`${esc(k)}: $${money(v)}`).join('<br>')}<br><br><small>Items go back into stock. Card refunds must also be done on the card terminal.</small>`,'Refund',()=>{
+   const r={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:'',refundOf:o.num,lines:o.lines.map(l=>({...l,qty:-l.qty,disc:-l.disc,net:-l.net,tax:-l.tax})),subtotal:-o.subtotal,discount:-o.discount,taxes:o.taxes.map(x=>({...x,amount:-x.amount})),tax:-o.tax,total:-o.total,payments:list.map(([k,v])=>({type:k,amount:-r2(v),time:Date.now()})),change:0,status:'refund'};
+   r.lines.forEach(l=>{if(!l.inv)return;const p=findSku(l.sku);if(p&&!p.nonInventory){p.stock=r2((+p.stock||0)-l.qty);DB.put('products',p)}});
+   o.status='refunded';o.refundNum=r.num;DB.put('orders',o);S.orders.push(r);DB.put('orders',r);DC.det[r.id]=r;bumpOrders();saveKV('settings');S.ordSel=r.id;render();toast('Refund recorded');printReceipt(r)},{danger:true})},
+ // reports
+ repRange(d){S.rep.range=d.v;render()},
+ repPrint(){if(!can('reports_print')){toast(`${S.user.name} isn't allowed to print reports`,1);return}const[a,b]=rangeOf(S.rep.range,S.rep.from,S.rep.to);const R=reportData(a,b);if(!R){toast('Report is still loading');return}const lab=(RANGES.find(r=>r[0]===S.rep.range)||[])[1];
+  printHtml(`<div class="rc"><div class="c"><b>${esc(S.settings.storeName)}</b><br>SALES SUMMARY — ${esc(lab)}<br>${new Date(a).toLocaleDateString()} – ${new Date(Math.min(b,Date.now())).toLocaleDateString()}<br>Printed ${fmtDT(Date.now())}</div><hr>
+  <div class="r"><span>Transactions</span><span>${R.n}</span></div><div class="r"><span>Gross sales</span><span>${money(R.gross)}</span></div><div class="r"><span>Discounts</span><span>-${money(R.disc)}</span></div><div class="r b"><span>Net sales</span><span>${money(R.net)}</span></div>${Object.entries(R.taxes).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}<div class="r b"><span>Total</span><span>${money(R.total)}</span></div><hr>
+  ${Object.entries(R.tend).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}${R.payTot?`<div class="r"><span>Pay outs</span><span>-${money(R.payTot)}</span></div>`:''}<div class="r b"><span>Cash expected</span><span>${money(R.cashExpected)}</span></div>${R.refN?`<div class="r"><span>Refunds (${R.refN})</span><span>${money(R.refunds)}</span></div>`:''}<hr>
+  ${Object.entries(R.cats).sort((x,y)=>y[1].sales-x[1].sales).map(([k,v])=>`<div class="r"><span>${esc(k)} (${v.qty})</span><span>${money(v.sales)}</span></div>`).join('')}<br></div>`)},
+ repPage(){if(!can('reports_print')){toast(`${S.user.name} isn't allowed to print reports`,1);return}const[a,b]=rangeOf(S.rep.range,S.rep.from,S.rep.to);const R=reportData(a,b);if(!R){toast('Report is still loading');return}
+  pickPrinter('Print sales report',async o=>{const html=reportPageHtml(R,a,b,o);const name=`sales-report-${S.rep.range}-${localDay()}`;
+   if(!DESK){$('#print').innerHTML=`<style>@page{size:letter;margin:12mm}#print{font-family:Arial}${PAGE_CSS}</style>`+html;setTimeout(()=>window.print(),60);return}
+   if(o.pdf){toast('Making PDF…');const r=await posAPI.savePdf({html,css:PAGE_CSS,name});if(r.ok)toast('Saved '+r.path);else if(!r.canceled)toast('PDF failed: '+r.error,1);return}
+   S.cfg.reportPrinter=o.printer;posAPI.setConfig({reportPrinter:o.printer});toast('Sending to '+o.printer+'…');
+   const r=await posAPI.printDoc({html,css:PAGE_CSS,printer:o.printer});toast(r.ok?'Report sent to '+o.printer:'Printer problem: '+r.error,!r.ok)})},
+ repPdf(){if(!can('reports_print')){toast(`${S.user.name} isn't allowed to print reports`,1);return}const[a,b]=rangeOf(S.rep.range,S.rep.from,S.rep.to);const R=reportData(a,b);if(!R){toast('Report is still loading');return}
+  const go=async all=>{closeModal();const html=reportPageHtml(R,a,b,{allItems:all});const name=`sales-report-${S.rep.range==='custom'?(S.rep.from||'')+'_'+(S.rep.to||''):S.rep.range}-${localDay()}`;
+   if(!DESK){$('#print').innerHTML=`<style>@page{size:letter;margin:12mm}${PAGE_CSS}</style>`+html;toast('Choose “Save as PDF” as the printer');setTimeout(()=>window.print(),60);return}
+   toast('Making PDF…');const r=await posAPI.savePdf({html,css:PAGE_CSS,name});
+   if(r.ok){S.cfg.kiosk?openModal(`<div class="mtitle">PDF saved</div><div class="msub">${esc(r.path)}</div><div class="mbtns">${cancelBtn('OK')}<button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();posAPI.showFile(r.path)})}">Show in folder</button></div>`,'sm'):toast('Saved '+r.path)}
+   else if(!r.canceled)toast('PDF failed: '+r.error,1)};
+  openModal(`<div class="mtitle">Download report as PDF</div><div class="msub">Which items should the report list?</div><div class="mbtns col"><button class="btn green" style="min-height:60px" data-a="cb" data-id="${cb(()=>go(false))}">Top 50 items (short report)</button><button class="btn blue" style="min-height:60px" data-a="cb" data-id="${cb(()=>go(true))}">Every item sold (full report)</button>${cancelBtn()}</div>`,'sm')},
+ repCsv(){if(!can('reports_print')){toast(`${S.user.name} isn't allowed to print reports`,1);return}const[a,b]=rangeOf(S.rep.range,S.rep.from,S.rep.to);const R=reportData(a,b);if(!R){toast('Report is still loading');return}const rows=[['SKU','Item','Category','Qty Sold','Net Sales','Cost','Profit']];Object.values(R.items).sort((x,y)=>y.sales-x.sales).forEach(i=>rows.push([i.sku,i.name,i.cat,i.qty,money(i.sales),money(i.cost),money(i.sales-i.cost)]));download(`item-sales-${S.rep.range}-${localDay()}.csv`,toCSV(rows),'text/csv')},
+ // promos
+ promoTab(d){if(S.mmDirty&&d.v!=='mm'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.promoTab=d.v;render()},{danger:true});return}S.promoTab=d.v;render()},
+ discAdd(){S.discounts.push({id:uid(),name:'New discount',type:'%',value:5});saveKV('discounts');render()},
+ discDel(d){S.discounts.splice(+d.i,1);saveKV('discounts');render()},
+ mmSel(d){const go=()=>{const m=S.mixmatch.find(x=>x.id===d.v);S.mmEdit=m?clone(m):null;S.mmDirty=false;render()};if(S.mmDirty)confirmBox('Discard unsaved deal changes?','Discard',go,{danger:true});else go()},
+ mmNew(){S.mmEdit={id:uid(),name:'New deal',active:true,buy:2,amount:0,max:0,start:'',end:'',days:[],skus:[]};S.mmDirty=true;render()},
+ mmSave(){const m=S.mmEdit;if(!m.name.trim()){toast('Give the deal a name',1);return}if(!(m.buy>=1)){toast('Buy quantity must be at least 1',1);return}if(!m.skus.length){toast('Add at least one item',1);return}const i=S.mixmatch.findIndex(x=>x.id===m.id);if(i>=0)S.mixmatch[i]=clone(m);else S.mixmatch.push(clone(m));saveKV('mixmatch');S.mmDirty=false;render();toast('Deal saved')},
+ mmDel(){const m=S.mmEdit;confirmBox(`Delete deal <b>${esc(m.name)}</b>?`,'Delete',()=>{S.mixmatch=S.mixmatch.filter(x=>x.id!==m.id);saveKV('mixmatch');S.mmEdit=null;S.mmDirty=false;render()},{danger:true})},
+ mmAdd(d){mmAddSku(d.sku)},
+ mmAddCat(){const c=$('#mmCat').value;if(!c)return;S.products.filter(p=>p.cat===c&&!p.discontinued).forEach(p=>{if(!S.mmEdit.skus.includes(p.sku))S.mmEdit.skus.push(p.sku)});S.mmDirty=true;$('#mmItems').innerHTML=mmItemsHtml()},
+ mmRm(d){S.mmEdit.skus=S.mmEdit.skus.filter(s=>s!==d.sku);S.mmDirty=true;$('#mmItems').innerHTML=mmItemsHtml()},
+ // settings
+ setTab(d){S.setTab=d.v;render();if(DESK&&d.v==='printers')Promise.all([posAPI.printers(),posAPI.comPorts()]).then(([p,c])=>{S.printers=p;S.comPorts=c;if(S.screen==='settings'&&S.setTab==='printers')render()})},
+ taxAdd(){const ids=S.settings.taxGroups.map(g=>g.id);let c='A';while(ids.includes(c))c=String.fromCharCode(c.charCodeAt(0)+1);S.settings.taxGroups.push({id:c,name:'New tax',rate:0,type:'%',show:true,def:false});saveKV('settings');render()},
+ catAdd(){promptText('New category name','',n=>{n=n.trim();if(!n)return;if(S.settings.categories.some(c=>c.name.toLowerCase()===n.toLowerCase())){toast('That category exists',1);return}S.settings.categories.push({name:n,color:PALETTE[S.settings.categories.length%PALETTE.length]});saveKV('settings');render()})},
+ catRen(d){const c=S.settings.categories[+d.i];promptText('Rename category',c.name,n=>{n=n.trim();if(!n||n===c.name)return;if(S.settings.categories.some(x=>x!==c&&x.name.toLowerCase()===n.toLowerCase())){toast('That name is taken',1);return}const old=c.name;c.name=n;const ch=S.products.filter(p=>p.cat===old);ch.forEach(p=>p.cat=n);DB.putMany('products',ch);if(S.cat===old)S.cat=n;saveKV('settings');render();toast(`Renamed — ${ch.length} items moved`)})},
+ catMove(d){const i=+d.i,j=i+(+d.v);const a=S.settings.categories;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];saveKV('settings');render()},
+ catDel(d){const c=S.settings.categories[+d.i];const n=S.products.filter(p=>p.cat===c.name).length;if(n){toast(`Move the ${n} items in ${c.name} to another category first`,1);return}confirmBox(`Delete category <b>${esc(c.name)}</b>?`,'Delete',()=>{S.settings.categories.splice(+d.i,1);saveKV('settings');render()},{danger:true})},
+ qkSlot(d){const i=+d.i;openModal(`<div class="mtitle">Quick key ${i+1}</div><div class="msub">Pick an action, or search for an item.</div><div class="qacts">${Object.entries(QA).map(([k,[t]])=>`<button class="btn" data-a="cb" data-id="${cb(()=>setQK(i,{type:'act',act:k}))}">${t}</button>`).join('')}<button class="btn red" data-a="cb" data-id="${cb(()=>setQK(i,null))}">Empty</button></div><input class="big-in" id="qkQ" data-in="qkQ" data-i="${i}" placeholder="Search items…" autocomplete="off"><div class="findr" id="qkR"></div><div class="mbtns">${cancelBtn('Close')}</div>`,'wide')},
+ qkPick(d){setQK(+d.i,{type:'item',sku:d.sku})},
+ qkRow(d){const q=S.settings.quickKeys;if(+d.v>0)q.push(...Array(7).fill(null));else if(q.length>7)q.splice(Math.max(7,q.length-7));saveKV('settings');render()},
+ genSku(){if(!can('items_edit')){toast(`${S.user.name} isn't allowed to do that`,1);return}const go=()=>{const c=newStoreBarcode();if(!c){toast('Could not make a barcode',1);return}S.edit.sku=c;S.dirty=true;render();toast('New barcode '+c+' — tap Save, then Print Labels')};
+  if(S.edit.sku&&S.editOrig)confirmBox(`This item already has barcode <b>${esc(S.edit.sku)}</b>.<br>Replace it with a new store barcode?`,'Replace',go);else go()},
+ labelItem(){if(!S.editOrig||S.dirty){toast('Save the item first',1);return}const p=findSku(S.editOrig);keypad({title:`Print labels — ${esc(p.name)}`,mode:'int',value:'1',sub:`Label size ${esc(S.settings.labelSize)} in · ${DESK?esc(S.cfg.labelPrinter||'no label printer chosen'):'browser print'}`,okLabel:'Print',onOk:n=>{if(n>0&&n<=500)printLabels(p,n)}})},
+ async usePr(d){const p=S.printers[+d.i];if(!p)return;let patch;
+  if(d.v==='receipt')patch={printer:p.name,rcptConn:['driver','winraw'].includes(S.cfg.rcptConn)?S.cfg.rcptConn:'driver'};else if(d.v==='report')patch={reportPrinter:p.name};else patch={labelPrinter:p.name};
+  Object.assign(S.cfg,patch);await posAPI.setConfig(patch);render();toast(`${p.name} will print ${d.v==='receipt'?'receipts':d.v==='report'?'reports':'labels'}`)},
+ async testPr(d){const p=S.printers[+d.i];if(!p)return;toast('Sending test page to '+p.name+'…');
+  const r=await posAPI.printDoc({html:`<div style="font-family:Arial;padding:10px"><h2 style="margin:0">${esc(S.settings.storeName)}</h2><p>Printer test — ${esc(p.name)}</p><p>${fmtDT(Date.now())}</p><p>If you can read this, the printer works with Store POS.</p></div>`,css:'body{margin:0}',printer:p.name,pageSize:{width:72000,height:60000}});
+  toast(r.ok?'Test sent to '+p.name:'Printer problem: '+r.error,!r.ok)},
+ addPrinter(){confirmBox('Open Windows printer setup?<br><small>Store POS will step aside. When you have added the printer, tap the Store POS button on the taskbar to come back, then tap Refresh list.</small>','Open printer setup',()=>posAPI.addPrinter())},
+ async hwRefresh(){S.printers=await posAPI.printers();S.comPorts=await posAPI.comPorts();render();toast(`${S.printers.length} printers, ${S.comPorts.length} COM ports found`)},
+ async hwTestPrint(){const ok=await printHtml(`<div class="rc"><div class="c b">${esc(S.settings.storeName)}</div><hr><div class="c">PRINTER TEST</div><div class="r"><span>Paper</span><span>${S.cfg.paper||80} mm</span></div><div>${fmtDT(Date.now())}</div><hr><div class="c">If you can read this, receipts are working.</div><br></div>`);if(ok)toast('Sent to printer')},
+ async hwTestDrawer(){if((S.cfg.drawerMode||'raw')==='raw'){toast('Sending drawer command…');const r=await posAPI.openDrawer();toast(r.ok?'Drawer command sent to '+r.printer:'Cash drawer: '+r.error,!r.ok)}else openDrawer()},
+ async hwBackup(){const r=await posAPI.backupNow();S.cfg=await posAPI.getConfig();render();toast(r.ok?'Backup saved':'Backup problem: '+r.errors.join('; '),!r.ok)},
+ async hwBackupDir(){await posAPI.chooseBackupDir();S.cfg=await posAPI.getConfig();render()},
+ hwOpen(d){posAPI.openFolder(d.v)},
+ async restoreDb(){const r=await posAPI.restoreDb();if(r&&r.error)toast('Restore failed: '+r.error,1)},
+ hwExit(){confirmBox('Exit Store POS?','Exit',()=>posAPI.exitApp(),{danger:true})},
+ userPerms(d){const i=+d.i,u=S.users[i];if(u.role==='admin'){toast('The Owner can always do everything');return}
+  const draw=()=>{const p=u.perms||ROLE_PRESET[u.role]||{};openModal(`<div class="mtitle">Permissions — ${esc(u.name)}</div><div class="msub">Tick what ${esc(u.name)} is allowed to do.</div>
+  ${PERMS.map(([g,list])=>`<h4>${g}</h4><div class="togs">${list.map(([k,t])=>`<label class="tog"><input type="checkbox" data-perm="${k}" ${p[k]?'checked':''}><span>${t}</span></label>`).join('')}</div>`).join('')}
+  <div class="mbtns"><button class="btn" data-a="cb" data-id="${cb(()=>{u.perms={...ROLE_PRESET.cashier};saveKV('users');draw()})}">Cashier preset</button><button class="btn" data-a="cb" data-id="${cb(()=>{u.perms={...ROLE_PRESET.manager};saveKV('users');draw()})}">Manager preset</button><button class="btn green" data-a="cb" data-id="${cb(()=>{closeModal();render()})}">Done</button></div>`,'wide')};
+  S.permUser=i;draw()},
+ async installUpdate(){const r=await posAPI.installUpdate();if(r&&r.error)openModal(`<div class="mtitle">Update not installed</div><div class="msub">${esc(r.error)}</div><div class="mbtns">${cancelBtn('OK')}</div>`,'sm')},
+ async undoUpdate(){await posAPI.undoUpdate()},
+ async chkUpdate(){toast('Checking…');const r=await posAPI.checkUpdate();if(!r.ok)toast('Update check: '+r.error,1);else if(r.available){S.updAvail=r.available;render()}else toast('You have the latest version')},
+ async dlUpdate(){toast('Downloading update…');const r=await posAPI.downloadUpdate();if(r&&r.error)toast('Update: '+r.error,1)},
+ logoDel(){S.settings.logo='';LOGO_SRC='';LOGO_RASTER=null;saveKV('settings');render()},
+ userAdd(){S.users.push({id:uid(),name:'New user',pin:String(Math.floor(1000+Math.random()*9000)),role:'cashier'});saveKV('users');render()},
+ userDel(d){const u=S.users[+d.i];if(u===S.user){toast("You can't delete yourself",1);return}if(u.role==='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one admin',1);return}confirmBox(`Delete user <b>${esc(u.name)}</b>?`,'Delete',()=>{S.users.splice(+d.i,1);saveKV('users');render()},{danger:true})},
+ exportBackup(){const d={version:1,exported:Date.now(),products:S.products,orders:S.orders};KV_KEYS.forEach(k=>d[k]=S[k]);download(`pos-backup-${localDay()}.json`,JSON.stringify(d),'application/json');toast('Backup downloaded')},
+ exportCsv(){const rows=[['SKU','Item Name','Button Label','Price','Cost','Qty In Stock','Category','Subcategory','Age Check','EBT','Taxes','Vendor']];S.products.forEach(p=>rows.push([p.sku,p.name,p.label,money(p.price),money(p.cost),p.stock,p.cat,p.sub,p.ageCheck?'Y':'',p.ebt?'Y':'',p.taxes.join(' '),p.vendor]));download(`items-${localDay()}.csv`,toCSV(rows),'text/csv')},
+ wipeSample(){confirmBox('Remove all sample items?','Remove',async()=>{const n=await removeSample();render();toast(`Removed ${n} sample items`)},{danger:true})},
+ wipeItems(){confirmBox('Delete ALL items?<br><small>Make a backup first. This cannot be undone.</small>','Delete all items',async()=>{await DB.clear('products');S.products=[];reindex();S.edit=null;render();toast('All items deleted')},{danger:true})},
+ wipeSales(){confirmBox('Delete ALL sales history, stock adjustments and pay outs?<br><small>Make a backup first. This cannot be undone.</small>','Delete history',async()=>{await DB.clear('orders');S.orders=[];bumpOrders();if(DESK)S.stats=await posAPI.stats();S.invlog=[];S.payouts=[];saveKV('invlog');saveKV('payouts');render();toast('Sales history deleted')},{danger:true})}
+};
+function histUI(h){const el=$('#hist');if(!el)return;
+ if(h.running){const pct=h.total?Math.min(100,Math.round(h.done/h.total*100)):0;el.className='on';el.innerHTML=`Importing sales history from old POS<small>${h.done.toLocaleString()}${h.total?' of '+h.total.toLocaleString():''} orders · you can keep selling</small><div class="pbar"><i style="width:${pct}%"></i></div>`;return}
+ el.className='';bumpOrders();posAPI.stats().then(s=>{S.stats=s;if(S.screen!=='register')render()});
+ if(h.finished)toast(`Sales history imported: ${h.done.toLocaleString()} transactions`);else if(h.error)toast('History import problem: '+h.error,1)}
+function splitRest(){const c=calc(S.cart);if(c.balance<=0.004){finishSale();return}
+ const cash=sum(S.cart.payments.filter(p=>p.type==='Cash'),p=>p.amount);
+ openModal(`<div class="mtitle">Remaining: $${money(c.balance)}</div><div class="msub">Cash taken: $${money(cash)}. How is the customer paying the rest?</div><div class="dgrid">${['Credit','Debit','EBT Food','Gift Card','Check','Other'].map(t=>`<button class="btn green" style="min-height:64px" data-a="cb" data-id="${cb(()=>{closeModal();tender(t,c.balance)})}">${t}</button>`).join('')}</div><div class="mbtns">${cancelBtn('Choose later')}</div>`,'wide')}
+/* ---------- barcodes ---------- */
+const EAN_L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+const EAN_R=EAN_L.map(c=>c.replace(/./g,b=>b==='0'?'1':'0'));
+const EAN_G=EAN_R.map(c=>c.split('').reverse().join(''));
+const EAN_PAR=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+function ean13Bits(d){if(d.length===12)d='0'+d;const p=EAN_PAR[+d[0]];let b='101';for(let i=1;i<=6;i++)b+=(p[i-1]==='L'?EAN_L:EAN_G)[+d[i]];b+='01010';for(let i=7;i<=12;i++)b+=EAN_R[+d[i]];return b+'101'}
+const C128=['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'];
+function code128Bits(t){t=toAscii(String(t));const v=[104];for(const ch of t)v.push(ch.charCodeAt(0)-32);let ck=104;v.slice(1).forEach((x,i)=>ck+=x*(i+1));v.push(ck%103,106);
+ let b='';for(const x of v){const w=C128[x];w.split('').forEach((n,i)=>b+=(i%2?'0':'1').repeat(+n))}return b}
+function barcodeSVG(code,{h=60,mod=2,text=true}={}){code=String(code).trim();const isEan=/^\d{12,13}$/.test(code)&&upcCheck(code.slice(0,-1))===code.slice(-1);
+ const bits=isEan?ean13Bits(code):code128Bits(code);const q=10*mod;const W=bits.length*mod+q*2;let r='',x=q;
+ for(let i=0;i<bits.length;){if(bits[i]==='1'){let j=i;while(bits[j]==='1')j++;r+=`<rect x="${x+i*mod-q+q}" y="0" width="${(j-i)*mod}" height="${h}"/>`;i=j}else i++}
+ r=r.replace(/x="(\d+(\.\d+)?)"/g,(m,v)=>`x="${+v}"`);
+ return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h+(text?16:0)}" width="${W}" height="${h+(text?16:0)}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${r}</g>${text?`<text x="${W/2}" y="${h+13}" font-family="Arial" font-size="13" text-anchor="middle">${esc(code)}</text>`:''}</svg>`}
+function newStoreBarcode(){for(let n=0;n<200;n++){let d='4';for(let i=0;i<10;i++)d+=Math.floor(Math.random()*10);d+=upcCheck(d);if(!findSku(d)&&!S.products.some(p=>p.sku===d))return d}return null}
+const LABEL_SIZES={'2.25x1.25':[2.25,1.25],'2x1':[2,1],'1.5x1':[1.5,1],'2.25x0.75':[2.25,0.75],'3x2':[3,2],'4x6':[4,6]};
+function labelHtml(p){const sz=LABEL_SIZES[S.settings.labelSize]||LABEL_SIZES['2.25x1.25'];const[w,h]=sz;const small=h<1.1;
+ return `<div class="lab" style="width:${w}in;height:${h}in"><div class="ln">${esc(p.label||p.name)}</div><div class="lp">$${money(p.price)}</div><div class="lb">${barcodeSVG(p.sku,{h:small?34:44,mod:2})}</div></div>`}
+const LABEL_CSS=`@page{margin:0}html,body{margin:0;padding:0}.lab{box-sizing:border-box;padding:.05in .08in;display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden;page-break-after:always;font-family:Arial,sans-serif;color:#000}.ln{font-size:9pt;font-weight:700;text-align:center;line-height:1.1;max-height:2.2em;overflow:hidden}.lp{font-size:13pt;font-weight:800}.lb{width:100%;display:flex;justify-content:center;flex:1;min-height:0}.lb svg{max-width:100%;height:100%}`;
+async function printLabels(p,copies){const sz=LABEL_SIZES[S.settings.labelSize]||LABEL_SIZES['2.25x1.25'];
+ if(!DESK){$('#print').innerHTML=`<style>@page{size:${sz[0]}in ${sz[1]}in;margin:0}${LABEL_CSS}</style>`+labelHtml(p).repeat(copies);setTimeout(()=>window.print(),60);return}
+ const printer=S.cfg.labelPrinter||'';if(!printer){toast('Choose a label printer in Settings → Printers',1);return}
+ const r=await posAPI.printDoc({html:labelHtml(p),css:LABEL_CSS,printer,copies,pageSize:{width:Math.round(sz[0]*25400),height:Math.round(sz[1]*25400)}});
+ toast(r.ok?`${copies} label${copies>1?'s':''} sent to ${printer}`:'Label printer: '+r.error,!r.ok)}
+/* ---------- on-screen keyboard (touch screens without a keyboard) ---------- */
+const OSK={shift:true,el:null,sym:false};
+const oskRows=()=>OSK.sym?[['1','2','3','4','5','6','7','8','9','0'],['$','%','&','#','/','(',')','"',"'"],[',','.','-','_','+','=',':','@','!']]:[['1','2','3','4','5','6','7','8','9','0'],['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['Z','X','C','V','B','N','M','-','.']];
+const oskOK=el=>el&&((el.tagName==='INPUT'&&!['checkbox','radio','file','date','color','range','button','submit'].includes(el.type))||el.tagName==='TEXTAREA')&&!el.readOnly;
+function oskDraw(){const k=x=>OSK.shift||OSK.sym?x:x.toLowerCase();const rows=oskRows();
+ $('#osk').innerHTML=rows.map((r,i)=>`<div class="r">${i===rows.length-1&&!OSK.sym?`<button class="w ${OSK.shift?'on':''}" data-osk="shift">⇧</button>`:''}${r.map(c=>`<button data-osk="k" data-c="${esc(k(c))}">${esc(k(c))}</button>`).join('')}${i===0?'<button class="w" data-osk="bs">⌫</button>':''}${i===rows.length-1?'<button class="w ok" data-osk="enter">Enter</button>':''}</div>`).join('')+
+ `<div class="r"><button class="w" data-osk="sym">${OSK.sym?'ABC':'123 #'}</button><button class="w" data-osk="clear">Clear</button><button class="sp" data-osk="k" data-c=" ">space</button><button class="w x" data-osk="hide">Hide ⌨</button></div>`}
+function oskShow(el){if((S.settings&&S.settings.osk)==='off')return;OSK.el=el;oskDraw();$('#osk').classList.add('on');document.body.classList.add('osk-on');document.documentElement.style.setProperty('--oskh',$('#osk').offsetHeight+'px');setTimeout(()=>{try{el.scrollIntoView({block:'center',behavior:'smooth'})}catch(e){}},50)}
+function oskHide(){OSK.el=null;$('#osk').classList.remove('on');document.body.classList.remove('osk-on')}
+function oskFire(el){el.dispatchEvent(new Event('input',{bubbles:true}));if(el.dataset.cfg)el.dispatchEvent(new Event('change',{bubbles:true}))}
+function oskPress(b){const el=document.activeElement;const a=b.dataset.osk;
+ if(a==='hide'){if(el&&el.blur)el.blur();oskHide();return}if(a==='shift'){OSK.shift=!OSK.shift;oskDraw();return}if(a==='sym'){OSK.sym=!OSK.sym;oskDraw();return}
+ if(!oskOK(el))return;const plain=el.type==='number'||el.type==='email';
+ if(a==='k'){const c=b.dataset.c;if(plain)el.value+=c;else el.setRangeText(c,el.selectionStart,el.selectionEnd,'end');oskFire(el)}
+ else if(a==='bs'){if(plain)el.value=String(el.value).slice(0,-1);else{const s0=el.selectionStart,s1=el.selectionEnd;if(s0!==s1)el.setRangeText('',s0,s1,'end');else if(s0>0)el.setRangeText('',s0-1,s0,'end')}oskFire(el)}
+ else if(a==='clear'){el.value='';oskFire(el)}
+ else if(a==='enter'){if(el.tagName==='TEXTAREA'){el.setRangeText('\n',el.selectionStart,el.selectionEnd,'end');oskFire(el)}else{el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));if(!el.dataset.enter){el.blur();oskHide()}}}}
+document.addEventListener('focusin',e=>{if(oskOK(e.target))oskShow(e.target)});
+document.addEventListener('focusout',()=>setTimeout(()=>{if(!oskOK(document.activeElement))oskHide()},120));
+document.addEventListener('click',e=>{const b=e.target.closest('[data-osk]');if(b)oskPress(b)});
+document.addEventListener('keydown',e=>{if(e.isTrusted&&OSK.el&&e.target===OSK.el&&e.key.length===1&&!e.ctrlKey){/* real keyboard in use */oskHide()}},true);
+function cardApprove(type,a){const ask=S.settings.askLast4!==false&&S.settings.askLast4!=='false';
+ if(!ask){confirmBox(`Run <b>$${money(a)}</b> as <b>${esc(type)}</b> on the card terminal.<br><br>Was it approved?`,'Approved',()=>addPay(type,a),{cancel:'Declined / Cancel'});return}
+ S.kp={mode:'int',buf:'',fresh:false,onKey:()=>{const b=S.kp.buf;if(b.length>4)S.kp.buf=b.slice(0,4);$('#kpd').innerHTML=(S.kp.buf||'').padEnd(4,'_').split('').join(' ')}};
+ const keys=[7,8,9,4,5,6,1,2,3,'C',0,'⌫'];
+ openModal(`<div class="mtitle">Run $${money(a)} as ${esc(type)}</div><div class="msub">Swipe / tap / insert on the card terminal. When it's approved, type the <b>last 4 digits of the card</b> (shown on the terminal or slip).</div>
+ <div class="kpd" id="kpd" style="text-align:center;letter-spacing:6px">_ _ _ _</div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div>
+ <div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(()=>{closeModal();toast('Card payment cancelled')})}">Declined / Cancel</button><button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();addPay(type,a)})}">Approved — skip</button><button class="btn green" id="mok" data-a="cb" data-id="${cb(()=>{const l4=S.kp.buf;if(!/^\d{4}$/.test(l4)){toast('Enter all 4 digits, or tap Approved — skip',1);return}closeModal();addPay(type,a,l4)})}">Approved</button></div>`,'kpm')}
+function setQK(i,v){S.settings.quickKeys[i]=v;saveKV('settings');closeModal();render()}
+const searchHtml=(q,act,extra='')=>{q=q.trim().toUpperCase();const r=q?S.products.filter(p=>!p.discontinued&&(p.name.toUpperCase().includes(q)||p.sku.toUpperCase().includes(q))).slice(0,40):[];return r.map(p=>`<button class="fr" data-a="${act}" data-sku="${esc(p.sku)}" ${extra}><span><b>${esc(p.name)}</b><small>${esc(p.sku)} · ${esc(p.cat)}</small></span><b>$${money(p.price)}</b></button>`).join('')||`<div class="empty">${q?'No matches':'Start typing…'}</div>`};
+const IN={
+ gq:t=>{S.gq=t.value;$('#grid').innerHTML=gridHtml()},
+ gsub:t=>{S.gsub=t.value;$('#grid').innerHTML=gridHtml()},
+ findQ:t=>{$('#findR').innerHTML=searchHtml(t.value,'findPick')},
+ qkQ:t=>{$('#qkR').innerHTML=searchHtml(t.value,'qkPick',`data-i="${t.dataset.i}"`)},
+ mmQ:t=>{$('#mmR').innerHTML=searchHtml(t.value,'mmAdd')},
+ itemQ:t=>{S.itemQ=t.value;$('#itemList').innerHTML=itemListHtml()},
+ itemCat:t=>{S.itemCat=t.value;$('#itemList').innerHTML=itemListHtml()},
+ ordQ:t=>{S.ordQ=t.value;if(DESK){clearTimeout(DC.qT);DC.qT=setTimeout(updOrd,300);return}const l=ordFiltered();$('#ordList').innerHTML=ordListHtml(l);$('#ordFoot').textContent=`${l.length} orders · $${money(sum(l,o=>o.total))}`},
+ ordRange:t=>{S.ordRange=t.value;render()},
+ repFrom:t=>{S.rep.from=t.value;render()},
+ repTo:t=>{S.rep.to=t.value;render()}
+};
+const ENTER={
+ ok:()=>{const b=$('#mok');b&&b.click()},
+ gq:t=>{const v=t.value.trim();if(!v)return;let p=findSku(v);if(!p){const l=gridItems();if(l.length===1)p=l[0]}if(p){S.gq='';addItem(p)}else if(/^\d{6,}$/.test(v)){S.gq='';t.value='';notFound(v)}},
+ find:t=>{const p=findSku(t.value)||(()=>{const b=document.querySelector('#findR .fr');return b?findSku(b.dataset.sku):null})();if(p){closeModal();addItem(p)}},
+ itemQ:t=>{const v=t.value.trim();if(!v)return;const p=findSku(v);if(p){S.itemQ='';openItem(p.sku)}else if(/^\d{6,}$/.test(v)&&can('items_edit')){S.itemQ='';newItem(v)}}
+};
+const OBJ={edit:()=>S.edit,set:()=>S.settings,discs:()=>S.discounts,mm:()=>S.mmEdit,users:()=>S.users};
+const AUTOSAVE={set:'settings',discs:'discounts',users:'users'};
+function setField(t){const o=OBJ[t.dataset.o]&&OBJ[t.dataset.o]();if(!o)return;const ty=t.dataset.t;let v;
+ if(ty==='bool')v=t.checked;else if(ty==='num'){v=t.value===''?0:parseFloat(t.value);if(isNaN(v))v=0}else v=t.value;
+ setP(o,t.dataset.f,v);
+ if(t.dataset.o==='edit'){S.dirty=true;const m=$('#margin');if(m)m.textContent=marginTxt(S.edit);if(t.dataset.f==='sku'){const b=$('#bcPrev');if(b)b.innerHTML=S.edit.sku?barcodeSVG(S.edit.sku,{h:50}):''}}
+ if(t.dataset.o==='mm')S.mmDirty=true;
+ const k=AUTOSAVE[t.dataset.o];if(k)saveKV(k,400)}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||el.disabled)return;const f=A[el.dataset.a];if(f)f(el.dataset,el,e)});
+document.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault()});
+function onField(e){const t=e.target;if(t.dataset.f)setField(t);if(t.dataset.tax&&S.edit){const a=S.edit.taxes,id=t.dataset.tax,i=a.indexOf(id);if(t.checked&&i<0)a.push(id);if(!t.checked&&i>=0)a.splice(i,1);S.dirty=true}if(t.dataset.in&&IN[t.dataset.in]&&e.type==='input')IN[t.dataset.in](t)}
+document.addEventListener('input',onField);
+document.addEventListener('change',e=>{const t=e.target;
+ if(t.dataset.a2==='role'){const u=S.users[+t.dataset.i];if(u.role==='admin'&&t.value!=='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one Owner',1);t.value='admin';return}u.role=t.value;delete u.perms;saveKV('users');render();return}
+ if(t.dataset.perm&&S.permUser!=null){const u=S.users[S.permUser];u.perms={...(u.perms||ROLE_PRESET[u.role]||{})};u.perms[t.dataset.perm]=t.checked;saveKV('users');return}if(t.dataset.cfg&&DESK){const f=t.dataset.cfg;let v=t.type==='checkbox'?t.checked:t.value;if(['paper','cols','feed','drawerPin','netPort','comBaud','scanBaud'].includes(f))v=+v||0;if(f==='paper'&&S.cfg.rcptConn!=='driver')S.cfg.cols=v===58?32:48;S.cfg[f]=v;posAPI.setConfig(f==='paper'?{paper:v,cols:S.cfg.cols}:{[f]:v});if(['rcptConn','cmdSet','drawerMode','scanCom','paper'].includes(f))render();return}if(t.dataset.file){const f=t.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>FILE[t.dataset.file](rd.result,f.name);if(t.dataset.file==='logo')rd.readAsDataURL(f);else rd.readAsText(f);t.value='';return}if(t.type==='checkbox'||t.tagName==='SELECT')onField(e)});
+let scanBuf='',scanT=0,scanT0=0,scanIdle=null;
+function scanDone(){clearTimeout(scanIdle);const c=scanBuf,dur=scanT-scanT0;scanBuf='';if(c.length>=3)onScan(c);return c.length}
+function scanLooksFast(){return scanBuf.length>=6&&(scanT-scanT0)/(scanBuf.length-1)<35}
+document.addEventListener('keydown',e=>{const t=e.target,tag=t.tagName;
+ if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){if(e.key==='Enter'&&t.dataset.enter&&ENTER[t.dataset.enter]){e.preventDefault();ENTER[t.dataset.enter](t)}return}
+ if(e.key==='Enter'||e.key===' ')e.preventDefault();
+ if(S.kp){if(/^[0-9]$/.test(e.key)){kpPress(e.key);return}if(e.key==='Backspace'){kpPress('⌫');return}if(e.key==='.'&&S.kp.mode==='dec'){kpPress('.');return}if(e.key==='Enter'){const ok=$('#mok');ok&&ok.click();return}if(e.key==='Escape'){closeModal();return}return}
+ if(!S.user){if(/^[0-9]$/.test(e.key))A.pinK({k:e.key});else if(e.key==='Backspace')A.pinK({k:'⌫'});else if(e.key==='Enter')A.pinOk();return}
+ if(e.key==='Escape'&&modalOpen()){closeModal();return}
+ if(e.key==='Enter'||e.key==='NumpadEnter'){if(scanDone()<3&&modalOpen()){const ok=$('#mok');ok&&ok.click()}return}
+ if(e.key==='Tab'){if(scanBuf.length>=3){e.preventDefault();scanDone()}return}
+ if(e.key.length===1&&!e.ctrlKey&&!e.altKey&&!e.metaKey){const now=Date.now();if(now-scanT>600||!scanBuf){scanBuf='';scanT0=now}scanT=now;scanBuf+=e.key;
+  clearTimeout(scanIdle);scanIdle=setTimeout(()=>{if(scanLooksFast())scanDone()},180)}});
+window.addEventListener('beforeunload',e=>{if(!DESK&&S.dirty){e.preventDefault();e.returnValue=''}});
+
+/* ---------- boot ---------- */
+async function boot(){
+ try{await DB.open()}catch(err){DB.mem=true}
+ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+ const saved=await DB.get('settings');
+ if(DESK){try{S.cfg=await posAPI.getConfig();S.printers=await posAPI.printers();posAPI.comPorts().then(p=>S.comPorts=p);S.scanState=await posAPI.scannerState()}catch(e){}posAPI.onScan(c=>onScan(c));posAPI.onScannerState(st=>{S.scanState=st;if(S.screen==='settings'&&S.setTab==='hw')render()})}
+ const first=!saved&&DESK?await posAPI.firstRunData().catch(()=>null):null;
+ if(first&&Array.isArray(first.products)){S.settings=defaultSettings();await restore(first);toast(`Welcome! Loaded ${S.products.length} items from your old POS`)}
+ else if(!saved){S.settings=defaultSettings();S.products=seedProducts();S.discounts=seedDiscounts();S.mixmatch=seedMM();S.users=seedUsers();S.cart=newCart();
+  await DB.putMany('products',S.products);for(const k of KV_KEYS)await DB.put('kv',clone(S[k]),k)}
+ else{S.settings={...defaultSettings(),...saved};S.products=(await DB.all('products')).map(ensureItem);S.orders=DESK?[]:await DB.all('orders');for(const k of KV_KEYS.slice(1))S[k]=(await DB.get(k))||[];if(!S.users.length)S.users=seedUsers();S.cart=(await DB.get('cart'))||newCart()}
+ reindex();render();setInterval(tick,1000);logoRaster();
+ if(DESK)posAPI.onUpdateAvailable(u=>{S.updAvail=u;if(isMgr())toast(`Store POS ${u.version} is available — Settings → Import / Backup`)});
+ if(DESK&&S.cfg.rolledBack)setTimeout(()=>toast(`Update ${S.cfg.rolledBack} could not start — running the installed version`,1),2500);
+ if(DESK){S.stats=await posAPI.stats().catch(()=>null);posAPI.onHistory(histUI);const hs=await posAPI.historyState();if(hs.running)histUI(hs)}
+ if(DB.mem)toast('Storage is not available in this browser — nothing will be saved',1);
+}
+boot();
+</script>
+</body>
+</html>

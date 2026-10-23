@@ -1,0 +1,84 @@
+STORE POS 1.3 — SETUP
+=====================
+
+1. Right-click the zip file and choose "Extract All..." (don't run it from inside the zip).
+2. Open the extracted folder and double-click "Install Store POS".
+   - If Windows says "Windows protected your PC", click "More info" then "Run anyway".
+     (This appears because the app isn't code-signed yet.)
+3. Store POS opens full screen. The first time, it loads your 5,504 items from Exatouch,
+   then imports your sales history (191,854 orders, May 2021 - Oct 22 2026) in the background.
+4. Sign in with PIN 1234 (Owner). Cashier PIN is 1111. Change both in Settings > Users & PINs.
+
+USERS & PERMISSIONS (Settings > Users & PINs)
+Pick a role (Owner, Manager, Cashier), then tap the Permissions button to tick exactly what
+each person may do: discounts, price changes, returns, refunds, pay outs, open drawer,
+see items (read only), edit items, add/adjust inventory, delete items, promos, see reports,
+print/PDF reports, settings. If a cashier tries something they can't do, a manager types
+their PIN to approve it - the approval is saved on the transaction.
+
+ALREADY INSTALLED AN EARLIER VERSION?
+Just run "Install Store POS" again. Everything you have is kept.
+Your data lives in %APPDATA%\Store POS - installing never touches it.
+
+FUTURE UPDATES (no more big downloads)
+From 1.3 on, updates come as a small file named like StorePOS-Update-1.3.1.posupdate.
+Download it on the POS computer and double-click it (or Settings > Import / Backup >
+Install update file). Store POS makes a backup, installs it and restarts. Your data is kept.
+If an update ever fails to start, Store POS automatically goes back to the version that worked.
+
+PRINTERS (Settings > Printers & Drawer)
+The list shows every printer on this PC: tap Receipts / Reports / Labels to choose what each
+one prints, Test to check it, and "Add a printer" to open Windows printer setup.
+
+RECEIPT PRINTER CONNECTION
+Pick how it's connected, then tap "Test print":
+  - USB printer with its Windows driver installed (Epson TM series, Star TSP/SP, Bixolon,
+    Citizen, Xprinter, Rongta, Munbyn, HPRT, SNBC, Sewoo, POS-80/POS-58 and others):
+      "Windows printer - use its driver"
+  - If receipts come out blank, tiny or slow, or the printer uses the "Generic / Text Only"
+    driver: "Windows printer - send receipt commands directly"
+  - Network / Wi-Fi / Ethernet printer: enter its IP address (port 9100).
+    Hold FEED while turning the printer on to print a self-test page with its IP.
+  - Serial or USB-COM printer: pick the COM port and speed (usually 9600 or 19200).
+  For the direct options, choose the printer language: ESC/POS (Epson and almost all brands)
+  or Star Line Mode (older Star printers). Characters per line: 48 for most 80 mm printers,
+  42 for Epson TM-T88, 32 for 58 mm.
+
+CASH DRAWER
+Plug the drawer into the receipt printer's DK/drawer port, then tap "Test drawer".
+If it doesn't open, try "Pin 5", or set the drawer to open in the printer driver
+and choose "Printer driver opens it when anything prints".
+
+BARCODE SCANNER
+Plug in any USB scanner and scan: it just works (keyboard-style scanners, wired,
+wireless or Bluetooth). Codes ending in Enter, Tab or nothing all work, and the POS
+also matches codes missing the check digit, leading zeros, or short UPC-E codes.
+If your scanner is set to "USB COM / virtual serial" mode, pick its COM port in Settings.
+Use the "Scan test" box in Settings to check any barcode.
+
+PAYMENTS
+- Split payment: tap "Split", enter the cash part, then pick Credit/Debit for the rest.
+- Card payments ask for the last 4 digits of the card (turn off in Store & Receipt).
+
+TRANSACTIONS SCREEN
+- Scan an item to see every sale of it and when it last sold.
+- Type 4 digits to find transactions by the card's last 4 (works for old Exatouch sales too).
+
+ITEMS & BARCODE LABELS
+- New item without a barcode? Tap "New barcode" next to SKU, Save, then "Print Labels".
+- Choose the label printer and label size in Settings > Printers & Drawer.
+
+REPORTS
+Reports screen buttons:  CSV = spreadsheet of item sales,  PDF = download the report as a
+PDF file (saved to your Downloads folder),  Receipt = short summary on the receipt printer,
+Print = full-page report on any printer connected to this PC.
+
+LOGO & ON-SCREEN KEYBOARD
+- Upload your logo in Settings > Store & Receipt. It prints on receipts and reports.
+- A touch keyboard pops up when typing. Turn it off in Store & Receipt if you use a real keyboard.
+
+GOOD TO KNOW
+- To leave the POS: Settings > Scanner, App & Backups > Exit Store POS (owner only).
+- Your data is saved in:  %APPDATA%\Store POS\data\pos.db
+  Daily backups go to:    %APPDATA%\Store POS\backups  (last 14 kept)
+- Uninstall from Start menu > Store POS > Uninstall Store POS (keeps your data).
