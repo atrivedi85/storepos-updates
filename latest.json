@@ -1,6 +1,6 @@
 {
- "version": "1.9.2",
- "notes": "Item Subcategory is now a dropdown that lists the subcategories of the chosen category (updates when you change category), with + New subcategory.",
- "url": "updates/StorePOS-Update-1.9.2.posupdate",
- "sha256": "3f43945027f7ee48a092710e6e1a363d71e0ca895387ac3bb040d9ee69823fea"
+ "version": "1.10.0",
+ "notes": "Fixes new-store setup (Start using Store POS button). Prepares the Android tablet app (same screens, same updates).",
+ "url": "updates/StorePOS-Update-1.10.0.posupdate",
+ "sha256": "e73aa29ad874340df0e454b59b07635622a7874618f9251afc524e0487a6b513"
 }

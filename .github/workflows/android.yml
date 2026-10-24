@@ -1,0 +1,57 @@
+name: Android app
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'source/app/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Put the POS screens into the Android app
+        run: |
+          mkdir -p android/app/src/main/assets/www/lib
+          cp source/app/index.html source/app/package.json source/app/android-shim.js source/app/icon.png android/app/src/main/assets/www/
+          cp source/app/lib/pdf.js source/app/lib/pdf.worker.js android/app/src/main/assets/www/lib/
+      - name: Signing key (from repository secrets, if set)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"; echo "KS_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"; echo "SIGNED=release" >> "$GITHUB_ENV"; else echo "SIGNED=debug" >> "$GITHUB_ENV"; fi
+      - name: Build APK and Play Store bundle
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          export VERSION_NAME=$(python3 -c "import json;print(json.load(open('source/app/package.json'))['version'])")
+          gradle -p android assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Publish to the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk StorePOS.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab StorePOS.aab
+          V=$(python3 -c "import json;print(json.load(open('source/app/package.json'))['version'])")
+          printf '{"version":"%s","build":%s,"signed":"%s","commit":"%s"}\n' "$V" "${{ github.run_number }}" "$SIGNED" "${{ github.sha }}" > android-build.json
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "Store POS for Android" --notes "Latest Android build of Store POS." --latest=false
+          gh release upload android-latest StorePOS.apk StorePOS.aab android-build.json --clobber
+      - name: Save the build log if something failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f build.log ] || echo "no build log (failed before the build step)" > build.log
+          mkdir -p /tmp/logrepo && cp build.log /tmp/logrepo/build.log && cd /tmp/logrepo
+          echo "run ${{ github.run_number }} commit ${{ github.sha }}" > info.txt
+          git init -q && git add . && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "build log ${{ github.run_number }}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:ci-logs

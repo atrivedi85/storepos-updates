@@ -6,7 +6,7 @@ app, out, notes = sys.argv[1], sys.argv[2], sys.argv[3]
 with_data = '--with-data' in sys.argv
 ver = json.load(open(os.path.join(app, 'package.json')))['version']
 names = ['package.json', 'main.js', 'preload.js', 'index.html', 'icon.png', 'icon.ico']
-names += [n for n in ['lib/pdf.js', 'lib/pdf.worker.js'] if os.path.exists(os.path.join(app, n))]
+names += [n for n in ['lib/pdf.js', 'lib/pdf.worker.js', 'android-shim.js'] if os.path.exists(os.path.join(app, n))]
 if with_data: names += ['first-run-data.json', 'first-run-history.jsonl.gz', 'first-run-history.jsonl.gz.count']
 files = {}
 for n in names:
