@@ -2,12 +2,12 @@ plugins { id 'com.android.application' }
 
 android {
     namespace 'com.storeposapp.pos'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.storeposapp.pos'
         minSdk 24
-        targetSdk 35
+        targetSdk 36
         versionCode 100 + ((System.getenv('VERSION_CODE') ?: '1') as int)
         versionName System.getenv('VERSION_NAME') ?: '1.0'
     }
