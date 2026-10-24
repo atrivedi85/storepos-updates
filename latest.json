@@ -1,6 +1,6 @@
 {
- "version": "1.9.0",
- "notes": "Inventory now has Categories (with subcategories) and Vendors tabs. EBT is NO by default \u2014 only items with the EBT box ticked can be paid with EBT. Search finds items by any words, subcategory, category or vendor.",
- "url": "updates/StorePOS-Update-1.9.0.posupdate",
- "sha256": "c0c5b18f92a671d0362aac8c725793af15d2a40b36e0be0913de99f651eb44d8"
+ "version": "1.9.1",
+ "notes": "Inventory search now always looks through all items, even when a category or subcategory filter (or See items) is selected.",
+ "url": "updates/StorePOS-Update-1.9.1.posupdate",
+ "sha256": "56cc864246498d781d36a13e66b1f16c16661fcda781adbfab09cd3d9c8ec4eb"
 }
