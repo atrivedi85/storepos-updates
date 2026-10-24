@@ -80,8 +80,10 @@
       return { ok: true, data: JSON.parse(new TextDecoder().decode(payload)) };
     } catch (e) { return { ok: false, error: /Ed25519|Unrecognized|not supported/i.test(String(e && e.message)) ? 'Update Android System WebView (Play Store), then try the key again' : 'That license key is not valid' }; }
   }
+  var FREE_ON_ANDROID = true;   // Play Store version is free (store earns from card processing) - no trial, no license key
   async function licenseState() {
     var now = Date.now(), base = { machine: await machineId() };
+    if (FREE_ON_ANDROID) return Object.assign(base, { status: kvGet('settings') ? 'licensed' : 'setup', locked: false, customer: '', expires: '', free: true });
     if (!kvGet('settings')) return Object.assign(base, { status: 'setup', locked: false });
     var pref = Number(N.getPref('trialStart')) || now, trial = Math.min(Number(kvGet('trialStart')) || now, pref);
     if (!kvGet('trialStart')) kvPut('trialStart', trial);

@@ -1,6 +1,6 @@
 {
- "version": "1.12.1",
- "notes": "Price checks: Ignore one item or Ignore all (OK to sell below your minimum margin). Ignored items stay in Inventory \u2192 Ignored to review later. A bell at the bottom shows how many items need a price check.",
- "url": "updates/StorePOS-Update-1.12.1.posupdate",
- "sha256": "2c3b13baa1ee6a9de0998cbeb9d376120c553582e6a3ebc601f7e9f20a738dda"
+ "version": "1.12.2",
+ "notes": "Android version is free (no trial or license screen). First release signed for Google Play.",
+ "url": "updates/StorePOS-Update-1.12.2.posupdate",
+ "sha256": "b1b01747c89222fed6c7e69ab7bb8b38cd50a8020d521f033296b9857e3abd73"
 }
