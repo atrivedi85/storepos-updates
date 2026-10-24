@@ -592,6 +592,26 @@ public class MainActivity extends Activity {
                 });
                 return null; // answered later
             }
+            case "http": {   // talking to the store PC on the local network
+                HttpURLConnection c = (HttpURLConnection) new URL(a.getString("url")).openConnection();
+                int to = a.optInt("timeout", 20000);
+                c.setConnectTimeout(Math.min(to, 6000)); c.setReadTimeout(to); c.setUseCaches(false);
+                c.setRequestMethod(a.optString("method", "GET"));
+                JSONObject hd = a.optJSONObject("headers");
+                if (hd != null) { Iterator<String> hk = hd.keys(); while (hk.hasNext()) { String k = hk.next(); c.setRequestProperty(k, hd.getString(k)); } }
+                String body = a.optString("body", "");
+                if (!body.isEmpty() && !"GET".equals(a.optString("method", "GET"))) {
+                    byte[] bb = body.getBytes(StandardCharsets.UTF_8);
+                    c.setDoOutput(true); c.setFixedLengthStreamingMode(bb.length);
+                    try (OutputStream o = c.getOutputStream()) { o.write(bb); }
+                }
+                int code = c.getResponseCode();
+                InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                String out = "";
+                if (in != null) try (InputStream i2 = in) { out = new String(readAll(i2), StandardCharsets.UTF_8); }
+                c.disconnect();
+                return new JSONObject().put("ok", true).put("status", code).put("body", out);
+            }
             case "checkUpdate": return checkUpdate();
             case "downloadUpdate": return downloadUpdate();
             case "undoUpdate": return undoUpdate();

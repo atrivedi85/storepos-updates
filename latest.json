@@ -1,6 +1,6 @@
 {
- "version": "1.10.0",
- "notes": "Fixes new-store setup (Start using Store POS button). Prepares the Android tablet app (same screens, same updates).",
- "url": "updates/StorePOS-Update-1.10.0.posupdate",
- "sha256": "e73aa29ad874340df0e454b59b07635622a7874618f9251afc524e0487a6b513"
+ "version": "1.11.0",
+ "notes": "Link Android tablets to this PC: Settings \u2192 Tablets. Tablets share items, stock, sales, employees and settings, keep selling offline and catch up when back online.",
+ "url": "updates/StorePOS-Update-1.11.0.posupdate",
+ "sha256": "a1424418edd4f4b5ccaba188991a7821128add3b8ca9efc1e2fcdbd4c476342e"
 }

@@ -105,6 +105,102 @@
     return left > 0 ? Object.assign(base, { status: 'trial', locked: false, daysLeft: left }) : Object.assign(base, { status: 'trialover', locked: true, daysLeft: 0 });
   }
 
+  /* ---------- link to the store PC (shared data, works offline, syncs when it can) ---------- */
+  run('CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY AUTOINCREMENT, store TEXT, key TEXT, op TEXT, data TEXT, delta REAL, ts INTEGER)');
+  var LOCAL_KV = ['cart', 'held', 'license', 'trialStart'];
+  var LINK = null; try { LINK = JSON.parse(N.getPref('link') || 'null'); } catch (e) { LINK = null; }
+  var linkSt = { online: false, lastOk: 0, lastErr: '', busy: false, progress: '' }, syncCbs = [];
+  function saveLink() { N.setPref('link', JSON.stringify(LINK)); }
+  function linked() { return !!(LINK && LINK.token); }
+  function emit(ch) { syncCbs.forEach(function (f) { try { f(ch); } catch (e) { } }); }
+  function queueStmts(store, val, key) {
+    if (!linked()) return [];
+    var k = String(store === 'kv' ? key : store === 'orders' ? val.id : val.sku);
+    if (store === 'kv' && LOCAL_KV.indexOf(k) >= 0) return [];
+    var delta = null;
+    if (store === 'products') { var old = sql('SELECT data FROM products WHERE sku=?', [k]); var os = old.length ? Number(JSON.parse(old[0].data).stock) || 0 : 0; delta = Math.round(((Number(val.stock) || 0) - os) * 100) / 100; }
+    var out = [];
+    if (store === 'kv') out.push(['DELETE FROM outbox WHERE store=? AND key=?', ['kv', k]]);   // only the newest value of a setting matters
+    out.push(['INSERT INTO outbox(store,key,op,data,delta,ts) VALUES(?,?,?,?,?,?)', [store, k, 'put', JSON.stringify(val === undefined ? null : val), delta, Date.now()]]);
+    return out;
+  }
+  function queueDel(store, key) { return linked() && store !== 'kv' ? [['INSERT INTO outbox(store,key,op,data,delta,ts) VALUES(?,?,?,?,?,?)', [store, String(key), 'del', null, null, Date.now()]]] : []; }
+  var kickT = null; function kick() { if (!linked()) return; clearTimeout(kickT); kickT = setTimeout(syncOnce, 400); }
+  async function lanReq(path, body, timeout) {
+    var r = await call('http', { url: 'http://' + LINK.host + ':' + (LINK.port || 8765) + path, method: 'POST', body: JSON.stringify(body || {}), headers: { 'Content-Type': 'application/json', 'X-Token': LINK.token || '' }, timeout: timeout || 20000 });
+    if (!r.ok) throw new Error('Can’t reach the store PC (' + (r.error || 'no answer') + ')');
+    var j; try { j = JSON.parse(r.body || '{}'); } catch (e) { throw new Error('The store PC sent a bad answer'); }
+    if (r.status >= 400) { var er = new Error(j.error || ('Store PC error ' + r.status)); er.status = r.status; throw er; }
+    return j;
+  }
+  function pending(store, key) { return sql('SELECT 1 x FROM outbox WHERE store=? AND key=? LIMIT 1', [store, String(key)]).length > 0; }
+  function localNextOrder() { var s = kvGet('settings') || {}; var base = (LINK && LINK.reg ? LINK.reg : 2) * 1000000 + 1; return Math.max(Number(s.nextOrder) || 0, base); }
+  function applyItems(items, skipPending) {
+    var stmts = [], ch = { products: [], kv: {}, orders: false };
+    (items || []).forEach(function (it) {
+      if (it.store === 'kv' && LOCAL_KV.indexOf(String(it.key)) >= 0) return;
+      if (skipPending && it.store !== 'orders' && pending(it.store, it.key)) return;   // our newer change goes up first
+      if (it.store === 'products') {
+        if (it.deleted || !it.data) { stmts.push(['DELETE FROM products WHERE sku=?', [String(it.key)]]); ch.products.push({ sku: String(it.key), deleted: true }); }
+        else { stmts = stmts.concat(putStmts('products', it.data)); ch.products.push(it.data); }
+      } else if (it.store === 'orders') {
+        if (it.deleted || !it.data) stmts.push(['DELETE FROM orders WHERE id=?', [String(it.key)]], ['DELETE FROM order_lines WHERE order_id=?', [String(it.key)]]);
+        else stmts = stmts.concat(orderStmts(it.data));
+        ch.orders = true;
+      } else if (it.store === 'kv') {
+        var v = it.data;
+        if (it.key === 'settings' && v) { v = Object.assign({}, v, { nextOrder: localNextOrder() }); }
+        stmts.push(['INSERT OR REPLACE INTO kv(key,data) VALUES(?,?)', [String(it.key), JSON.stringify(v)]]); ch.kv[it.key] = v;
+      }
+    });
+    batch(stmts);
+    return ch;
+  }
+  async function snapshot() {
+    var snap = { stage: 'products', after: '' }, startSeq = null, first = true, n = 0;
+    while (snap) {
+      linkSt.progress = 'Copying from the store PC… ' + n + ' records';
+      var res = await lanReq('/sync', { snap: Object.assign({}, snap, { startSeq: startSeq }) }, 90000);
+      if (first) {
+        var wipe = [['DELETE FROM products', []], ['DELETE FROM orders', []], ['DELETE FROM order_lines', []]];
+        sql('SELECT key FROM kv').forEach(function (r) { if (LOCAL_KV.indexOf(r.key) < 0 && r.key !== 'settings') wipe.push(['DELETE FROM kv WHERE key=?', [r.key]]); });
+        batch(wipe); first = false; startSeq = res.startSeq; LINK.epoch = res.epoch;
+      }
+      applyItems(res.items, false); n += (res.items || []).length; snap = res.next;
+    }
+    LINK.since = startSeq; LINK.ready = true; linkSt.progress = ''; saveLink();
+    emit({ full: true });
+  }
+  async function syncOnce() {
+    if (!linked() || linkSt.busy) return;
+    linkSt.busy = true; var again = false;
+    try {
+      if (!LINK.ready) await snapshot();
+      var rows = sql('SELECT * FROM outbox ORDER BY id LIMIT 250');
+      var ops = rows.map(function (r) { return { store: r.store, key: r.key, op: r.op, data: r.data ? JSON.parse(r.data) : null, delta: r.delta }; });
+      var res = await lanReq('/sync', { since: LINK.since || 0, epoch: LINK.epoch, ops: ops });
+      if (res.resync) { LINK.ready = false; saveLink(); again = true; }
+      else {
+        if (rows.length) run('DELETE FROM outbox WHERE id<=?', [rows[rows.length - 1].id]);
+        var ch = applyItems(res.items, true);
+        LINK.since = res.seq; saveLink();
+        if (ch.products.length || ch.orders || Object.keys(ch.kv).length) emit(ch);
+        again = !!res.more || sql('SELECT COUNT(*) n FROM outbox')[0].n > 0;
+      }
+      linkSt.online = true; linkSt.lastOk = Date.now(); linkSt.lastErr = '';
+    } catch (e) {
+      linkSt.online = false; linkSt.lastErr = e.message; linkSt.progress = '';
+      if (e.status === 401) { linkSt.lastErr = e.message; }
+    } finally { linkSt.busy = false; }
+    if (again) setTimeout(syncOnce, 150);
+  }
+  setInterval(function () { if (linked()) syncOnce(); }, 5000);
+  if (linked()) setTimeout(syncOnce, 1500);
+  async function viaPc(method, args, local) {
+    if (linked() && LINK.ready && linkSt.online) { try { return (await lanReq('/api', { method: method, args: args }, 30000)).result; } catch (e) { } }
+    return local.apply(null, args);
+  }
+
   /* ---------- printing ---------- */
   function drawerBytes(c) { return c.cmdSet === 'star' ? [7] : [27, 112, Number(c.drawerPin) === 5 ? 1 : 0, 25, 250]; }
   async function sendRaw(bytes) {
@@ -131,15 +227,16 @@
       switch (op) {
         case 'all': return parse(sql(store === 'orders' ? 'SELECT data FROM orders ORDER BY time' : 'SELECT data FROM ' + T));
         case 'get': { var v = kvGet(a); return v === null ? undefined : v; }
-        case 'put': batch(putStmts(store, a, b)); return true;
-        case 'putMany': { var l = []; (a || []).forEach(function (v) { l = l.concat(putStmts(store, v)); }); batch(l); return true; }
-        case 'del': batch([['DELETE FROM ' + T + ' WHERE ' + KEYCOL[store] + '=?', [String(a)]]].concat(store === 'orders' ? [['DELETE FROM order_lines WHERE order_id=?', [String(a)]]] : [])); return true;
+        case 'put': batch(queueStmts(store, a, b).concat(putStmts(store, a, b))); kick(); return true;
+        case 'putMany': { var l = []; (a || []).forEach(function (v) { l = l.concat(queueStmts(store, v)).concat(putStmts(store, v)); }); batch(l); kick(); return true; }
+        case 'del': batch(queueDel(store, a).concat([['DELETE FROM ' + T + ' WHERE ' + KEYCOL[store] + '=?', [String(a)]]]).concat(store === 'orders' ? [['DELETE FROM order_lines WHERE order_id=?', [String(a)]]] : [])); kick(); return true;
         case 'clear': batch([['DELETE FROM ' + T, []]].concat(store === 'orders' ? [['DELETE FROM order_lines', []]] : [])); return true;
       }
       throw new Error('Unknown op ' + op);
     },
     firstRunData: async function () { return null; },
-    ordersQuery: async function (o) {
+    ordersQuery: function () { return viaPc('ordersQuery', Array.prototype.slice.call(arguments), LOCALQ.ordersQuery); },
+    _ordersQuery: async function (o) {
       var a = o.a, b = o.b, q = String(o.q || '').trim(), sku = o.sku, status = o.status, limit = Math.max(1, Math.min(5000, Number(o.limit) || 400));
       var where = 'time BETWEEN ? AND ?', params = [a, b], item = null;
       if (sku) {
@@ -156,8 +253,10 @@
       var rows = sql('SELECT data FROM orders WHERE ' + where + ' ORDER BY time DESC LIMIT ' + limit, params);
       return { count: agg.n, total: agg.s, rows: parse(rows), item: item };
     },
-    orderGet: async function (id) { var r = sql('SELECT data FROM orders WHERE id=?', [String(id)]); return r.length ? JSON.parse(r[0].data) : null; },
-    report: async function (a, b) {
+    orderGet: function () { return viaPc('orderGet', Array.prototype.slice.call(arguments), LOCALQ.orderGet); },
+    _orderGet: async function (id) { var r = sql('SELECT data FROM orders WHERE id=?', [String(id)]); return r.length ? JSON.parse(r[0].data) : null; },
+    report: function () { return viaPc('report', Array.prototype.slice.call(arguments), LOCALQ.report); },
+    _report: async function (a, b) {
       var R = { n: 0, refN: 0, refunds: 0, gross: 0, disc: 0, tax: 0, total: 0, tend: {}, cats: {}, items: {}, taxes: {}, cost: 0 };
       sql('SELECT data FROM orders WHERE time BETWEEN ? AND ?', [a, b]).forEach(function (row) {
         var o = JSON.parse(row.data); if (o.status === 'void') return;
@@ -175,7 +274,8 @@
       });
       R.net = R.gross - R.disc; return R;
     },
-    reportDaily: async function (a, b) {
+    reportDaily: function () { return viaPc('reportDaily', Array.prototype.slice.call(arguments), LOCALQ.reportDaily); },
+    _reportDaily: async function (a, b) {
       var days = {}, key = function (t) { var d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
       sql('SELECT data FROM orders WHERE time BETWEEN ? AND ?', [a, b]).forEach(function (row) {
         var o = JSON.parse(row.data); if (o.status === 'void') return;
@@ -187,13 +287,15 @@
       });
       return days;
     },
-    itemMonthly: async function (sku) {
+    itemMonthly: function () { return viaPc('itemMonthly', Array.prototype.slice.call(arguments), LOCALQ.itemMonthly); },
+    _itemMonthly: async function (sku) {
       var y = new Date().getFullYear(), start = new Date(y - 1, 0, 1).getTime(), cur = Array(12).fill(0), prev = Array(12).fill(0);
       sql("SELECT CAST(strftime('%Y', time/1000, 'unixepoch', 'localtime') AS INTEGER) y, CAST(strftime('%m', time/1000, 'unixepoch', 'localtime') AS INTEGER) m, SUM(qty) q FROM order_lines WHERE sku=? AND time>=? GROUP BY y, m", [String(sku), start])
         .forEach(function (r) { (r.y === y ? cur : prev)[r.m - 1] = Math.round(r.q * 100) / 100; });
       return { cur: cur, prev: prev };
     },
-    stats: async function () { var o = sql('SELECT COUNT(*) n, MIN(time) first FROM orders')[0]; return { orders: o.n, firstOrder: o.first, products: sql('SELECT COUNT(*) n FROM products')[0].n, history: { finished: true } }; },
+    stats: function () { return viaPc('stats', Array.prototype.slice.call(arguments), LOCALQ.stats); },
+    _stats: async function () { var o = sql('SELECT COUNT(*) n, MIN(time) first FROM orders')[0]; return { orders: o.n, firstOrder: o.first, products: sql('SELECT COUNT(*) n FROM products')[0].n, history: { finished: true } }; },
     historyState: async function () { return { running: false, finished: true, done: 0, total: 0 }; },
     onHistory: function () { },
     print: async function (html, css) { var w = cfgGet().paper == 58 ? 58 : 80; return call('printHtml', { html: pageDoc(html, css, w), title: 'Receipt' }); },
@@ -229,6 +331,26 @@
     saveInvoiceFile: function (o) { return call('saveInternal', { dir: 'invoices', name: o.name, b64: b64(o.bytes) }); },
     openPath: async function () { return 'not available on tablet'; },
     ocrImage: async function () { return { ok: false, error: 'Reading invoice photos works on the Windows POS for now — PDFs and Excel files work here.' }; },
-    saveDownload: function (name, text, mime) { return call('saveFile', { name: name, b64: utf8b64(text), mime: mime || 'text/plain' }); }
+    saveDownload: function (name, text, mime) { return call('saveFile', { name: name, b64: utf8b64(text), mime: mime || 'text/plain' }); },
+    onSync: function (f) { syncCbs.push(f); },
+    linkState: async function () { return { linked: linked(), ready: !!(LINK && LINK.ready), host: LINK && LINK.host, store: LINK && LINK.store, reg: LINK && LINK.reg, online: linkSt.online, lastOk: linkSt.lastOk, lastErr: linkSt.lastErr, progress: linkSt.progress, pending: sql('SELECT COUNT(*) n FROM outbox')[0].n, deviceName: LINK && LINK.name }; },
+    linkPair: async function (o) {
+      var host = String(o.host || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), port = 8765;
+      if (host.indexOf(':') > 0) { port = Number(host.split(':')[1]) || 8765; host = host.split(':')[0]; }
+      if (!host) return { ok: false, error: 'Type the store PC address (shown on the PC under Settings → Tablets)' };
+      var prev = LINK; LINK = { host: host, port: port, token: '' };
+      try {
+        var hi = await lanReq('/hello', {}, 8000);
+        if (hi.app !== 'storepos') throw new Error('That address is not a Store POS PC');
+        var r = await lanReq('/pair', { code: String(o.code || '').trim(), deviceId: N.deviceId(), name: o.name || 'Tablet' }, 10000);
+        LINK = { host: host, port: port, token: r.token, reg: r.reg, store: r.store, epoch: r.epoch, since: 0, ready: false, name: o.name || 'Tablet' };
+        saveLink(); run('DELETE FROM outbox');
+        await snapshot(); linkSt.online = true; linkSt.lastOk = Date.now(); linkSt.lastErr = '';
+        return { ok: true, store: r.store, reg: r.reg };
+      } catch (e) { LINK = prev; saveLink(); return { ok: false, error: e.message }; }
+    },
+    linkSyncNow: async function () { await syncOnce(); return this.linkState(); },
+    unlink: async function () { LINK = null; saveLink(); run('DELETE FROM outbox'); return { ok: true }; }
   };
+  var LOCALQ = {}; ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'].forEach(function (m) { LOCALQ[m] = window.posAPI['_' + m]; });
 })();

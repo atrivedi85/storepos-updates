@@ -127,15 +127,25 @@ function tx(fn) {
   try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 const parseRows = rows => rows.map(r => JSON.parse(r.data));
+/* ---------- change log for linked tablets (one row per changed record, newest seq wins) ---------- */
+db.exec(`CREATE TABLE IF NOT EXISTS changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, store TEXT NOT NULL, key TEXT NOT NULL, origin TEXT);
+  CREATE INDEX IF NOT EXISTS changes_sk ON changes(store, key);`);
+const LOCAL_KV = ['cart', 'held', 'license', 'trialStart'];   // never shared between registers
+const CH = { del: db.prepare('DELETE FROM changes WHERE store=? AND key=?'), ins: db.prepare('INSERT INTO changes(store,key,origin) VALUES(?,?,?)') };
+function recordChange(store, key, origin) {
+  if (store === 'kv' && LOCAL_KV.includes(String(key))) return;
+  CH.del.run(store, String(key)); CH.ins.run(store, String(key), origin || 'pc');
+}
+function keyOf(store, val, key) { return store === 'kv' ? key : store === 'orders' ? val.id : val.sku; }
 ipcMain.handle('db', (e, op, store, a, b) => {
   if (!Q[store]) throw new Error('Unknown store ' + store);
   switch (op) {
     case 'all': return parseRows(Q[store].all.all());
     case 'get': { const r = Q.kv.get.get(String(a)); return r ? JSON.parse(r.data) : undefined; }
-    case 'put': putOne(store, a, b); return true;
-    case 'putMany': tx(() => (a || []).forEach(v => putOne(store, v))); return true;
-    case 'del': Q[store].del.run(String(a)); if (store === 'orders') L.del.run(String(a)); return true;
-    case 'clear': Q[store].clear.run(); if (store === 'orders') L.clear.run(); return true;
+    case 'put': tx(() => { putOne(store, a, b); recordChange(store, keyOf(store, a, b)); }); return true;
+    case 'putMany': tx(() => (a || []).forEach(v => { putOne(store, v); recordChange(store, keyOf(store, v)); })); return true;
+    case 'del': tx(() => { Q[store].del.run(String(a)); if (store === 'orders') L.del.run(String(a)); recordChange(store, a); }); return true;
+    case 'clear': Q[store].clear.run(); if (store === 'orders') L.clear.run(); bumpEpoch(); return true;
     default: throw new Error('Unknown op ' + op);
   }
 });
@@ -149,7 +159,9 @@ ipcMain.handle('firstRunData', () => {
 
 /* ---------- order history queries (all done here so 190k+ orders never load into the screen) ---------- */
 function rowsIn(sql, params) { const st = db.prepare(sql); return typeof st.iterate === 'function' ? st.iterate(...params) : st.all(...params); }
-ipcMain.handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
+const H = {};
+const handle = (name, fn) => { H[name] = fn; ipcMain.handle(name, fn); };
+handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
   q = String(q || '').trim();
   let where = 'time BETWEEN ? AND ?', params = [a, b], item = null;
   if (sku) {
@@ -168,8 +180,8 @@ ipcMain.handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
   const rows = db.prepare(`SELECT data FROM orders WHERE ${where} ORDER BY time DESC LIMIT ?`).all(...params, limit);
   return { count: agg.n, total: agg.s, rows: parseRows(rows), item };
 });
-ipcMain.handle('orderGet', (e, id) => { const r = db.prepare('SELECT data FROM orders WHERE id=?').get(String(id)); return r ? JSON.parse(r.data) : null; });
-ipcMain.handle('report', (e, a, b) => {
+handle('orderGet', (e, id) => { const r = db.prepare('SELECT data FROM orders WHERE id=?').get(String(id)); return r ? JSON.parse(r.data) : null; });
+handle('report', (e, a, b) => {
   const R = { n: 0, refN: 0, refunds: 0, gross: 0, disc: 0, tax: 0, total: 0, tend: {}, cats: {}, items: {}, taxes: {}, cost: 0 };
   for (const row of rowsIn('SELECT data FROM orders WHERE time BETWEEN ? AND ?', [a, b])) {
     const o = JSON.parse(row.data);
@@ -195,7 +207,7 @@ ipcMain.handle('report', (e, a, b) => {
 });
 // per-day totals for Accounting (one pass over the range)
 const CARD_TENDERS = ['Credit', 'Debit'];
-ipcMain.handle('reportDaily', (e, a, b) => {
+handle('reportDaily', (e, a, b) => {
   const days = {};
   const key = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   for (const row of rowsIn('SELECT data FROM orders WHERE time BETWEEN ? AND ?', [a, b])) {
@@ -209,7 +221,7 @@ ipcMain.handle('reportDaily', (e, a, b) => {
   }
   return days;
 });
-ipcMain.handle('itemMonthly', (e, sku) => {
+handle('itemMonthly', (e, sku) => {
   const y = new Date().getFullYear();
   const start = new Date(y - 1, 0, 1).getTime();
   const rows = db.prepare(`SELECT CAST(strftime('%Y', time/1000, 'unixepoch', 'localtime') AS INTEGER) y, CAST(strftime('%m', time/1000, 'unixepoch', 'localtime') AS INTEGER) m, SUM(qty) q
@@ -218,7 +230,7 @@ ipcMain.handle('itemMonthly', (e, sku) => {
   for (const r of rows) (r.y === y ? cur : prev)[r.m - 1] = Math.round(r.q * 100) / 100;
   return { cur, prev };
 });
-ipcMain.handle('stats', () => {
+handle('stats', () => {
   const o = db.prepare('SELECT COUNT(*) n, MIN(time) first FROM orders').get();
   return { orders: o.n, firstOrder: o.first, products: db.prepare('SELECT COUNT(*) n FROM products').get().n, history: historyState };
 });
@@ -343,6 +355,7 @@ ipcMain.handle('restoreDb', async () => {
   try { fs.copyFileSync(DB_FILE, keep); } catch (e) { /* none */ }
   for (const f of [DB_FILE + '-wal', DB_FILE + '-shm']) { try { fs.unlinkSync(f); } catch (e) { /* none */ } }
   fs.renameSync(tmp, DB_FILE);
+  bumpEpoch();
   quitting = true; app.relaunch(); app.exit(0);
   return { ok: true };
 });
@@ -762,6 +775,137 @@ ipcMain.handle('restartScanner', () => { startScanner(); return scanState; });
 
 /* ---------- window ---------- */
 let win = null, quitting = false;
+/* ---------- tablets on the store network (Android Store POS linked to this PC) ---------- */
+const http = require('http');
+function bumpEpoch() { cfg.syncEpoch = (Number(cfg.syncEpoch) || 0) + 1; saveCfg(); }
+const UNION_KV = { payouts: r => r.id, timeclock: r => r.id, invoices: r => r.id, invlog: r => `${r.time}|${r.sku}|${r.change}` };
+function mergeKv(key, local, incoming) {
+  if (key === 'settings') return { ...(incoming || {}), nextOrder: local && local.nextOrder ? local.nextOrder : (incoming || {}).nextOrder };
+  const kf = UNION_KV[key];
+  if (kf && Array.isArray(local) && Array.isArray(incoming)) {
+    const pos = new Map(); const out = local.slice();
+    out.forEach((r, i) => { try { pos.set(kf(r), i); } catch (e) { /* skip */ } });
+    for (const r of incoming) { const k = kf(r); if (pos.has(k)) out[pos.get(k)] = r; else { pos.set(k, out.length); out.push(r); } }
+    return out;
+  }
+  return incoming;
+}
+const getProduct = db.prepare('SELECT data FROM products WHERE sku=?');
+const getOrderRow = db.prepare('SELECT data FROM orders WHERE id=?');
+const r2 = x => Math.round((Number(x) || 0) * 100) / 100;
+function applyTabletOps(ops, device) {
+  const out = { products: [], kv: {}, orders: false };
+  tx(() => {
+    for (const op of ops || []) {
+      if (op.store === 'products') {
+        const sku = String(op.key);
+        if (op.op === 'del') { Q.products.del.run(sku); recordChange('products', sku, device); out.products.push({ sku, deleted: true }); continue; }
+        const cur = getProduct.get(sku); const old = cur ? JSON.parse(cur.data) : null;
+        const rec = { ...op.data };
+        if (old) rec.stock = r2((Number(old.stock) || 0) + (Number(op.delta) || 0));   // stock moves by how much the tablet changed it
+        putOne('products', rec); recordChange('products', sku, device); out.products.push(rec);
+      } else if (op.store === 'orders') {
+        if (op.op === 'del') { Q.orders.del.run(String(op.key)); L.del.run(String(op.key)); recordChange('orders', op.key, device); out.orders = true; continue; }
+        putOrder(op.data); recordChange('orders', op.data.id, device); out.orders = true;
+      } else if (op.store === 'kv') {
+        const k = String(op.key); if (LOCAL_KV.includes(k)) continue;
+        const cur = Q.kv.get.get(k); const val = mergeKv(k, cur ? JSON.parse(cur.data) : null, op.data);
+        Q.kv.put.run(k, JSON.stringify(val)); recordChange('kv', k, device); out.kv[k] = val;
+      }
+    }
+  });
+  if (out.products.length || out.orders || Object.keys(out.kv).length) send('sync', out);
+}
+function readRecord(store, key) {
+  if (store === 'products') { const r = getProduct.get(String(key)); return r ? JSON.parse(r.data) : null; }
+  if (store === 'orders') { const r = getOrderRow.get(String(key)); return r ? JSON.parse(r.data) : null; }
+  const r = Q.kv.get.get(String(key)); return r ? JSON.parse(r.data) : null;
+}
+const LAN = { server: null, code: '', codeUntil: 0, error: '', port: 0 };
+const maxSeq = () => (db.prepare('SELECT MAX(seq) m FROM changes').get().m || 0);
+function lanIps() { const out = []; for (const [n, list] of Object.entries(os.networkInterfaces())) for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push({ name: n, ip: a.address }); return out; }
+function storeName() { try { return (JSON.parse(Q.kv.get.get('settings').data) || {}).storeName || 'Store POS'; } catch (e) { return 'Store POS'; } }
+function tabletFor(req) { const t = String(req.headers['x-token'] || ''); return t && (cfg.tablets || []).find(x => x.token === t); }
+function lanHandle(req, body) {
+  const url = req.url.split('?')[0];
+  if (url === '/hello') return { app: 'storepos', store: storeName(), version: require('./package.json').version };
+  if (url === '/pair') {
+    if (!LAN.code || Date.now() > LAN.codeUntil || String(body.code || '') !== LAN.code) return { status: 403, error: 'That pairing code is wrong or expired. On the PC: Settings → Tablets → Pair a tablet.' };
+    cfg.tablets = cfg.tablets || [];
+    let t = cfg.tablets.find(x => x.id === body.deviceId);
+    if (!t) { const reg = Math.max(1, ...cfg.tablets.map(x => x.reg || 1)) + 1; t = { id: String(body.deviceId || crypto.randomUUID()), reg, paired: Date.now() }; cfg.tablets.push(t); }
+    t.name = String(body.name || 'Tablet').slice(0, 40); t.token = crypto.randomBytes(24).toString('hex'); t.lastSeen = Date.now();
+    LAN.code = ''; saveCfg(); send('lan', lanState());
+    return { token: t.token, reg: t.reg, store: storeName(), epoch: Number(cfg.syncEpoch) || 0 };
+  }
+  const t = tabletFor(req);
+  if (!t) return { status: 401, error: 'This tablet is not paired with the PC any more. Link it again.' };
+  t.lastSeen = Date.now(); t.ip = req.socket.remoteAddress;
+  if (url === '/api') {
+    const ok = ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'];
+    if (!ok.includes(body.method)) return { status: 400, error: 'Unknown request' };
+    return Promise.resolve(H[body.method](null, ...(body.args || []))).then(result => ({ result }));
+  }
+  if (url === '/sync') {
+    const epoch = Number(cfg.syncEpoch) || 0;
+    if (body.epoch !== undefined && body.epoch !== null && Number(body.epoch) !== epoch && !body.snap) return { resync: true, epoch };
+    if (Array.isArray(body.ops) && body.ops.length) applyTabletOps(body.ops, t.id);
+    if (body.snap) {   // first copy of the store's data, sent in pages
+      const s = body.snap, res = { epoch, startSeq: s.startSeq || maxSeq(), items: [], next: null };
+      if (s.stage === 'products') {
+        const rows = db.prepare('SELECT sku, data FROM products WHERE sku > ? ORDER BY sku LIMIT 1500').all(String(s.after || ''));
+        res.items = rows.map(r => ({ store: 'products', key: r.sku, data: JSON.parse(r.data) }));
+        res.next = rows.length === 1500 ? { stage: 'products', after: rows[rows.length - 1].sku } : { stage: 'kv' };
+      } else if (s.stage === 'kv') {
+        res.items = db.prepare('SELECT key, data FROM kv').all().filter(r => !LOCAL_KV.includes(r.key)).map(r => ({ store: 'kv', key: r.key, data: JSON.parse(r.data) }));
+        res.next = { stage: 'orders', after: '' };
+      } else {
+        const since = Date.now() - 31 * 86400000;
+        const rows = db.prepare('SELECT id, data FROM orders WHERE time >= ? AND id > ? ORDER BY id LIMIT 700').all(since, String(s.after || ''));
+        res.items = rows.map(r => ({ store: 'orders', key: r.id, data: JSON.parse(r.data) }));
+        res.next = rows.length === 700 ? { stage: 'orders', after: rows[rows.length - 1].id } : null;
+      }
+      return res;
+    }
+    const since = Number(body.since) || 0;
+    const rows = db.prepare('SELECT seq, store, key, origin FROM changes WHERE seq > ? ORDER BY seq LIMIT 800').all(since);
+    const items = rows.map(r => { const d = readRecord(r.store, r.key); return { store: r.store, key: r.key, data: d, deleted: d === null }; });
+    return { epoch, seq: rows.length ? rows[rows.length - 1].seq : since, more: rows.length === 800, items, now: Date.now() };
+  }
+  return { status: 404, error: 'Not found' };
+}
+function startLan() {
+  stopLan();
+  if (!cfg.lanServer) return;
+  const port = Number(cfg.lanPort) || 8765;
+  const srv = http.createServer((req, res) => {
+    const done = (o) => { const st = o && o.status ? o.status : 200; const b = JSON.stringify(o && o.status ? { ok: false, error: o.error } : o); res.writeHead(st, { 'Content-Type': 'application/json' }); res.end(b); };
+    let size = 0; const chunks = [];
+    req.on('data', c => { size += c.length; if (size > 40e6) { req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => {
+      let body = {};
+      try { if (chunks.length) body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { return done({ status: 400, error: 'Bad request' }); }
+      Promise.resolve().then(() => lanHandle(req, body)).then(done, e => done({ status: 500, error: e.message }));
+    });
+  });
+  srv.on('error', e => { LAN.error = e.code === 'EADDRINUSE' ? `Port ${port} is already used by another program` : e.message; send('lan', lanState()); });
+  srv.listen(port, '0.0.0.0', () => { LAN.error = ''; LAN.port = port; send('lan', lanState()); });
+  LAN.server = srv;
+}
+function stopLan() { if (LAN.server) { try { LAN.server.close(); } catch (e) { /* ignore */ } LAN.server = null; } }
+function lanState() { return { on: !!cfg.lanServer, running: !!(LAN.server && LAN.server.listening), port: Number(cfg.lanPort) || 8765, ips: lanIps(), error: LAN.error, code: Date.now() < LAN.codeUntil ? LAN.code : '', codeUntil: LAN.codeUntil, tablets: (cfg.tablets || []).map(t => ({ id: t.id, name: t.name, reg: t.reg, lastSeen: t.lastSeen, ip: t.ip })) }; }
+ipcMain.handle('lanState', () => lanState());
+function allowFirewall() {   // one-time Windows Firewall rule so tablets can reach this PC (asks for admin once)
+  if (process.platform !== 'win32' || cfg.firewallRule === (Number(cfg.lanPort) || 8765)) return;
+  const port = Number(cfg.lanPort) || 8765;
+  const args = `advfirewall firewall add rule name="Store POS tablets" dir=in action=allow protocol=TCP localport=${port} profile=private,domain`;
+  const ps = spawn('powershell.exe', ['-NoProfile', '-Command', `Start-Process netsh -ArgumentList '${args.replace(/'/g, "''")}' -Verb RunAs -WindowStyle Hidden -Wait`], { windowsHide: true });
+  ps.on('close', code => { if (code === 0) { cfg.firewallRule = port; saveCfg(); } });
+}
+ipcMain.handle('lanSet', (e, on) => { cfg.lanServer = !!on; saveCfg(); startLan(); if (on) allowFirewall(); return lanState(); });
+ipcMain.handle('lanPairCode', () => { LAN.code = String(crypto.randomInt(100000, 1000000)); LAN.codeUntil = Date.now() + 10 * 60000; return lanState(); });
+ipcMain.handle('lanRemove', (e, id) => { cfg.tablets = (cfg.tablets || []).filter(t => t.id !== id); saveCfg(); return lanState(); });
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1366, height: 768, backgroundColor: '#0f1b2d', title: 'Store POS', icon: ASSET('icon.png'),
@@ -790,8 +934,9 @@ app.whenReady().then(() => {
   applyAutoStart();
   powerSaveBlocker.start('prevent-display-sleep');
   createWindow();
+  startLan();
   setTimeout(maybeBackup, 120000);
   setInterval(maybeBackup, 3600 * 1000);
 });
-app.on('before-quit', () => { quitting = true; stopScanner(); });
+app.on('before-quit', () => { quitting = true; stopScanner(); stopLan(); });
 app.on('window-all-closed', () => { try { db.close(); } catch (e) { /* ignore */ } app.quit(); });

@@ -42,5 +42,11 @@ contextBridge.exposeInMainWorld('posAPI', {
   licenseState: () => ipcRenderer.invoke('licenseState'),
   setLicense: k => ipcRenderer.invoke('setLicense', k),
   loadLicenseFile: () => ipcRenderer.invoke('loadLicenseFile'),
-  exitApp: () => ipcRenderer.invoke('exitApp')
+  exitApp: () => ipcRenderer.invoke('exitApp'),
+  onSync: cb => ipcRenderer.on('sync', (e, c) => cb(c)),
+  lanState: () => ipcRenderer.invoke('lanState'),
+  lanSet: on => ipcRenderer.invoke('lanSet', on),
+  lanPairCode: () => ipcRenderer.invoke('lanPairCode'),
+  lanRemove: id => ipcRenderer.invoke('lanRemove', id),
+  onLan: cb => ipcRenderer.on('lan', (e, s) => cb(s))
 });
