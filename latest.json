@@ -1,6 +1,6 @@
 {
- "version": "1.12.3",
- "notes": "Lighter, thinner text on item buttons, quick keys and categories.",
- "url": "updates/StorePOS-Update-1.12.3.posupdate",
- "sha256": "218e6a9ab3ad5982c3842ffd538a2b6953ecd2c98968f887cde4709dcea4d69f"
+ "version": "1.12.4",
+ "notes": "Inventory: new Purchasing tab on each item - vendors you bought it from (last cost, last date, times, units, part #, default vendor) and monthly Sales vs Purchases for this year and last year.",
+ "url": "updates/StorePOS-Update-1.12.4.posupdate",
+ "sha256": "8e023d1dd0a8ecc46b4e87c849eeb9fa74785715d998ce9267c3d276749c3eae"
 }
