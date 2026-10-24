@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('posAPI', {
   ordersQuery: q => ipcRenderer.invoke('ordersQuery', q),
   orderGet: id => ipcRenderer.invoke('orderGet', id),
   report: (a, b) => ipcRenderer.invoke('report', a, b),
+  reportDaily: (a, b) => ipcRenderer.invoke('reportDaily', a, b),
   itemMonthly: sku => ipcRenderer.invoke('itemMonthly', sku),
   stats: () => ipcRenderer.invoke('stats'),
   historyState: () => ipcRenderer.invoke('historyState'),

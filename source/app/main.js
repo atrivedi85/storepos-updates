@@ -193,6 +193,22 @@ ipcMain.handle('report', (e, a, b) => {
   R.net = R.gross - R.disc;
   return R;
 });
+// per-day totals for Accounting (one pass over the range)
+const CARD_TENDERS = ['Credit', 'Debit'];
+ipcMain.handle('reportDaily', (e, a, b) => {
+  const days = {};
+  const key = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  for (const row of rowsIn('SELECT data FROM orders WHERE time BETWEEN ? AND ?', [a, b])) {
+    const o = JSON.parse(row.data);
+    if (o.status === 'void') continue;
+    const D = days[key(o.time)] = days[key(o.time)] || { n: 0, refN: 0, refunds: 0, gross: 0, disc: 0, tax: 0, total: 0, cost: 0, card: 0 };
+    if (o.status === 'refund') { D.refN++; D.refunds += o.total || 0; } else D.n++;
+    D.gross += o.subtotal || 0; D.disc += o.discount || 0; D.tax += o.tax || 0; D.total += o.total || 0;
+    for (const p of o.payments || []) if (CARD_TENDERS.includes(p.type)) D.card += p.amount || 0;
+    for (const l of o.lines || []) D.cost += (l.cost || 0) * (l.qty || 0);
+  }
+  return days;
+});
 ipcMain.handle('itemMonthly', (e, sku) => {
   const y = new Date().getFullYear();
   const start = new Date(y - 1, 0, 1).getTime();

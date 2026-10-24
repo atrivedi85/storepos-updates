@@ -103,6 +103,7 @@ footer .lock,footer .fs{min-height:46px;padding:0 14px;border-radius:8px;backgro
 .listp{display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);min-height:0}
 .rfbody{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px}.rfbody .arow{padding:8px 10px}.rfq{display:flex;align-items:center;gap:10px}.rfq b{min-width:28px;text-align:center;font-size:20px}.rfq .btn{min-width:48px;min-height:44px;font-size:22px}.rftot{font-size:20px;margin:10px 0 0;text-align:right}
 .rvbusy{position:fixed;inset:0;background:rgba(5,12,25,.45);z-index:80;display:flex;align-items:center;justify-content:center}.rvbusy>div{background:#fff;padding:22px 30px;border-radius:12px;font-size:19px;font-weight:700;display:flex;gap:14px;align-items:center}.rvbusy .spin{width:26px;height:26px;border:4px solid #cfd8e6;border-top-color:var(--blue);border-radius:50%;animation:rvsp 1s linear infinite}@keyframes rvsp{to{transform:rotate(360deg)}}
+.acct .card.np{background:#e8f7ee;border:2px solid #15803d}.acct .card.np.neg{background:#fdecec;border-color:var(--red)}.acct .card small+small{display:block;font-size:12px;opacity:.75}.acctt tr.tot td,.payt tr.tot td{border-top:2px solid #1d3f8a;font-weight:700}.acct table input,.acct table select{font-size:15px;padding:6px;border:1px solid var(--line);border-radius:6px;min-height:38px}.acct .rbar select,.acct .rbar input{font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);min-height:44px}.clkt tr.open td{background:#fff8e1}.acct tr.tot td{font-weight:700}
 .rvhead{grid-template-columns:2fr 1fr 1.2fr 2fr!important}.rvhead select{min-width:0}
 .rvtools{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}.rvtools input{flex:1;min-width:260px;font-size:17px;padding:10px;border-radius:8px;border:1px solid var(--line);min-height:46px}.rvtools label.btn{display:flex;align-items:center;cursor:pointer}
 .rvmu{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0;padding:8px;background:var(--panel2);border-radius:8px}.rvmu input,.rvmu select{font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);min-height:42px}
@@ -207,7 +208,7 @@ if(DESK){const api=window.posAPI;Object.assign(DB,{mem:false,open:()=>Promise.re
  put:(s,v,k)=>api.db('put',s,v,k).catch(e=>toast('Could not save: '+e.message,1)),del:(s,k)=>api.db('del',s,k),clear:s=>api.db('clear',s),putMany:(s,a)=>api.db('putMany',s,a)})}
 let ORDV=0;const DC={ord:null,rep:null,det:{},im:{},ordLoading:0,repLoading:0};
 function bumpOrders(){ORDV++;DC.ord=null;DC.rep=null;DC.im={}}
-const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts','invoices'];
+const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts','invoices','fixedcosts','timeclock'];
 const saveT={};
 function saveKV(k,delay=0){clearTimeout(saveT[k]);saveT[k]=setTimeout(async()=>{await DB.put('kv',clone(S[k]),k);if(['settings','users','discounts','mixmatch'].includes(k))savedMark()},delay);}
 function savedMark(){const el=document.getElementById('saveState');if(el){el.innerHTML='✓ Saved '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});el.classList.add('ok')}}
@@ -235,13 +236,13 @@ const PERMS=[
  ['Register',[['disc','Give discounts / coupons'],['price','Change prices'],['ret','Returns (negative quantity)'],['remove','Remove items from a sale'],['clear','Clear a whole sale'],['misc','Misc. sale (no barcode)'],['fee','Remove the card fee'],['payout','Pay outs from the drawer'],['nosale','Open drawer without a sale']]],
  ['Transactions',[['txn_view','Look up past transactions'],['refund','Refund transactions'],['approve','Approve other users (enter PIN for them)']]],
  ['Items & inventory',[['items_view','See items (read only)'],['items_edit','Add and edit items & prices'],['stock','Add / adjust inventory'],['items_delete','Delete items'],['promos','Manage promos & discounts']]],
- ['Reports',[['reports_view','See reports'],['reports_print','Print, PDF or export reports']]],
+ ['Reports',[['reports_view','See reports'],['reports_print','Print, PDF or export reports'],['accounting','Accounting: profit, payroll, fixed costs, edit time clock']]],
  ['Admin',[['settings','Settings, users, printers & backups']]]];
 const PERM_LABEL=Object.fromEntries(PERMS.flatMap(g=>g[1]));
 const PERM_KEYS=Object.keys(PERM_LABEL);
 const ROLE_PRESET={
  admin:Object.fromEntries(PERM_KEYS.map(k=>[k,true])),
- manager:Object.fromEntries(PERM_KEYS.map(k=>[k,k!=='settings'])),
+ manager:Object.fromEntries(PERM_KEYS.map(k=>[k,k!=='settings'&&k!=='accounting'])),
  cashier:{txn_view:true}};
 function can(perm,u=S.user){if(!u)return false;if(u.role==='admin')return true;const p=u.perms||ROLE_PRESET[u.role]||{};return !!p[perm]}
 const isMgr=()=>can('approve');
@@ -366,22 +367,22 @@ function kpPress(key){const k=S.kp;if(!k)return;if(k.fresh&&key!=='⌫'){k.buf='
  const d=$('#kpd');if(d){d.innerHTML=kpDisp();d.classList.remove('fresh')}if(k.onKey)k.onKey()}
 
 /* ---------- rendering ---------- */
-const TITLES={register:'Register',pay:'Pay',items:'Inventory',orders:'Transactions',receive:'Inventory — Receive Invoice',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
+const TITLES={register:'Register',pay:'Pay',items:'Inventory',orders:'Transactions',accounting:'Accounting',receive:'Inventory — Receive Invoice',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
 function render(){
  if(S.setupMode){$('#app').innerHTML=renderSetup();return}
  if(!S.user){$('#app').innerHTML=renderLogin();return}
  if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
  if(DESK&&S.lic&&S.lic.locked&&(S.screen==='register'||S.screen==='pay')){$('#app').innerHTML=`<main>${renderLicLock()}</main>${footer()}`;tick();return}
- const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,receive:renderReceive,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
+ const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,receive:renderReceive,accounting:renderAccounting,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
  $('#app').innerHTML=`<main>${f()}</main>${footer()}`;tick();saveCart();
  if(S.screen==='register'){requestAnimationFrame(()=>{const el=document.querySelector('.line.sel');el&&el.scrollIntoView({block:'nearest'})})}
 }
 let cartT;function saveCart(){clearTimeout(cartT);cartT=setTimeout(()=>DB.put('kv',clone(S.cart),'cart'),300)}
 function footer(){
- const tabs=[['register','Register'],['items','Inventory','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['promos','Promos','promos'],['settings','Settings','settings']];
+ const tabs=[['register','Register'],['items','Inventory','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['accounting','Accounting','accounting'],['promos','Promos','promos'],['settings','Settings','settings']];
  return `<footer><div class="who"><b>${esc(TITLES[S.screen])}</b><span>Logged in: ${esc(S.user.name)}</span></div>
  <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${S.screen===t[0]||(S.screen==='pay'&&t[0]==='register')||(S.screen==='receive'&&t[0]==='items')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
- ${DESK&&S.lic&&['trial','grace','trialover','expired','wrongpc'].includes(S.lic.status)||(DESK&&S.lic&&S.lic.status==='licensed'&&S.lic.expires&&S.lic.daysLeft<=14)?`<button class="lock" style="background:${S.lic.locked?'var(--red)':'var(--amber)'}" data-a="licOpen">${S.lic.status==='trial'?`Trial: ${S.lic.daysLeft}d`:S.lic.locked?'License needed':`License: ${S.lic.daysLeft}d`}</button>`:''}<div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button><button class="lock" data-a="lock">🔒 Lock</button></footer>`;
+ ${DESK&&S.lic&&['trial','grace','trialover','expired','wrongpc'].includes(S.lic.status)||(DESK&&S.lic&&S.lic.status==='licensed'&&S.lic.expires&&S.lic.daysLeft<=14)?`<button class="lock" style="background:${S.lic.locked?'var(--red)':'var(--amber)'}" data-a="licOpen">${S.lic.status==='trial'?`Trial: ${S.lic.daysLeft}d`:S.lic.locked?'License needed':`License: ${S.lic.daysLeft}d`}</button>`:''}<div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button>${payOf(S.user).type==='hourly'||clockOpen(S.user)?`<button class="lock" style="background:${clockOpen(S.user)?'#15803d':'#475569'}" data-a="clockMe" title="Clock in / out">⏱ ${clockOpen(S.user)?'Clock Out':'Clock In'}</button>`:''}<button class="lock" data-a="lock">🔒 Lock</button></footer>`;
 }
 function tick(){const el=$('#clock');if(!el)return;const n=new Date();el.innerHTML=`<b>${n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}</b>${n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'})}`}
 function renderSetup(){const v=id=>{const e=document.getElementById(id);return e?e.value:''};
@@ -404,7 +405,7 @@ function renderLicLock(){return `<div style="height:100%;overflow:auto;display:f
 function renderLogin(){const def=S.users.some(u=>u.pin==='1234'&&u.role==='admin');
  return `<div class="login"><div class="lbox">${S.settings.logo?`<img src="${S.settings.logo}" style="max-width:220px;max-height:90px;margin-bottom:6px">`:''}<h1>${esc(S.settings.storeName)}</h1><div class="hint">Enter your PIN</div><div class="pin" id="pinD">${'•'.repeat(S.pin.length)||'&nbsp;'}</div>
  <div class="kp">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-a="pinK" data-k="${k}">${k}</button>`).join('')}</div>
- <button class="btn green" data-a="pinOk">Sign In</button><div class="warn" id="pinMsg" style="margin-top:8px"></div>
+ <div style="display:flex;gap:8px"><button class="btn green" style="flex:2" data-a="pinOk">Sign In</button><button class="btn slate" style="flex:1" data-a="pinClock" title="Type your PIN, then tap here">⏱ Clock In / Out</button></div><div class="warn" id="pinMsg" style="margin-top:8px"></div>
  ${def?'<div class="hint" style="margin-top:8px">First time: owner PIN is <b>1234</b>. Change it in Settings → Users.</div>':''}</div></div>`}
 
 /* register */
@@ -817,10 +818,10 @@ async function restore(d){const withOrders=!DESK||(Array.isArray(d.orders)&&d.or
 /* ---------- actions ---------- */
 const A={
  pinK(d){const k=d.k;if(k==='C')S.pin='';else if(k==='⌫')S.pin=S.pin.slice(0,-1);else if(S.pin.length<8)S.pin+=k;const el=$('#pinD');if(el)el.innerHTML='•'.repeat(S.pin.length)||'&nbsp;'},
- pinOk(){const u=S.users.find(u=>String(u.pin)===S.pin&&S.pin);S.pin='';if(!u){$('#pinD').innerHTML='&nbsp;';$('#pinMsg').textContent='Wrong PIN';beep(300,250);return}S.user=u;S.screen='register';render()},
+ pinOk(){const u=S.users.find(u=>String(u.pin)===S.pin&&S.pin);S.pin='';if(!u){$('#pinD').innerHTML='&nbsp;';$('#pinMsg').textContent='Wrong PIN';beep(300,250);return}S.user=u;S.screen='register';render();if(payOf(u).type==='hourly'&&!clockOpen(u))confirmBox(`Hi ${esc(u.name)} — clock in now?`,'⏱ Clock In',()=>clockToggle(u),{cancel:'Not now'})},
  lock(){if(S.dirty){toast('Save or discard your item changes first',1);return}S.user=null;S.pin='';closeModal();render()},
  fullscreen(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{})},
- go(d){const need={receive:'stock',items:'items_view',orders:'txn_view',reports:'reports_view',promos:'promos',settings:'settings'}[d.v];if(need&&!can(need)){toast(`${S.user.name} doesn't have access to that`,1);return}if(S.screen==='items'&&d.v!=='items'&&S.dirty){guardDirty(()=>{S.screen=d.v;render()});return}if(S.screen==='promos'&&S.mmDirty&&d.v!=='promos'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.screen=d.v;render()},{danger:true});return}S.screen=d.v;render()},
+ go(d){const need={accounting:'accounting',receive:'stock',items:'items_view',orders:'txn_view',reports:'reports_view',promos:'promos',settings:'settings'}[d.v];if(need&&!can(need)){toast(`${S.user.name} doesn't have access to that`,1);return}if(S.screen==='items'&&d.v!=='items'&&S.dirty){guardDirty(()=>{S.screen=d.v;render()});return}if(S.screen==='promos'&&S.mmDirty&&d.v!=='promos'){confirmBox('Discard unsaved deal changes?','Discard',()=>{S.mmDirty=false;S.mmEdit=null;S.screen=d.v;render()},{danger:true});return}S.screen=d.v;render()},
  goPay(){if(!S.cart.lines.length){toast('Add items first');return}S.screen='pay';render()},
  cardQuick(d){if(!S.cart.lines.length){toast('Add items first');return}tenderModal(d.v)},
  tender(d){tenderModal(d.v)},
@@ -1275,6 +1276,134 @@ Object.assign(A,{
   if(inv.paid==='cash')needMgr('payout',by=>go(by));else go()}
 });
 ENTER.rvScan=t=>{const v=t.value.trim();t.value='';if(v)rvAdd(v)};
+
+/* ---------- accounting: fixed costs, time clock & payroll, daily profit ---------- */
+const dayKey=t=>{const d=new Date(t);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const dayStart=k=>new Date(k+'T00:00:00').getTime();
+const daysIn=(a,b)=>{const out=[];const d=new Date(a);d.setHours(0,0,0,0);while(d.getTime()<=b){out.push(dayKey(d));d.setDate(d.getDate()+1)}return out};
+const ACCT_DEF={payrollTaxPct:0,cardFeePct:0,otAfter:40,otRate:1.5};
+const acctSet=()=>({...ACCT_DEF,...(S.settings.acct||{})});
+const FC_PER=[['month','per month'],['week','per week'],['year','per year'],['day','per day']];
+const FC_CATS=['Rent','Utilities','Insurance','Internet & phone','Loan / lease','Licenses & fees','Software & POS','Security','Other'];
+function fcDaily(f,k){if(f.start&&k<f.start)return 0;if(f.end&&k>f.end)return 0;const a=+f.amount||0;
+ if(f.period==='day')return a;if(f.period==='week')return a/7;if(f.period==='year')return a/365;const d=new Date(k+'T12:00:00');return a/new Date(d.getFullYear(),d.getMonth()+1,0).getDate()}
+const fixedForDay=k=>sum(S.fixedCosts||[],f=>fcDaily(f,k));
+const payOf=u=>({type:'none',rate:0,per:'year',ot:true,...(u&&u.pay||{})});
+function clockOpen(u){return (S.timeclock||[]).find(p=>p.uid===u.id&&!p.out)}
+const hrs=ms=>ms/3600000;
+const hm=h=>{const m=Math.round(h*60);return `${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`};
+// labor: hourly from time clock with weekly overtime, salaried spread evenly per day
+function laborCalc(a,b){const A=acctSet();const days={},people={};const now=Date.now();const add=(k,uid,name,h,ot,cost)=>{const D=days[k]=days[k]||{hours:0,cost:0};D.hours+=h+ot;D.cost+=cost;const P=people[uid]=people[uid]||{name,reg:0,ot:0,pay:0,open:0,shifts:0};P.reg+=h;P.ot+=ot;P.pay+=cost};
+ const wk0=new Date(a);wk0.setHours(0,0,0,0);wk0.setDate(wk0.getDate()-wk0.getDay());const from=wk0.getTime();
+ for(const u of S.users){const pay=payOf(u);
+  if(pay.type==='salary'&&pay.rate>0){for(const k of daysIn(a,b)){const d=new Date(k+'T12:00:00');const per=pay.per==='week'?pay.rate/7:pay.per==='month'?pay.rate/new Date(d.getFullYear(),d.getMonth()+1,0).getDate():pay.per==='biweek'?pay.rate/14:pay.rate/365;add(k,u.id,u.name,0,0,per);people[u.id].salary=true}continue}
+  if(pay.type!=='hourly')continue;
+  const punches=(S.timeclock||[]).filter(p=>p.uid===u.id&&p.in<=b&&(p.out||now)>=from).sort((x,y)=>x.in-y.in);
+  // split every shift into per-day pieces, then walk them in order keeping a weekly total for overtime
+  const segs=[];for(const p of punches){let s=p.in;const e=p.out||(dayKey(p.in)===dayKey(now)?now:p.in);if(!p.out)(people[u.id]=people[u.id]||{name:u.name,reg:0,ot:0,pay:0,open:0,shifts:0}).open++;
+   while(s<e){const d=new Date(s);d.setHours(24,0,0,0);const cut=Math.min(e,d.getTime());segs.push({s,e:cut});s=cut}}
+  let wk=null,wh=0;for(const g of segs){const w=new Date(g.s);w.setHours(0,0,0,0);w.setDate(w.getDate()-w.getDay());const wkk=w.getTime();if(wkk!==wk){wk=wkk;wh=0}
+   const h=hrs(g.e-g.s);const regRoom=pay.ot===false?h:Math.max(0,A.otAfter-wh);const reg=Math.min(h,regRoom),ot=h-reg;wh+=h;
+   if(g.s<a||g.s>b)continue;add(dayKey(g.s),u.id,u.name,reg,ot,reg*pay.rate+ot*pay.rate*A.otRate)}
+  if(people[u.id])people[u.id].shifts=punches.filter(p=>p.in>=a&&p.in<=b).length}
+ const tx=A.payrollTaxPct/100;for(const k in days)days[k].tax=days[k].cost*tx;for(const id in people)people[id].tax=people[id].pay*tx;
+ return{days,people}}
+// sales per day
+function salesDaily(a,b){if(DESK){const key=[a,b,ORDV].join('|');if(DC.acct&&DC.acct.key===key)return DC.acct.days;if(!DC.acctLoading){DC.acctLoading=1;posAPI.reportDaily(a,b).then(d=>{DC.acct={key,days:d}}).catch(e=>toast('Could not load sales: '+e.message,1)).finally(()=>{DC.acctLoading=0;if(S.screen==='accounting')render()})}return null}
+ const days={};for(const o of S.orders){if(o.time<a||o.time>b||o.status==='void')continue;const D=days[dayKey(o.time)]=days[dayKey(o.time)]||{n:0,refN:0,refunds:0,gross:0,disc:0,tax:0,total:0,cost:0,card:0};
+  if(o.status==='refund'){D.refN++;D.refunds+=o.total}else D.n++;D.gross+=o.subtotal||0;D.disc+=o.discount||0;D.tax+=o.tax||0;D.total+=o.total||0;for(const p of o.payments||[])if(['Credit','Debit'].includes(p.type))D.card+=p.amount;for(const l of o.lines||[])D.cost+=(l.cost||0)*l.qty}
+ return days}
+const EXP_TYPES=['Store expense','Other'];
+function profitData(a,b){const sd=salesDaily(a,b);if(!sd)return null;const L=laborCalc(a,b);const A=acctSet();const rows=[];
+ for(const k of daysIn(a,b)){const s=sd[k]||{n:0,gross:0,disc:0,tax:0,total:0,cost:0,card:0,refunds:0};const ds=dayStart(k),de=ds+86400000-1;
+  const exp=sum((S.payouts||[]).filter(p=>!p.void&&p.time>=ds&&p.time<=de&&EXP_TYPES.includes(p.type)),p=>p.amount);
+  const net=s.gross-s.disc,cogs=s.cost,gp=net-cogs,lab=(L.days[k]||{}).cost||0,ltax=(L.days[k]||{}).tax||0,fixed=fixedForDay(k),fees=s.card*A.cardFeePct/100;
+  rows.push({k,n:s.n,gross:s.gross,disc:s.disc,net,tax:s.tax,cogs,gp,labor:lab+ltax,hours:(L.days[k]||{}).hours||0,fixed,exp,fees,np:gp-lab-ltax-fixed-exp-fees})}
+ const T={};for(const f of ['n','gross','disc','net','tax','cogs','gp','labor','hours','fixed','exp','fees','np'])T[f]=sum(rows,r=>r[f]);return{rows,T,L}}
+/* --- screen --- */
+const ACCT_TABS=[['profit','Daily Profit'],['fixed','Fixed Costs'],['pay','Employees & Payroll'],['clock','Time Clock']];
+function renderAccounting(){S.acctTab=S.acctTab||'profit';S.fixedCosts=S.fixedCosts||[];S.timeclock=S.timeclock||[];
+ return `<div class="rep acct"><div class="rbar"><div class="seg">${ACCT_TABS.map(([k,t])=>`<button class="${S.acctTab===k?'on':''}" data-a="acctTab" data-v="${k}">${t}</button>`).join('')}</div><span class="flex"></span>${{profit:acctRangeBar,pay:acctRangeBar,clock:acctRangeBar}[S.acctTab]?acctRangeBar():''}</div><div class="rbody">${({profit:acctProfit,fixed:acctFixed,pay:acctPay,clock:acctClock})[S.acctTab]()}</div></div>`}
+const ACCT_RANGES=[['today','Today'],['yesterday','Yesterday'],['week','This Week'],['lastweek','Last Week'],['month','This Month'],['lastmonth','Last Month'],['year','Year to Date'],['custom','Custom']];
+function acctRange(){const r=S.acctR||(S.acctR={range:'today',from:'',to:''});if(r.range==='lastweek'){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay()-7);return[d.getTime(),d.getTime()+7*86400000-1]}const[a,b]=rangeOf(r.range,r.from,r.to);return[a,Math.min(b,new Date().setHours(23,59,59,999))]}
+function acctRangeBar(){const r=S.acctR||(S.acctR={range:'today',from:'',to:''});return `<select data-acr="range">${ACCT_RANGES.map(([k,t])=>`<option value="${k}" ${r.range===k?'selected':''}>${t}</option>`).join('')}</select>${r.range==='custom'?`<input type="date" data-acr="from" value="${r.from}"> to <input type="date" data-acr="to" value="${r.to}">`:''}`}
+const M=x=>'$'+money2(x);
+function acctProfit(){const[a,b]=acctRange();const P=profitData(a,b);if(!P)return '<div class="empty big">Adding up the numbers…</div>';const T=P.T,A=acctSet();const pc=(x,y)=>y?((x/y)*100).toFixed(1)+'%':'—';
+ const noPay=!S.users.some(u=>payOf(u).type!=='none'),noFixed=!(S.fixedCosts||[]).length;
+ return `${noPay||noFixed?`<div class="sec warn" style="padding:10px 14px;margin-bottom:10px">${noFixed?'No fixed costs entered yet — add rent, utilities etc. in <b>Fixed Costs</b>. ':''}${noPay?'No employee pay set yet — set each person\'s hourly rate in <b>Employees &amp; Payroll</b>.':''}</div>`:''}
+ <div class="cards"><div class="card"><small>Net sales</small><b>${M(T.net)}</b></div><div class="card"><small>Cost of goods (COGS)</small><b>${M(T.cogs)}</b></div><div class="card"><small>Gross profit</small><b>${M(T.gp)}</b><small>${pc(T.gp,T.net)} of sales</small></div><div class="card"><small>Labor</small><b>${M(T.labor)}</b><small>${hm(T.hours)}</small></div><div class="card"><small>Fixed costs</small><b>${M(T.fixed)}</b></div><div class="card"><small>Expenses &amp; card fees</small><b>${M(T.exp+T.fees)}</b></div><div class="card np ${T.np<0?'neg':''}"><small>NET PROFIT</small><b>${M(T.np)}</b><small>${pc(T.np,T.net)} of sales</small></div><div class="card"><small>Sales tax collected*</small><b>${M(T.tax)}</b></div></div>
+ <table class="tbl acctt"><tr><th>Day</th><th class="n">Sales</th><th class="n">Gross</th><th class="n">Discounts</th><th class="n">Net sales</th><th class="n">Tax*</th><th class="n">COGS</th><th class="n">Gross profit</th><th class="n">Labor</th><th class="n">Fixed</th><th class="n">Expenses</th><th class="n">Card fees</th><th class="n">Net profit</th></tr>
+ ${P.rows.slice().reverse().map(r=>`<tr><td>${new Date(r.k+'T12:00:00').toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}</td><td class="n">${r.n}</td><td class="n">${money2(r.gross)}</td><td class="n">${money2(r.disc)}</td><td class="n">${money2(r.net)}</td><td class="n">${money2(r.tax)}</td><td class="n">${money2(r.cogs)}</td><td class="n">${money2(r.gp)}</td><td class="n">${money2(r.labor)}</td><td class="n">${money2(r.fixed)}</td><td class="n">${money2(r.exp)}</td><td class="n">${money2(r.fees)}</td><td class="n"><b style="color:${r.np<0?'var(--red)':'#15803d'}">${money2(r.np)}</b></td></tr>`).join('')}
+ <tr class="tot"><td><b>Total</b></td><td class="n">${T.n}</td><td class="n">${money2(T.gross)}</td><td class="n">${money2(T.disc)}</td><td class="n">${money2(T.net)}</td><td class="n">${money2(T.tax)}</td><td class="n">${money2(T.cogs)}</td><td class="n">${money2(T.gp)}</td><td class="n">${money2(T.labor)}</td><td class="n">${money2(T.fixed)}</td><td class="n">${money2(T.exp)}</td><td class="n">${money2(T.fees)}</td><td class="n"><b>${money2(T.np)}</b></td></tr></table>
+ <div class="fgrid" style="max-width:900px;margin-top:12px"><label class="fld"><span>Card processing fee you pay (%)</span><input data-acs="cardFeePct" inputmode="decimal" value="${A.cardFeePct}"></label><label class="fld"><span>Employer payroll taxes (%)</span><input data-acs="payrollTaxPct" inputmode="decimal" value="${A.payrollTaxPct}"></label></div>
+ <p class="hint">Net profit = net sales − cost of goods − labor − fixed costs − expenses − card fees. *Sales tax is collected for the state, so it is shown but not counted as profit.<br>COGS uses each item's cost at the time it was sold — keep costs up to date with Receive Invoice. Expenses = Cash Payouts marked "Store expense" or "Other" (vendor invoices are already in COGS, employee pay is already in Labor). Fixed costs are spread evenly over each day. Labor comes from the time clock (hourly) or salary spread per day.</p>
+ <div class="ebar" style="margin-top:8px"><span class="flex"></span><button class="btn green" data-a="acctPdf">⬇ PDF</button><button class="btn blue" data-a="acctPrint">🖨 Print</button></div>`}
+function acctFixed(){const L=S.fixedCosts;const mo=sum(L.filter(f=>!f.end||f.end>=localDay()),f=>{const a=+f.amount||0;return f.period==='month'?a:f.period==='week'?a*52/12:f.period==='year'?a/12:a*365/12});
+ return `<div class="cards"><div class="card"><small>Fixed costs per month</small><b>${M(mo)}</b></div><div class="card"><small>Per day (average)</small><b>${M(mo*12/365)}</b></div><div class="card"><small>Per week</small><b>${M(mo*12/52)}</b></div></div>
+ <table class="tbl fct"><tr><th>Name</th><th>Type</th><th class="n">Amount</th><th>How often</th><th>Starts</th><th>Ends (optional)</th><th></th></tr>
+ ${L.map((f,i)=>`<tr><td><input data-fc="name" data-i="${i}" value="${esc(f.name)}" placeholder="e.g. Rent"></td><td><select data-fc="cat" data-i="${i}">${FC_CATS.map(c=>`<option ${c===f.cat?'selected':''}>${c}</option>`).join('')}</select></td><td class="n"><input data-fc="amount" data-i="${i}" inputmode="decimal" value="${f.amount||''}" style="width:110px;text-align:right"></td><td><select data-fc="period" data-i="${i}">${FC_PER.map(([k,t])=>`<option value="${k}" ${f.period===k?'selected':''}>${t}</option>`).join('')}</select></td><td><input type="date" data-fc="start" data-i="${i}" value="${f.start||''}"></td><td><input type="date" data-fc="end" data-i="${i}" value="${f.end||''}"></td><td><button class="btn sm red" data-a="fcDel" data-i="${i}">✕</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">No fixed costs yet. Add rent, electric, water, internet, insurance, loan payments, licenses…</div></td></tr>'}</table>
+ <div class="ebar" style="margin-top:8px"><button class="btn blue" data-a="fcAdd">+ Add Fixed Cost</button><span class="flex"></span><span class="hint">Changes save as you type ✓</span></div>
+ <p class="hint">Monthly costs are spread over the days of that month (rent $3,000 in a 30-day month = $100 a day). Put an end date when a cost stops, so older days still show what you paid then.</p>`}
+function acctPay(){const[a,b]=acctRange();const L=laborCalc(a,b);const A=acctSet();
+ return `<h3 style="margin:4px 0 6px">Employee pay</h3><table class="tbl payt"><tr><th>Employee</th><th>Role</th><th>Pay type</th><th class="n">Rate</th><th></th><th>Overtime</th><th>Phone</th><th>Status</th></tr>
+ ${S.users.map((u,i)=>{const p=payOf(u);const o=clockOpen(u);return `<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.role==='admin'?'Owner':u.role)}</td><td><select data-pay="type" data-i="${i}"><option value="none" ${p.type==='none'?'selected':''}>Not paid / owner</option><option value="hourly" ${p.type==='hourly'?'selected':''}>Hourly (time clock)</option><option value="salary" ${p.type==='salary'?'selected':''}>Salary</option></select></td>
+ <td class="n">${p.type==='none'?'':`$<input data-pay="rate" data-i="${i}" inputmode="decimal" value="${p.rate||''}" style="width:90px;text-align:right">`}</td><td>${p.type==='hourly'?'per hour':p.type==='salary'?`<select data-pay="per" data-i="${i}">${[['year','per year'],['month','per month'],['biweek','every 2 weeks'],['week','per week']].map(([k,t])=>`<option value="${k}" ${p.per===k?'selected':''}>${t}</option>`).join('')}</select>`:''}</td>
+ <td>${p.type==='hourly'?`<label class="tog"><input type="checkbox" data-pay="ot" data-i="${i}" ${p.ot!==false?'checked':''}><span>${A.otRate}× after ${A.otAfter}h/week</span></label>`:''}</td><td><input data-pay="phone" data-i="${i}" value="${esc(p.phone||'')}" style="width:130px"></td><td>${o?`<span class="badge g">clocked in ${fmtT(o.in)}</span>`:'<span class="hint">—</span>'}</td></tr>`}).join('')}</table>
+ <p class="hint">People are the same as Settings → Users &amp; PINs (add new employees there). Hourly people clock in and out with their PIN on the sign-in screen, or with the ⏱ button at the bottom.</p>
+ <h3 style="margin:14px 0 6px">Payroll for this period</h3><table class="tbl"><tr><th>Employee</th><th class="n">Shifts</th><th class="n">Regular hours</th><th class="n">Overtime hours</th><th class="n">Gross pay</th><th class="n">Employer taxes (${A.payrollTaxPct}%)</th><th class="n">Total cost</th></tr>
+ ${Object.values(L.people).map(p=>`<tr><td>${esc(p.name)}${p.open?' <span class="badge r" title="Still clocked in or forgot to clock out">open shift</span>':''}</td><td class="n">${p.salary?'salary':p.shifts}</td><td class="n">${p.salary?'—':hm(p.reg)}</td><td class="n">${p.salary?'—':hm(p.ot)}</td><td class="n">${money2(p.pay)}</td><td class="n">${money2(p.tax)}</td><td class="n"><b>${money2(p.pay+p.tax)}</b></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">No hours or salaries in this period</div></td></tr>'}
+ <tr class="tot"><td><b>Total</b></td><td></td><td class="n">${hm(sum(Object.values(L.people),p=>p.reg))}</td><td class="n">${hm(sum(Object.values(L.people),p=>p.ot))}</td><td class="n">${money2(sum(Object.values(L.people),p=>p.pay))}</td><td class="n">${money2(sum(Object.values(L.people),p=>p.tax))}</td><td class="n"><b>${money2(sum(Object.values(L.people),p=>p.pay+p.tax))}</b></td></tr></table>
+ <div class="fgrid" style="max-width:900px;margin-top:10px"><label class="fld"><span>Overtime after (hours per week)</span><input data-acs="otAfter" inputmode="decimal" value="${A.otAfter}"></label><label class="fld"><span>Overtime pay (× hourly rate)</span><input data-acs="otRate" inputmode="decimal" value="${A.otRate}"></label><label class="fld"><span>Employer payroll taxes (%)</span><input data-acs="payrollTaxPct" inputmode="decimal" value="${A.payrollTaxPct}"></label></div>
+ <p class="hint">Gross pay before withholding. Employer taxes (Social Security, Medicare, unemployment — often about 7.65%–10%) are added to labor cost if you enter them. Check with your accountant.</p>
+ <div class="ebar" style="margin-top:8px"><span class="flex"></span><button class="btn green" data-a="payPdf">⬇ Payroll PDF</button><button class="btn blue" data-a="payPrint">🖨 Print Payroll</button></div>`}
+const fmtT=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+const dtLocal=t=>{if(!t)return'';const d=new Date(t);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16)};
+function acctClock(){const[a,b]=acctRange();const L=(S.timeclock||[]).filter(p=>p.in<=b&&(p.out||Date.now())>=a).sort((x,y)=>y.in-x.in);const name=id=>(S.users.find(u=>u.id===id)||{}).name||'(deleted user)';const on=S.users.filter(u=>clockOpen(u));
+ return `<div class="cards"><div class="card"><small>Clocked in now</small><b>${on.length}</b><small>${on.map(u=>esc(u.name)+' since '+fmtT(clockOpen(u).in)).join(', ')||'nobody'}</small></div><div class="card"><small>Shifts in this period</small><b>${L.length}</b></div><div class="card"><small>Total hours</small><b>${hm(sum(L,p=>hrs((p.out||Date.now())-p.in)))}</b></div></div>
+ <table class="tbl clkt"><tr><th>Employee</th><th>Clock in</th><th>Clock out</th><th class="n">Hours</th><th>Note</th><th></th></tr>
+ ${L.map(p=>{const i=S.timeclock.indexOf(p);return `<tr class="${p.out?'':'open'}"><td><b>${esc(name(p.uid))}</b>${p.edited?`<div class="hint">edited by ${esc(p.edited)}</div>`:''}</td><td><input type="datetime-local" data-tc="in" data-i="${i}" value="${dtLocal(p.in)}"></td><td><input type="datetime-local" data-tc="out" data-i="${i}" value="${dtLocal(p.out)}">${p.out?'':'<div class="hint warn">still clocked in</div>'}</td><td class="n">${hm(hrs((p.out||Date.now())-p.in))}</td><td><input data-tc="note" data-i="${i}" value="${esc(p.note||'')}" style="width:160px"></td><td><button class="btn sm red" data-a="tcDel" data-i="${i}">✕</button></td></tr>`}).join('')||'<tr><td colspan="6"><div class="empty">No shifts in this period</div></td></tr>'}</table>
+ <div class="ebar" style="margin-top:8px"><select id="tcUser">${S.users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><button class="btn blue" data-a="tcAdd">+ Add a shift by hand</button><span class="flex"></span><span class="hint">Fix a forgotten clock-out by typing the time. Changes save right away ✓</span></div>`}
+/* --- clocking in and out --- */
+function clockToggle(u,cb2){S.timeclock=S.timeclock||[];const o=clockOpen(u);const now=Date.now();
+ if(o){o.out=now;saveKV('timeclock');const h=hrs(o.out-o.in);toast(`${u.name} clocked OUT at ${fmtT(now)} — ${hm(h)} worked`);beep(880,120)}
+ else{S.timeclock.push({id:uid(),uid:u.id,in:now,out:0});saveKV('timeclock');toast(`${u.name} clocked IN at ${fmtT(now)}`);beep(1200,120)}
+ if(cb2)cb2();else render()}
+function acctReportHtml(a,b){const P=profitData(a,b);const T=P.T;const lab=`${new Date(a).toLocaleDateString()} – ${new Date(b).toLocaleDateString()}`;
+ return `<h1>${esc(S.settings.storeName)} — Profit Report</h1><div>${lab} · printed ${fmtDT(Date.now())}</div>
+ <h2>Summary</h2><table><tr><td>Net sales</td><td class="n">${money2(T.net)}</td></tr><tr><td>Cost of goods sold</td><td class="n">-${money2(T.cogs)}</td></tr><tr><td><b>Gross profit</b></td><td class="n"><b>${money2(T.gp)}</b></td></tr><tr><td>Labor (${hm(T.hours)})</td><td class="n">-${money2(T.labor)}</td></tr><tr><td>Fixed costs</td><td class="n">-${money2(T.fixed)}</td></tr><tr><td>Expenses (cash payouts)</td><td class="n">-${money2(T.exp)}</td></tr><tr><td>Card processing fees</td><td class="n">-${money2(T.fees)}</td></tr><tr><td><b>NET PROFIT</b></td><td class="n"><b>${money2(T.np)}</b></td></tr><tr><td>Discounts given</td><td class="n">${money2(T.disc)}</td></tr><tr><td>Sales tax collected (owed to the state)</td><td class="n">${money2(T.tax)}</td></tr></table>
+ <h2>By day</h2><table><tr><th>Day</th><th class="n">Sales</th><th class="n">Net sales</th><th class="n">Disc.</th><th class="n">Tax</th><th class="n">COGS</th><th class="n">Gross profit</th><th class="n">Labor</th><th class="n">Fixed</th><th class="n">Exp.</th><th class="n">Fees</th><th class="n">Net profit</th></tr>${P.rows.map(r=>`<tr><td>${r.k}</td><td class="n">${r.n}</td><td class="n">${money2(r.net)}</td><td class="n">${money2(r.disc)}</td><td class="n">${money2(r.tax)}</td><td class="n">${money2(r.cogs)}</td><td class="n">${money2(r.gp)}</td><td class="n">${money2(r.labor)}</td><td class="n">${money2(r.fixed)}</td><td class="n">${money2(r.exp)}</td><td class="n">${money2(r.fees)}</td><td class="n"><b>${money2(r.np)}</b></td></tr>`).join('')}</table>`}
+function payrollHtml(a,b){const L=laborCalc(a,b);const P=Object.values(L.people);const A=acctSet();
+ return `<h1>${esc(S.settings.storeName)} — Payroll</h1><div>${new Date(a).toLocaleDateString()} – ${new Date(b).toLocaleDateString()} · printed ${fmtDT(Date.now())}</div>
+ <h2>Employees</h2><table><tr><th>Employee</th><th class="n">Rate</th><th class="n">Regular hours</th><th class="n">Overtime hours</th><th class="n">Gross pay</th><th class="n">Employer taxes</th></tr>${P.map(p=>{const u=S.users.find(x=>x.name===p.name);const pay=payOf(u);return `<tr><td>${esc(p.name)}</td><td class="n">${pay.type==='salary'?'salary':'$'+money2(pay.rate)+'/h'}</td><td class="n">${p.salary?'—':(p.reg).toFixed(2)}</td><td class="n">${p.salary?'—':(p.ot).toFixed(2)}</td><td class="n">${money2(p.pay)}</td><td class="n">${money2(p.tax)}</td></tr>`}).join('')}<tr><td><b>Total</b></td><td></td><td class="n">${sum(P,p=>p.reg).toFixed(2)}</td><td class="n">${sum(P,p=>p.ot).toFixed(2)}</td><td class="n"><b>${money2(sum(P,p=>p.pay))}</b></td><td class="n">${money2(sum(P,p=>p.tax))}</td></tr></table>
+ <h2>Shifts</h2><table><tr><th>Employee</th><th>In</th><th>Out</th><th class="n">Hours</th></tr>${(S.timeclock||[]).filter(p=>p.in>=a&&p.in<=b).sort((x,y)=>x.in-y.in).map(p=>`<tr><td>${esc((S.users.find(u=>u.id===p.uid)||{}).name||'')}</td><td>${fmtDT(p.in)}</td><td>${p.out?fmtDT(p.out):'OPEN'}</td><td class="n">${hrs((p.out||Date.now())-p.in).toFixed(2)}</td></tr>`).join('')}</table><p>Overtime: ${A.otRate}× after ${A.otAfter} hours per week (Sunday–Saturday). Gross pay is before withholding.</p>`}
+async function acctOut(html,name,pdf){if(!can('reports_print')&&!can('accounting')){toast('Not allowed',1);return}
+ if(!DESK){$('#print').innerHTML=`<style>@page{size:letter;margin:12mm}${PAGE_CSS}</style>`+html;setTimeout(()=>window.print(),60);return}
+ if(pdf){toast('Making PDF…');const r=await posAPI.savePdf({html,css:PAGE_CSS,name});if(r.ok)openModal(`<div class="mtitle">PDF saved</div><div class="msub">${esc(r.path)}</div><div class="mbtns">${cancelBtn('OK')}<button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();posAPI.showFile(r.path)})}">Show in folder</button></div>`,'sm');else if(!r.canceled)toast('PDF failed: '+r.error,1);return}
+ pickPrinter('Print',async o=>{if(o.pdf)return acctOut(html,name,true);toast('Sending to '+o.printer+'…');const r=await posAPI.printDoc({html,css:PAGE_CSS,printer:o.printer});toast(r.ok?'Sent to '+o.printer:'Printer problem: '+r.error,!r.ok)})}
+Object.assign(A,{
+ acctTab(d){S.acctTab=d.v;render()},
+ fcAdd(){S.fixedCosts=S.fixedCosts||[];S.fixedCosts.push({id:uid(),name:'',cat:'Rent',amount:0,period:'month',start:localDay(),end:''});saveKV('fixedcosts');render();setTimeout(()=>{const l=[...document.querySelectorAll('[data-fc=name]')].pop();l&&l.focus()},40)},
+ fcDel(d){const f=S.fixedCosts[+d.i];if(!f)return;confirmBox(`Delete fixed cost <b>${esc(f.name||'(no name)')}</b>?<br><small>Tip: to stop a cost but keep it in past days, set an end date instead.</small>`,'Delete',()=>{S.fixedCosts.splice(+d.i,1);saveKV('fixedcosts');render()},{danger:true})},
+ tcDel(d){const p=S.timeclock[+d.i];if(!p)return;confirmBox('Delete this shift?','Delete',()=>{S.timeclock.splice(+d.i,1);saveKV('timeclock');render()},{danger:true})},
+ tcAdd(){const id=$('#tcUser').value;const t=Date.now();S.timeclock.push({id:uid(),uid:id,in:t-8*3600000,out:t,edited:S.user.name,note:'added by hand'});saveKV('timeclock');render();toast('Shift added — set the right times')},
+ clockMe(){if(!S.user)return;clockToggle(S.user)},
+ pinClock(){const u=S.users.find(u=>String(u.pin)===S.pin&&S.pin);S.pin='';if(!u){render();const m=$('#pinMsg');if(m)m.textContent='Wrong PIN';beep(300,250);return}clockToggle(u,()=>{render();const m=$('#pinMsg');if(m){const o=clockOpen(u);m.innerHTML=`<span style="color:#15803d">${esc(u.name)} clocked ${o?'IN':'OUT'} at ${fmtT(Date.now())}</span>`}})},
+ acctPdf(){const[a,b]=acctRange();if(!profitData(a,b)){toast('Still loading');return}acctOut(acctReportHtml(a,b),`profit-${S.acctR.range}-${localDay()}`,true)},
+ acctPrint(){const[a,b]=acctRange();if(!profitData(a,b)){toast('Still loading');return}acctOut(acctReportHtml(a,b),`profit-${S.acctR.range}-${localDay()}`,false)},
+ payPdf(){const[a,b]=acctRange();acctOut(payrollHtml(a,b),`payroll-${S.acctR.range}-${localDay()}`,true)},
+ payPrint(){const[a,b]=acctRange();acctOut(payrollHtml(a,b),`payroll-${S.acctR.range}-${localDay()}`,false)}
+});
+document.addEventListener('input',e=>{const t=e.target;if(S.screen!=='accounting')return;
+ if(t.dataset.fc){const f=S.fixedCosts[+t.dataset.i];if(!f)return;f[t.dataset.fc]=t.dataset.fc==='amount'?rvN(t.value):t.value;saveKV('fixedcosts',600);clearTimeout(DC.fcT);if(t.dataset.fc==='amount')DC.fcT=setTimeout(()=>{const cards=document.querySelector('.acct .cards');if(cards&&document.activeElement===t){const pos=t.selectionStart;render();const n=document.querySelector(`[data-fc=amount][data-i="${t.dataset.i}"]`);if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}},900);return}
+ if(t.dataset.pay&&t.type!=='checkbox'&&t.tagName==='INPUT'){const u=S.users[+t.dataset.i];if(!u)return;u.pay={...payOf(u),[t.dataset.pay]:t.dataset.pay==='rate'?rvN(t.value):t.value};saveKV('users',600);return}
+ if(t.dataset.acs&&t.tagName==='INPUT'){S.settings.acct={...acctSet(),[t.dataset.acs]:rvN(t.value)};saveKV('settings',600);return}
+ if(t.dataset.tc==='note'){const p=S.timeclock[+t.dataset.i];if(p){p.note=t.value;saveKV('timeclock',600)}}});
+document.addEventListener('change',e=>{const t=e.target;if(S.screen!=='accounting')return;
+ if(t.dataset.acr){const r=S.acctR;r[t.dataset.acr]=t.value;render();return}
+ if(t.dataset.fc&&t.tagName==='SELECT'||t.dataset.fc&&t.type==='date'){const f=S.fixedCosts[+t.dataset.i];if(f){f[t.dataset.fc]=t.value;saveKV('fixedcosts');render()}return}
+ if(t.dataset.pay&&(t.tagName==='SELECT'||t.type==='checkbox')){const u=S.users[+t.dataset.i];if(!u)return;u.pay={...payOf(u),[t.dataset.pay]:t.type==='checkbox'?t.checked:t.value};saveKV('users');render();return}
+ if(t.dataset.acs){render();return}
+ if(t.dataset.tc==='in'||t.dataset.tc==='out'){const p=S.timeclock[+t.dataset.i];if(!p)return;const v=t.value?new Date(t.value).getTime():0;if(t.dataset.tc==='in'&&!v){toast('Clock-in time is needed',1);render();return}if(t.dataset.tc==='out'&&v&&v<p.in){toast('Clock-out must be after clock-in',1);render();return}p[t.dataset.tc]=v;p.edited=S.user.name;saveKV('timeclock');render()}});
 
 const OBJ={edit:()=>S.edit,set:()=>S.settings,discs:()=>S.discounts,mm:()=>S.mmEdit,users:()=>S.users};
 const AUTOSAVE={set:'settings',discs:'discounts',users:'users'};

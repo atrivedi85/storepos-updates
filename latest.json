@@ -1,6 +1,6 @@
 {
- "version": "1.7.0",
- "notes": "Items is now Inventory, with a Receive Invoice tab. Invoices can be a PDF (typed or scanned), Excel/CSV, or a photo (read by Windows). Item cost updates from each invoice, with cost history on the item. Option to raise sell prices when cost goes up.",
- "url": "updates/StorePOS-Update-1.7.0.posupdate",
- "sha256": "297b34dacd6095000ed5655c635081e1bb51bcd9550fee9e8684775649e07efc"
+ "version": "1.8.0",
+ "notes": "New Accounting tab: daily profit (sales, COGS, tax, discounts, labor, fixed costs, net profit), fixed costs, employee pay and payroll, time clock (clock in/out with PIN).",
+ "url": "updates/StorePOS-Update-1.8.0.posupdate",
+ "sha256": "b4b3f9204ac9b742920bdf08f79dd31357cc2bf2d3c55f7b299ec13906f31096"
 }
