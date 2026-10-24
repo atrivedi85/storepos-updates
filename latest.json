@@ -1,6 +1,6 @@
 {
- "version": "1.9.1",
- "notes": "Inventory search now always looks through all items, even when a category or subcategory filter (or See items) is selected.",
- "url": "updates/StorePOS-Update-1.9.1.posupdate",
- "sha256": "56cc864246498d781d36a13e66b1f16c16661fcda781adbfab09cd3d9c8ec4eb"
+ "version": "1.9.2",
+ "notes": "Item Subcategory is now a dropdown that lists the subcategories of the chosen category (updates when you change category), with + New subcategory.",
+ "url": "updates/StorePOS-Update-1.9.2.posupdate",
+ "sha256": "3f43945027f7ee48a092710e6e1a363d71e0ca895387ac3bb040d9ee69823fea"
 }
