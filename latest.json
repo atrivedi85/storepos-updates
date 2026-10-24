@@ -1,6 +1,6 @@
 {
- "version": "1.11.0",
- "notes": "Link Android tablets to this PC: Settings \u2192 Tablets. Tablets share items, stock, sales, employees and settings, keep selling offline and catch up when back online.",
- "url": "updates/StorePOS-Update-1.11.0.posupdate",
- "sha256": "a1424418edd4f4b5ccaba188991a7821128add3b8ca9efc1e2fcdbd4c476342e"
+ "version": "1.12.0",
+ "notes": "Price-check flags: invoices flag items whose cost changed and any price under your minimum margin (30% by default). Inventory \u2192 Items \u2192 \u26a0 Price check lists every item to fix.",
+ "url": "updates/StorePOS-Update-1.12.0.posupdate",
+ "sha256": "dadcb3a4f0e541984a9d94714bdbb081d01417952377c3c0955a1af940719493"
 }
