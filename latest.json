@@ -1,6 +1,6 @@
 {
- "version": "1.8.1",
- "notes": "Bigger register side buttons (Pay, Find Items, Misc. Sale, Card Fee, Discounts, Hold, Refund, Cash Payout, Clear All) \u2014 twice as wide with larger text.",
- "url": "updates/StorePOS-Update-1.8.1.posupdate",
- "sha256": "249b4a69942f566e63360d08761b5446afc8248aeee41bcae64f312b48ff72b5"
+ "version": "1.8.2",
+ "notes": "Add employees, PINs and access (permissions) right in Accounting \u2192 Employees & Payroll. New permission: Void / delete transactions (with reason; removed from reports, items back in stock).",
+ "url": "updates/StorePOS-Update-1.8.2.posupdate",
+ "sha256": "71a604e850d890d68116f7c7da96d50dd2d8bc6986f8cc2eeaf1a085d9095a9a"
 }
