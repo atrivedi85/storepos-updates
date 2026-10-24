@@ -1,6 +1,6 @@
 {
- "version": "1.8.0",
- "notes": "New Accounting tab: daily profit (sales, COGS, tax, discounts, labor, fixed costs, net profit), fixed costs, employee pay and payroll, time clock (clock in/out with PIN).",
- "url": "updates/StorePOS-Update-1.8.0.posupdate",
- "sha256": "b4b3f9204ac9b742920bdf08f79dd31357cc2bf2d3c55f7b299ec13906f31096"
+ "version": "1.8.1",
+ "notes": "Bigger register side buttons (Pay, Find Items, Misc. Sale, Card Fee, Discounts, Hold, Refund, Cash Payout, Clear All) \u2014 twice as wide with larger text.",
+ "url": "updates/StorePOS-Update-1.8.1.posupdate",
+ "sha256": "249b4a69942f566e63360d08761b5446afc8248aeee41bcae64f312b48ff72b5"
 }
