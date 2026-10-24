@@ -1,6 +1,6 @@
 {
- "version": "1.6.1",
- "notes": "Update address is built in (nothing to type); Check online offers Download & install right away; Install update file opens the NAS Updates folder; keyboard hides when a Windows window opens.",
- "url": "updates/StorePOS-Update-1.6.1.posupdate",
- "sha256": "e81f26bb31777f9fa61a7a3ed5c0c3d9f41cba49f03e659c033f36d6c31bd9da"
+ "version": "1.7.0",
+ "notes": "Items is now Inventory, with a Receive Invoice tab. Invoices can be a PDF (typed or scanned), Excel/CSV, or a photo (read by Windows). Item cost updates from each invoice, with cost history on the item. Option to raise sell prices when cost goes up.",
+ "url": "updates/StorePOS-Update-1.7.0.posupdate",
+ "sha256": "297b34dacd6095000ed5655c635081e1bb51bcd9550fee9e8684775649e07efc"
 }

@@ -620,6 +620,46 @@ function runPs(env, timeoutMs = 20000) {
     ps.on('close', code => { if (done) return; done = true; clearTimeout(t); res(code === 0 ? { ok: true } : { ok: false, error: (err.trim().split('\n').filter(Boolean).pop() || 'Printer refused the data').replace(/^.*?:\s*/, '') }); });
   });
 }
+/* reading invoice photos with the OCR built into Windows 10/11 (no internet needed) */
+const OCR_PS = `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
+$null = [Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime]
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, $type) { $t = $asTaskGeneric.MakeGenericMethod($type).Invoke($null, @($op)); $null = $t.Wait(-1); $t.Result }
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:POS_OCR_FILE)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bmp = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if ($eng -eq $null) { $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new('en-US')) }
+if ($eng -eq $null) { throw 'Windows text recognition (OCR) is not installed for your language' }
+$res = Await ($eng.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+$out = New-Object System.Collections.ArrayList
+foreach ($ln in $res.Lines) { foreach ($w in $ln.Words) { $r = $w.BoundingRect; $null = $out.Add([pscustomobject]@{ t = $w.Text; x = [math]::Round($r.X); y = [math]::Round($r.Y); w = [math]::Round($r.Width); h = [math]::Round($r.Height) }) } }
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+ConvertTo-Json -InputObject @($out) -Compress
+`;
+ipcMain.handle('ocrImage', async (e, bytes) => {
+  if (process.platform !== 'win32') return { ok: false, error: 'Reading photos needs Windows 10 or 11' };
+  const f = path.join(app.getPath('temp'), 'storepos-ocr-' + Date.now() + '.png');
+  fs.writeFileSync(f, Buffer.from(bytes));
+  try {
+    return await new Promise(res => {
+      const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(OCR_PS, 'utf16le').toString('base64')], { windowsHide: true, env: { ...process.env, POS_OCR_FILE: f } });
+      let out = '', err = '', done = false;
+      const t = setTimeout(() => { if (!done) { done = true; try { ps.kill(); } catch (x) { /* gone */ } res({ ok: false, error: 'Reading the photo took too long' }); } }, 90000);
+      ps.stdout.on('data', d => { out += d; }); ps.stderr.on('data', d => { err += d; });
+      ps.on('error', x => { if (!done) { done = true; clearTimeout(t); res({ ok: false, error: x.message }); } });
+      ps.on('close', code => { if (done) return; done = true; clearTimeout(t);
+        try { const words = JSON.parse(out.trim() || '[]'); res({ ok: true, words: Array.isArray(words) ? words : [words] }); }
+        catch (x) { res({ ok: false, error: (err.trim().split('\n').filter(Boolean).pop() || 'Could not read the photo').replace(/^.*?:\s*/, '') }); } });
+    });
+  } finally { try { fs.unlinkSync(f); } catch (x) { /* ignore */ } }
+});
 function sendTcp(host, port, buf) {
   return new Promise(res => {
     let done = false; const fin = r => { if (!done) { done = true; res(r); } };

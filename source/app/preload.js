@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('posAPI', {
   showFile: f => ipcRenderer.invoke('showFile', f),
   saveInvoiceFile: o => ipcRenderer.invoke('saveInvoiceFile', o),
   openPath: f => ipcRenderer.invoke('openPath', f),
+  ocrImage: bytes => ipcRenderer.invoke('ocrImage', bytes),
   savePdf: o => ipcRenderer.invoke('savePdf', o),
   rawPrint: bytes => ipcRenderer.invoke('rawPrint', bytes),
   comPorts: () => ipcRenderer.invoke('comPorts'),
