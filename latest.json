@@ -1,6 +1,6 @@
 {
- "version": "1.12.2",
- "notes": "Android version is free (no trial or license screen). First release signed for Google Play.",
- "url": "updates/StorePOS-Update-1.12.2.posupdate",
- "sha256": "b1b01747c89222fed6c7e69ab7bb8b38cd50a8020d521f033296b9857e3abd73"
+ "version": "1.12.3",
+ "notes": "Lighter, thinner text on item buttons, quick keys and categories.",
+ "url": "updates/StorePOS-Update-1.12.3.posupdate",
+ "sha256": "218e6a9ab3ad5982c3842ffd538a2b6953ecd2c98968f887cde4709dcea4d69f"
 }
