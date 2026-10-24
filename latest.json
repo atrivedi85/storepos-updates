@@ -1,6 +1,6 @@
 {
- "version": "1.12.0",
- "notes": "Price-check flags: invoices flag items whose cost changed and any price under your minimum margin (30% by default). Inventory \u2192 Items \u2192 \u26a0 Price check lists every item to fix.",
- "url": "updates/StorePOS-Update-1.12.0.posupdate",
- "sha256": "dadcb3a4f0e541984a9d94714bdbb081d01417952377c3c0955a1af940719493"
+ "version": "1.12.1",
+ "notes": "Price checks: Ignore one item or Ignore all (OK to sell below your minimum margin). Ignored items stay in Inventory \u2192 Ignored to review later. A bell at the bottom shows how many items need a price check.",
+ "url": "updates/StorePOS-Update-1.12.1.posupdate",
+ "sha256": "2c3b13baa1ee6a9de0998cbeb9d376120c553582e6a3ebc601f7e9f20a738dda"
 }
