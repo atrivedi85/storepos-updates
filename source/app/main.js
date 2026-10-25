@@ -135,6 +135,7 @@ const CH = { del: db.prepare('DELETE FROM changes WHERE store=? AND key=?'), ins
 function recordChange(store, key, origin) {
   if (store === 'kv' && LOCAL_KV.includes(String(key))) return;
   CH.del.run(store, String(key)); CH.ins.run(store, String(key), origin || 'pc');
+  cloudBump();
 }
 function keyOf(store, val, key) { return store === 'kv' ? key : store === 'orders' ? val.id : val.sku; }
 ipcMain.handle('db', (e, op, store, a, b) => {
@@ -142,9 +143,9 @@ ipcMain.handle('db', (e, op, store, a, b) => {
   switch (op) {
     case 'all': return parseRows(Q[store].all.all());
     case 'get': { const r = Q.kv.get.get(String(a)); return r ? JSON.parse(r.data) : undefined; }
-    case 'put': tx(() => { putOne(store, a, b); recordChange(store, keyOf(store, a, b)); }); return true;
-    case 'putMany': tx(() => (a || []).forEach(v => { putOne(store, v); recordChange(store, keyOf(store, v)); })); return true;
-    case 'del': tx(() => { Q[store].del.run(String(a)); if (store === 'orders') L.del.run(String(a)); recordChange(store, a); }); return true;
+    case 'put': tx(() => { queueOut(store, a, b); putOne(store, a, b); recordChange(store, keyOf(store, a, b)); }); linkKick(); return true;
+    case 'putMany': tx(() => (a || []).forEach(v => { queueOut(store, v); putOne(store, v); recordChange(store, keyOf(store, v)); })); linkKick(); return true;
+    case 'del': tx(() => { queueOutDel(store, a); Q[store].del.run(String(a)); if (store === 'orders') L.del.run(String(a)); recordChange(store, a); }); linkKick(); return true;
     case 'clear': Q[store].clear.run(); if (store === 'orders') L.clear.run(); bumpEpoch(); return true;
     default: throw new Error('Unknown op ' + op);
   }
@@ -160,7 +161,7 @@ ipcMain.handle('firstRunData', () => {
 /* ---------- order history queries (all done here so 190k+ orders never load into the screen) ---------- */
 function rowsIn(sql, params) { const st = db.prepare(sql); return typeof st.iterate === 'function' ? st.iterate(...params) : st.all(...params); }
 const H = {};
-const handle = (name, fn) => { H[name] = fn; ipcMain.handle(name, fn); };
+const handle = (name, fn) => { H[name] = fn; ipcMain.handle(name, (e, ...a) => viaHost(name, a, () => fn(e, ...a))); };
 handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
   q = String(q || '').trim();
   let where = 'time BETWEEN ? AND ?', params = [a, b], item = null;
@@ -506,6 +507,7 @@ async function checkOnline(manual) {
     } catch (e) { lastErr = e.message; }
   }
   if (!best) return { ok: false, error: 'Could not reach the update server (' + lastErr + '). Check the internet connection.' };
+  if (/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i.test(String(best.cloudUrl || '')) && cfg.cloudUrlAuto !== best.cloudUrl) { cfg.cloudUrlAuto = best.cloudUrl; saveCfg(); if (cfg.cloud && cfg.cloud.on) cloudStart(); send('lan', lanState()); }
   onlineUpdate = verGt(best.version, require('./package.json').version) ? best : null;
   if (onlineUpdate) send('updateAvailable', onlineUpdate);
   return { ok: true, available: onlineUpdate };
@@ -876,7 +878,7 @@ function lanHandle(req, body) {
 }
 function startLan() {
   stopLan();
-  if (!cfg.lanServer) return;
+  if (!cfg.lanServer || (cfg.link && cfg.link.token)) return;
   const port = Number(cfg.lanPort) || 8765;
   const srv = http.createServer((req, res) => {
     const done = (o) => { const st = o && o.status ? o.status : 200; const b = JSON.stringify(o && o.status ? { ok: false, error: o.error } : o); res.writeHead(st, { 'Content-Type': 'application/json' }); res.end(b); };
@@ -893,7 +895,7 @@ function startLan() {
   LAN.server = srv;
 }
 function stopLan() { if (LAN.server) { try { LAN.server.close(); } catch (e) { /* ignore */ } LAN.server = null; } }
-function lanState() { return { on: !!cfg.lanServer, running: !!(LAN.server && LAN.server.listening), port: Number(cfg.lanPort) || 8765, ips: lanIps(), error: LAN.error, code: Date.now() < LAN.codeUntil ? LAN.code : '', codeUntil: LAN.codeUntil, tablets: (cfg.tablets || []).map(t => ({ id: t.id, name: t.name, reg: t.reg, lastSeen: t.lastSeen, ip: t.ip })) }; }
+function lanState() { return { on: !!cfg.lanServer, running: !!(LAN.server && LAN.server.listening), port: Number(cfg.lanPort) || 8765, ips: lanIps(), error: LAN.error, code: Date.now() < LAN.codeUntil ? LAN.code : '', codeUntil: LAN.codeUntil, tablets: (cfg.tablets || []).map(t => ({ id: t.id, name: t.name, reg: t.reg, lastSeen: t.lastSeen, ip: t.ip })), linked: !!(cfg.link && cfg.link.token), cloud: { on: !!(cfg.cloud && cfg.cloud.on), state: CL.state, error: CL.error, lastOk: CL.lastOk, code: Date.now() < CL.codeUntil ? CL.code : '', configured: !cloudUrl().includes('REPLACE_ME') } }; }
 ipcMain.handle('lanState', () => lanState());
 function allowFirewall() {   // one-time Windows Firewall rule so tablets can reach this PC (asks for admin once)
   if (process.platform !== 'win32' || cfg.firewallRule === (Number(cfg.lanPort) || 8765)) return;
@@ -902,9 +904,254 @@ function allowFirewall() {   // one-time Windows Firewall rule so tablets can re
   const ps = spawn('powershell.exe', ['-NoProfile', '-Command', `Start-Process netsh -ArgumentList '${args.replace(/'/g, "''")}' -Verb RunAs -WindowStyle Hidden -Wait`], { windowsHide: true });
   ps.on('close', code => { if (code === 0) { cfg.firewallRule = port; saveCfg(); } });
 }
-ipcMain.handle('lanSet', (e, on) => { cfg.lanServer = !!on; saveCfg(); startLan(); if (on) allowFirewall(); return lanState(); });
-ipcMain.handle('lanPairCode', () => { LAN.code = String(crypto.randomInt(100000, 1000000)); LAN.codeUntil = Date.now() + 10 * 60000; return lanState(); });
+ipcMain.handle('lanSet', (e, on) => { if (on && cfg.link && cfg.link.token) return lanState(); cfg.lanServer = !!on; saveCfg(); startLan(); if (on) allowFirewall(); return lanState(); });
+ipcMain.handle('lanPairCode', async () => { LAN.code = String(crypto.randomInt(100000, 1000000)); LAN.codeUntil = Date.now() + 10 * 60000; CL.code = ''; if (cloudOn()) { try { await cloudPairCode(); } catch (e) { CL.error = 'Could not make a Cloud code: ' + e.message; } } return lanState(); });
 ipcMain.handle('lanRemove', (e, id) => { cfg.tablets = (cfg.tablets || []).filter(t => t.id !== id); saveCfg(); return lanState(); });
+
+/* ---------- Cloud Sync: registers share data over the internet through the Store POS relay ----------
+   Everything is sealed (AES-256-GCM) with the store's own key before it leaves this PC; the relay only
+   passes sealed messages along and holds changes for the store PC while it is off. */
+const CLOUD_URL = 'https://storepos-sync.REPLACE_ME.workers.dev';
+const cloudUrl = () => String(cfg.cloudUrl || cfg.cloudUrlAuto || CLOUD_URL).replace(/\/+$/, '');
+const wsUrl = u => u.replace(/^http/, 'ws');
+const B64U = b => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const PAIR_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const PART = 600000;
+function sealBuf(keyB64, obj, gz) {
+  const key = Buffer.from(keyB64, 'base64'), iv = crypto.randomBytes(12);
+  let plain = Buffer.from(JSON.stringify(obj), 'utf8'); if (gz) plain = zlib.gzipSync(plain);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv); const ct = Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]);
+  return (gz ? 'z.' : 'p.') + Buffer.concat([iv, ct]).toString('base64');
+}
+function openBuf(keyB64, s) {
+  const gz = s.startsWith('z.'); const raw = Buffer.from(s.slice(2), 'base64'); const key = Buffer.from(keyB64, 'base64');
+  const iv = raw.subarray(0, 12), tag = raw.subarray(raw.length - 16), ct = raw.subarray(12, raw.length - 16);
+  const d = crypto.createDecipheriv('aes-256-gcm', key, iv); d.setAuthTag(tag);
+  let plain = Buffer.concat([d.update(ct), d.final()]); if (gz) plain = zlib.gunzipSync(plain);
+  return JSON.parse(plain.toString('utf8'));
+}
+const relayAuth = keyB64 => crypto.createHmac('sha256', Buffer.from(keyB64, 'base64')).update('storepos-relay-auth').digest('hex');
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const pairId = code => B64U(crypto.createHash('sha256').update('storepos-pair:' + normCode(code)).digest()).slice(0, 32);
+const pairKey = code => crypto.pbkdf2Sync(normCode(code), 'storepos-pair-v1', 150000, 32, 'sha256').toString('base64');
+function sendParts(ws, head, enc) {   // big messages go in pieces (the relay takes up to 1 MB per message)
+  const n = Math.max(1, Math.ceil(enc.length / PART));
+  for (let i = 0; i < n; i++) ws.send(JSON.stringify({ ...head, ...(n > 1 ? { part: i, parts: n } : {}), enc: enc.slice(i * PART, (i + 1) * PART) }));
+}
+function collect(map, m) {   // put pieces back together; returns the full sealed text when all arrived
+  if (!m.parts) return m.enc;
+  const k = (m.from || '') + '|' + m.id; let e = map.get(k); if (!e) { e = { parts: [], got: 0, at: Date.now(), qids: [] }; map.set(k, e); }
+  if (e.parts[m.part] === undefined) { e.parts[m.part] = m.enc; e.got++; } if (m.qid) e.qids.push(m.qid);
+  for (const [kk, v] of map) if (Date.now() - v.at > 300000) map.delete(kk);
+  if (e.got < m.parts) return null; map.delete(k); m.qids = e.qids; return e.parts.join('');
+}
+
+/* --- store PC side (host) --- */
+const CL = { ws: null, state: 'off', error: '', lastOk: 0, code: '', codeUntil: 0, timer: null, ping: null, parts: new Map(), bumpT: null, waiting: 0 };
+function cloudOn() { return !!(cfg.cloud && cfg.cloud.on && cfg.cloud.storeId && cfg.cloud.key) && !linkCfg(); }
+function cloudBump() { if (!CL.ws || CL.state !== 'online') return; clearTimeout(CL.bumpT); CL.bumpT = setTimeout(() => { try { CL.ws.send('{"t":"bump"}'); } catch (e) { /* reconnects */ } }, 300); }
+function cloudStop() { clearTimeout(CL.timer); clearInterval(CL.ping); if (CL.ws) { try { CL.ws.onclose = null; CL.ws.close(); } catch (e) { /* closed */ } } CL.ws = null; CL.state = 'off'; }
+function cloudStart() {
+  cloudStop(); if (!cloudOn()) return;
+  const c = cfg.cloud; CL.state = 'connecting'; CL.error = '';
+  let ws; try { ws = new WebSocket(`${wsUrl(cloudUrl())}/v1/store/${c.storeId}/ws?role=host&auth=${relayAuth(c.key)}`); } catch (e) { CL.state = 'error'; CL.error = e.message; CL.timer = setTimeout(cloudStart, 15000); return; }
+  CL.ws = ws;
+  ws.onopen = () => { CL.state = 'online'; CL.error = ''; CL.lastOk = Date.now(); ws.send('{"t":"hello"}'); send('lan', lanState()); CL.ping = setInterval(() => { try { ws.send('{"t":"ping"}'); } catch (e) { /* closed */ } }, 45000); };
+  ws.onmessage = ev => { CL.lastOk = Date.now(); let m; try { m = JSON.parse(String(ev.data)); } catch (e) { return; } if (m.t === 'welcome') { CL.waiting = m.waiting || 0; return; } if (m.t === 'req') cloudRequest(m); };
+  ws.onerror = () => { CL.error = 'Can’t reach the Cloud Sync server (check the internet)'; };
+  ws.onclose = ev => { clearInterval(CL.ping); if (CL.ws !== ws) return; CL.ws = null; CL.state = 'error'; if (ev.reason) CL.error = ev.reason; send('lan', lanState()); CL.timer = setTimeout(cloudStart, ev.code === 4000 ? 60000 : 10000); };
+}
+async function cloudRequest(m) {
+  const enc = collect(CL.parts, m); if (enc === null) return;
+  const qids = m.qids || (m.qid ? [m.qid] : []);
+  let out;
+  try {
+    const r = openBuf(cfg.cloud.key, enc);
+    const fake = { url: String(r.path || ''), headers: { 'x-token': String(r.token || '') }, socket: { remoteAddress: 'internet' } };
+    out = await Promise.resolve(lanHandle(fake, r.body || {}));
+  } catch (e) { out = { status: 500, error: e.message }; }
+  if (!CL.ws) return;
+  if (qids.length) { for (const q of qids) CL.ws.send(JSON.stringify({ t: 'ack', qid: q })); return; }   // held while this PC was off — no one waits for an answer
+  const body = out && out.status ? { status: out.status, error: out.error } : out;
+  sendParts(CL.ws, { t: 'res', id: m.id, to: m.from }, sealBuf(cfg.cloud.key, body, !!m.z));
+}
+async function cloudPairCode() {
+  if (!cloudOn()) return;
+  if (!LAN.code || Date.now() > LAN.codeUntil) { LAN.code = String(crypto.randomInt(100000, 1000000)); LAN.codeUntil = Date.now() + 10 * 60000; }
+  let code = ''; for (let i = 0; i < 8; i++) code += PAIR_ABC[crypto.randomInt(PAIR_ABC.length)];
+  const blob = sealBuf(pairKey(code), { storeId: cfg.cloud.storeId, key: cfg.cloud.key, lanCode: LAN.code, store: storeName(), url: cloudUrl() }, false);
+  const r = await fetch(`${cloudUrl()}/v1/pair/${pairId(code)}`, { method: 'PUT', body: blob });
+  if (!r.ok) throw new Error('Cloud Sync server said ' + r.status);
+  CL.code = code.slice(0, 4) + '-' + code.slice(4); CL.codeUntil = LAN.codeUntil;
+}
+ipcMain.handle('cloudSet', (e, on) => {
+  if (on && linkCfg()) return lanState();
+  cfg.cloud = cfg.cloud || {};
+  if (on && !cfg.cloud.storeId) { cfg.cloud.storeId = B64U(crypto.randomBytes(16)); cfg.cloud.key = crypto.randomBytes(32).toString('base64'); }
+  cfg.cloud.on = !!on; saveCfg(); if (on) cloudStart(); else cloudStop(); return lanState();
+});
+
+/* --- this PC linked to a store PC (at the store over Wi-Fi, or from home over the internet) --- */
+db.exec('CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY AUTOINCREMENT, store TEXT, key TEXT, op TEXT, data TEXT, delta REAL, ts INTEGER)');
+const linkCfg = () => (cfg.link && cfg.link.token ? cfg.link : null);
+const LK = { online: false, hostOn: true, lastOk: 0, lastErr: '', busy: false, progress: '', ws: null, wsReady: null, pending: new Map(), parts: new Map(), cid: '', kickT: null, ping: null, queued: false };
+const OB = { ins: db.prepare('INSERT INTO outbox(store,key,op,data,delta,ts) VALUES(?,?,?,?,?,?)'), delKv: db.prepare("DELETE FROM outbox WHERE store='kv' AND key=?"), has: db.prepare('SELECT 1 x FROM outbox WHERE store=? AND key=? LIMIT 1'), n: () => db.prepare('SELECT COUNT(*) n FROM outbox').get().n };
+function queueOut(store, val, key) {
+  if (!linkCfg()) return;
+  const k = String(keyOf(store, val, key)); if (store === 'kv' && LOCAL_KV.includes(k)) return;
+  let delta = null;
+  if (store === 'products') { const o = getProduct.get(k); const os = o ? Number(JSON.parse(o.data).stock) || 0 : 0; delta = r2((Number(val.stock) || 0) - os); }
+  if (store === 'kv') OB.delKv.run(k);
+  OB.ins.run(store, k, 'put', JSON.stringify(val === undefined ? null : val), delta, Date.now());
+}
+function queueOutDel(store, key) { if (linkCfg() && store !== 'kv') OB.ins.run(store, String(key), 'del', null, null, Date.now()); }
+function linkKick() { if (!linkCfg()) return; clearTimeout(LK.kickT); LK.kickT = setTimeout(linkSync, 400); }
+function lanPost(host, port, pathname, body, token, timeout) {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.from(JSON.stringify(body || {}));
+    const rq = http.request({ host, port: port || 8765, path: pathname, method: 'POST', timeout: timeout || 20000, headers: { 'Content-Type': 'application/json', 'Content-Length': data.length, 'X-Token': token || '' } }, res => {
+      const ch = []; res.on('data', c => ch.push(c)); res.on('end', () => { let j; try { j = JSON.parse(Buffer.concat(ch).toString('utf8') || '{}'); } catch (e) { return reject(new Error('The store PC sent a bad answer')); } if (res.statusCode >= 400) { const er = new Error(j.error || 'Store PC error ' + res.statusCode); er.status = res.statusCode; return reject(er); } resolve(j); });
+    });
+    rq.on('timeout', () => rq.destroy(new Error('no answer')));
+    rq.on('error', e => reject(new Error('Can’t reach the store PC (' + (e.code || e.message) + ')')));
+    rq.end(data);
+  });
+}
+function linkWs(c) {   // one open connection to the relay, reused for every request
+  if (LK.ws && LK.ws.readyState === 1) return Promise.resolve(LK.ws);
+  if (LK.wsReady) return LK.wsReady;
+  LK.cid = LK.cid || cfg.deviceId || (cfg.deviceId = crypto.randomUUID(), saveCfg(), cfg.deviceId);
+  LK.wsReady = new Promise((resolve, reject) => {
+    let ws; try { ws = new WebSocket(`${wsUrl(c.url || cloudUrl())}/v1/store/${c.storeId}/ws?role=client&cid=${LK.cid}&auth=${relayAuth(c.key)}`); } catch (e) { LK.wsReady = null; return reject(e); }
+    const to = setTimeout(() => { try { ws.close(); } catch (e) { /* */ } }, 15000);
+    ws.onopen = () => { clearTimeout(to); LK.ws = ws; LK.wsReady = null; clearInterval(LK.ping); LK.ping = setInterval(() => { try { ws.send('{"t":"ping"}'); } catch (e) { /* */ } }, 45000); ws.send('{"t":"ping"}'); resolve(ws); };
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(String(ev.data)); } catch (e) { return; }
+      if (m.t === 'pong') { LK.hostOn = m.host !== false; return; }
+      if (m.t === 'bump') { LK.hostOn = true; linkKick(); return; }
+      if (m.t !== 'res') return;
+      const w = LK.pending.get(m.id); if (!w) return;
+      if (m.queued || m.offline) { LK.pending.delete(m.id); clearTimeout(w.to); LK.hostOn = false; return m.queued ? w.resolve({ __queued: true }) : w.reject(new Error('The store PC is off or not online right now')); }
+      const enc = collect(LK.parts, m); if (enc === null) return;
+      LK.pending.delete(m.id); clearTimeout(w.to); LK.hostOn = true;
+      try { const r = openBuf(c.key, enc); if (r && r.status) { const er = new Error(r.error || 'Store PC error'); er.status = r.status; w.reject(er); } else w.resolve(r); } catch (e) { w.reject(new Error('Could not open the answer — the link may be out of date. Link again.')); }
+    };
+    ws.onerror = () => { };
+    ws.onclose = ev => { clearTimeout(to); clearInterval(LK.ping); if (LK.ws === ws) LK.ws = null; if (LK.wsReady) { LK.wsReady = null; reject(new Error(ev.reason || 'Can’t reach the Cloud Sync server (check the internet)')); } for (const [id, w] of LK.pending) { clearTimeout(w.to); w.reject(new Error('Connection to Cloud Sync dropped')); LK.pending.delete(id); } };
+  });
+  return LK.wsReady;
+}
+async function cloudReq(c, pathname, body, token, timeout, queueable) {
+  const ws = await linkWs(c);
+  const id = crypto.randomBytes(8).toString('hex');
+  return new Promise((resolve, reject) => {
+    const to = setTimeout(() => { LK.pending.delete(id); reject(new Error('The store PC did not answer in time')); }, timeout || 30000);
+    LK.pending.set(id, { resolve, reject, to });
+    sendParts(ws, { t: 'req', id, z: 1, ...(queueable ? { q: 1 } : {}) }, sealBuf(c.key, { path: pathname, body, token }, true));
+  });
+}
+function linkReq(pathname, body, timeout, queueable) {
+  const c = cfg.link;
+  return c.mode === 'cloud' ? cloudReq(c, pathname, body, c.token, timeout, queueable) : lanPost(c.host, c.port, pathname, body, c.token, timeout);
+}
+function localNextOrder() { let s = {}; try { s = JSON.parse(Q.kv.get.get('settings').data) || {}; } catch (e) { /* none */ } return Math.max(Number(s.nextOrder) || 0, ((cfg.link && cfg.link.reg) || 2) * 1000000 + 1); }
+function applyItems(items, skipPending) {
+  const ch = { products: [], kv: {}, orders: false };
+  tx(() => {
+    for (const it of items || []) {
+      const k = String(it.key);
+      if (it.store === 'kv' && LOCAL_KV.includes(k)) continue;
+      if (skipPending && it.store !== 'orders' && OB.has.get(it.store, k)) continue;   // our newer change goes up first
+      if (it.store === 'products') {
+        if (it.deleted || !it.data) { Q.products.del.run(k); ch.products.push({ sku: k, deleted: true }); } else { putOne('products', it.data); ch.products.push(it.data); }
+      } else if (it.store === 'orders') {
+        if (it.deleted || !it.data) { Q.orders.del.run(k); L.del.run(k); } else putOrder(it.data); ch.orders = true;
+      } else if (it.store === 'kv') {
+        let v = it.data; if (k === 'settings' && v) v = { ...v, nextOrder: localNextOrder() };
+        Q.kv.put.run(k, JSON.stringify(v)); ch.kv[k] = v;
+      }
+    }
+  });
+  return ch;
+}
+async function linkSnapshot() {
+  const c = cfg.link; let snap = { stage: 'products', after: '' }, startSeq = null, first = true, n = 0;
+  while (snap) {
+    LK.progress = `Copying from the store PC… ${n.toLocaleString()} records`; send('link', linkState());
+    const res = await linkReq('/sync', { snap: { ...snap, startSeq } }, 120000);
+    if (res.__queued) throw new Error('The store PC is off or not online right now');
+    if (first) {
+      tx(() => { Q.products.clear.run(); Q.orders.clear.run(); L.clear.run(); for (const r of db.prepare('SELECT key FROM kv').all()) if (!LOCAL_KV.includes(r.key) && r.key !== 'settings') Q.kv.del.run(r.key); });
+      first = false; startSeq = res.startSeq; c.epoch = res.epoch;
+    }
+    applyItems(res.items, false); n += (res.items || []).length; snap = res.next;
+  }
+  c.since = startSeq; c.ready = true; LK.progress = ''; saveCfg();
+  send('sync', { full: true });
+}
+async function linkSync() {
+  const c = linkCfg(); if (!c || LK.busy) return;
+  LK.busy = true; let again = false;
+  try {
+    if (!c.ready) await linkSnapshot();
+    const rows = db.prepare('SELECT * FROM outbox ORDER BY id LIMIT 250').all();
+    const ops = rows.map(r => ({ store: r.store, key: r.key, op: r.op, data: r.data ? JSON.parse(r.data) : null, delta: r.delta }));
+    const res = await linkReq('/sync', { since: c.since || 0, epoch: c.epoch, ops }, 60000, ops.length > 0);
+    if (res.__queued) {   // store PC is off: the relay keeps our changes and hands them over when it is back
+      if (rows.length) db.prepare('DELETE FROM outbox WHERE id<=?').run(rows[rows.length - 1].id);
+      LK.queued = true; again = OB.n() > 0;
+    } else if (res.resync) { c.ready = false; saveCfg(); again = true; }
+    else {
+      if (rows.length) db.prepare('DELETE FROM outbox WHERE id<=?').run(rows[rows.length - 1].id);
+      const ch = applyItems(res.items, true); c.since = res.seq; saveCfg(); LK.queued = false;
+      if (ch.products.length || ch.orders || Object.keys(ch.kv).length) send('sync', ch);
+      again = !!res.more || OB.n() > 0;
+    }
+    LK.online = true; LK.lastOk = Date.now(); LK.lastErr = res.__queued ? 'The store PC is off — your changes are saved in Cloud Sync and reach it when it is back on.' : '';
+  } catch (e) { LK.online = false; LK.lastErr = e.message; LK.progress = ''; }
+  finally { LK.busy = false; send('link', linkState()); }
+  if (again) setTimeout(linkSync, 150);
+}
+setInterval(() => { const c = linkCfg(); if (c && (c.mode !== 'cloud' || !LK.online || Date.now() - LK.lastOk > 25000)) linkSync(); }, 5000);
+const REMOTE_Q = ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'];
+async function viaHost(name, args, local) {   // reports and history come from the store PC when it is reachable
+  const c = linkCfg();
+  if (c && c.ready && LK.online && LK.hostOn && REMOTE_Q.includes(name)) { try { const r = await linkReq('/api', { method: name, args }, 30000); if (!r.__queued) return r.result; } catch (e) { /* use the local copy */ } }
+  return local();
+}
+function linkState() { const c = cfg.link || {}; return { linked: !!linkCfg(), ready: !!c.ready, mode: c.mode, host: c.mode === 'cloud' ? 'over the internet' : c.host, store: c.store, reg: c.reg, online: LK.online, hostOn: LK.hostOn, lastOk: LK.lastOk, lastErr: LK.lastErr, progress: LK.progress, pending: OB.n(), deviceName: c.name, sharing: !!cfg.lanServer || !!(cfg.cloud && cfg.cloud.on) }; }
+ipcMain.handle('linkState', () => linkState());
+ipcMain.handle('linkSyncNow', async () => { await linkSync(); return linkState(); });
+ipcMain.handle('unlink', () => { cfg.link = null; saveCfg(); db.exec('DELETE FROM outbox'); if (LK.ws) { try { LK.ws.close(); } catch (e) { /* */ } } LK.online = false; return { ok: true }; });
+ipcMain.handle('linkPair', async (e, o) => {
+  if (cfg.lanServer || (cfg.cloud && cfg.cloud.on)) return { ok: false, error: 'This PC is sharing its own data (Settings → Tablets). Turn that off first — a PC can either share or link, not both.' };
+  const prev = cfg.link; const name = String(o.name || os.hostname() || 'PC').slice(0, 40);
+  cfg.deviceId = cfg.deviceId || crypto.randomUUID();
+  try {
+    let link, r;
+    if (o.mode === 'cloud') {
+      const code = normCode(o.cloudCode); if (code.length !== 8) throw new Error('Type the 8-letter Cloud code shown on the store PC');
+      const g = await fetch(`${cloudUrl()}/v1/pair/${pairId(code)}`).catch(() => { throw new Error('Can’t reach the Cloud Sync server (check the internet)'); });
+      const gj = await g.json(); if (!g.ok) throw new Error(gj.error || 'That code is wrong or expired');
+      let offer; try { offer = openBuf(pairKey(code), gj.blob); } catch (er) { throw new Error('That code is wrong or expired'); }
+      link = { mode: 'cloud', url: cloudUrl(), storeId: offer.storeId, key: offer.key, token: '' };
+      cfg.link = link; LK.ws = null; LK.wsReady = null;
+      r = await cloudReq(link, '/pair', { code: offer.lanCode, deviceId: cfg.deviceId, name }, '', 20000);
+      if (r.__queued) throw new Error('The store PC is off or not online right now');
+    } else {
+      let host = String(o.host || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), port = 8765;
+      if (host.includes(':')) { port = Number(host.split(':')[1]) || 8765; host = host.split(':')[0]; }
+      if (!host) throw new Error('Type the store PC address (shown on the store PC under Settings → Tablets)');
+      const hi = await lanPost(host, port, '/hello', {}, '', 8000); if (hi.app !== 'storepos') throw new Error('That address is not a Store POS PC');
+      link = { mode: 'lan', host, port, token: '' };
+      r = await lanPost(host, port, '/pair', { code: String(o.code || '').trim(), deviceId: cfg.deviceId, name }, '', 10000);
+    }
+    cfg.link = { ...link, token: r.token, reg: r.reg, store: r.store, epoch: r.epoch, since: 0, ready: false, name };
+    saveCfg(); db.exec('DELETE FROM outbox');
+    await linkSnapshot(); LK.online = true; LK.lastOk = Date.now(); LK.lastErr = '';
+    return { ok: true, store: r.store, reg: r.reg };
+  } catch (er) { cfg.link = prev || null; saveCfg(); return { ok: false, error: er.message }; }
+});
 
 function createWindow() {
   win = new BrowserWindow({
@@ -925,7 +1172,7 @@ function createWindow() {
     if (input.control && input.shift && k === 'i') e.preventDefault();
   });
   win.webContents.on('render-process-gone', () => { if (!quitting) setTimeout(() => win && !win.isDestroyed() && win.reload(), 1000); });
-  win.webContents.once('did-finish-load', () => { setTimeout(maybeImportHistory, 4000); startScanner(); setTimeout(() => openUpdateArg(process.argv), 2500); setTimeout(() => checkOnline(false), 60000); setInterval(() => checkOnline(false), 6 * 3600 * 1000); if (BOOT.updateDir) { try { let at = {}; try { at = JSON.parse(fs.readFileSync(ATTEMPTS, 'utf8')); } catch (e) { /* none */ } if (at.version) at = {}; at[require('./package.json').version] = 0; fs.writeFileSync(ATTEMPTS, JSON.stringify(at)); } catch (e) { /* ignore */ } } });
+  win.webContents.once('did-finish-load', () => { setTimeout(maybeImportHistory, 4000); startScanner(); setTimeout(() => openUpdateArg(process.argv), 2500); setTimeout(() => checkOnline(false), cfg.cloudUrlAuto || cfg.cloudUrl ? 60000 : 8000); setInterval(() => checkOnline(false), 6 * 3600 * 1000); if (BOOT.updateDir) { try { let at = {}; try { at = JSON.parse(fs.readFileSync(ATTEMPTS, 'utf8')); } catch (e) { /* none */ } if (at.version) at = {}; at[require('./package.json').version] = 0; fs.writeFileSync(ATTEMPTS, JSON.stringify(at)); } catch (e) { /* ignore */ } } });
 }
 
 app.on('second-instance', (e, argv) => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); openUpdateArg(argv); } });
@@ -935,8 +1182,10 @@ app.whenReady().then(() => {
   powerSaveBlocker.start('prevent-display-sleep');
   createWindow();
   startLan();
+  cloudStart();
+  if (cfg.link && cfg.link.token) setTimeout(linkSync, 3000);
   setTimeout(maybeBackup, 120000);
   setInterval(maybeBackup, 3600 * 1000);
 });
-app.on('before-quit', () => { quitting = true; stopScanner(); stopLan(); });
+app.on('before-quit', () => { quitting = true; stopScanner(); stopLan(); cloudStop(); });
 app.on('window-all-closed', () => { try { db.close(); } catch (e) { /* ignore */ } app.quit(); });

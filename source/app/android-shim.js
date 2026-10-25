@@ -128,7 +128,65 @@
   }
   function queueDel(store, key) { return linked() && store !== 'kv' ? [['INSERT INTO outbox(store,key,op,data,delta,ts) VALUES(?,?,?,?,?,?)', [store, String(key), 'del', null, null, Date.now()]]] : []; }
   var kickT = null; function kick() { if (!linked()) return; clearTimeout(kickT); kickT = setTimeout(syncOnce, 400); }
-  async function lanReq(path, body, timeout) {
+  /* ---------- Cloud Sync (link over the internet; everything sealed with the store's key) ---------- */
+  var CLOUD_URL = 'https://storepos-sync.REPLACE_ME.workers.dev';
+  function cloudBase() { var c = cfgGet(); return String(c.cloudUrl || c.cloudUrlAuto || CLOUD_URL).replace(/\/+$/, ''); }
+  async function findCloud() {   // the Cloud Sync address is published with the updates
+    if (cloudBase().indexOf('REPLACE_ME') < 0) return;
+    try { var r = await call('http', { url: 'https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json?t=' + Date.now(), method: 'GET', timeout: 15000 }); var j = JSON.parse(r.body || '{}'); if (/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i.test(j.cloudUrl || '')) { var c = cfgGet(); c.cloudUrlAuto = j.cloudUrl; cfgSet(c); } } catch (e) { }
+  }
+  var TE = new TextEncoder(), TD = new TextDecoder();
+  var CANZ = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  function b64e(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+  function b64d(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  async function streamBytes(u8, Ctor) { var cs = new Ctor('gzip'); var w = cs.writable.getWriter(); w.write(u8); w.close(); return new Uint8Array(await new Response(cs.readable).arrayBuffer()); }
+  async function aesKey(k) { return crypto.subtle.importKey('raw', b64d(k), 'AES-GCM', false, ['encrypt', 'decrypt']); }
+  async function seal(k, obj, gz) { var p = TE.encode(JSON.stringify(obj)); if (gz) p = await streamBytes(p, CompressionStream); var iv = crypto.getRandomValues(new Uint8Array(12)); var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, await aesKey(k), p)); var out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12); return (gz ? 'z.' : 'p.') + b64e(out); }
+  async function unseal(k, s) { var gz = s.slice(0, 2) === 'z.'; var raw = b64d(s.slice(2)); var p = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12) }, await aesKey(k), raw.subarray(12))); if (gz) p = await streamBytes(p, DecompressionStream); return JSON.parse(TD.decode(p)); }
+  async function relayAuth(k) { var key = await crypto.subtle.importKey('raw', b64d(k), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); var sg = new Uint8Array(await crypto.subtle.sign('HMAC', key, TE.encode('storepos-relay-auth'))); return Array.prototype.map.call(sg, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  function normCode(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  async function pairId(code) { var d = new Uint8Array(await crypto.subtle.digest('SHA-256', TE.encode('storepos-pair:' + normCode(code)))); return b64e(d).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 32); }
+  async function pairKey(code) { var base = await crypto.subtle.importKey('raw', TE.encode(normCode(code)), 'PBKDF2', false, ['deriveBits']); return b64e(new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: TE.encode('storepos-pair-v1'), iterations: 150000, hash: 'SHA-256' }, base, 256))); }
+  function cid() { var d = String(N.deviceId() || '').replace(/[^A-Za-z0-9_-]/g, ''); return (d + 'tablet-device').slice(0, 40); }
+  var CW = { ws: null, ready: null, pending: {}, parts: {}, ping: null };
+  function rid() { return Array.prototype.map.call(crypto.getRandomValues(new Uint8Array(8)), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  function cloudWs(L) {
+    if (CW.ws && CW.ws.readyState === 1) return Promise.resolve(CW.ws);
+    if (CW.ready) return CW.ready;
+    CW.ready = relayAuth(L.key).then(function (auth) {
+      return new Promise(function (resolve, reject) {
+        var ws = new WebSocket((L.url || cloudBase()).replace(/^http/, 'ws') + '/v1/store/' + L.storeId + '/ws?role=client&cid=' + cid() + '&auth=' + auth);
+        var to = setTimeout(function () { try { ws.close(); } catch (e) { } }, 15000);
+        ws.onopen = function () { clearTimeout(to); CW.ws = ws; CW.ready = null; clearInterval(CW.ping); CW.ping = setInterval(function () { try { ws.send('{"t":"ping"}'); } catch (e) { } }, 45000); ws.send('{"t":"ping"}'); resolve(ws); };
+        ws.onmessage = function (ev) {
+          var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (m.t === 'pong') { linkSt.hostOn = m.host !== false; return; }
+          if (m.t === 'bump') { linkSt.hostOn = true; kick(); return; }
+          if (m.t !== 'res') return;
+          var w = CW.pending[m.id]; if (!w) return;
+          if (m.queued || m.offline) { delete CW.pending[m.id]; clearTimeout(w.to); linkSt.hostOn = false; if (m.queued) w.resolve({ __queued: true }); else w.reject(new Error('The store PC is off or not online right now')); return; }
+          var enc = m.enc; if (m.parts) { var e = CW.parts[m.id] || (CW.parts[m.id] = { p: [], n: 0 }); if (e.p[m.part] === undefined) { e.p[m.part] = m.enc; e.n++; } if (e.n < m.parts) return; enc = e.p.join(''); delete CW.parts[m.id]; }
+          delete CW.pending[m.id]; clearTimeout(w.to); linkSt.hostOn = true;
+          unseal(L.key, enc).then(function (r) { if (r && r.status) { var er = new Error(r.error || 'Store PC error'); er.status = r.status; w.reject(er); } else w.resolve(r); }, function () { w.reject(new Error('Could not open the answer — link again.')); });
+        };
+        ws.onclose = function (ev) { clearTimeout(to); clearInterval(CW.ping); if (CW.ws === ws) CW.ws = null; if (CW.ready) { CW.ready = null; reject(new Error(ev.reason || 'Can’t reach the Cloud Sync server (check the internet)')); } Object.keys(CW.pending).forEach(function (id) { var w = CW.pending[id]; clearTimeout(w.to); w.reject(new Error('Connection to Cloud Sync dropped')); delete CW.pending[id]; }); };
+      });
+    });
+    CW.ready.catch(function () { CW.ready = null; });
+    return CW.ready;
+  }
+  async function cloudReq(L, path, body, token, timeout, queueable) {
+    var ws = await cloudWs(L); var id = rid();
+    var enc = await seal(L.key, { path: path, body: body, token: token }, CANZ);
+    return new Promise(function (resolve, reject) {
+      var to = setTimeout(function () { delete CW.pending[id]; reject(new Error('The store PC did not answer in time')); }, timeout || 30000);
+      CW.pending[id] = { resolve: resolve, reject: reject, to: to };
+      var n = Math.max(1, Math.ceil(enc.length / 600000));
+      for (var i = 0; i < n; i++) { var msg = { t: 'req', id: id, enc: enc.slice(i * 600000, (i + 1) * 600000) }; if (CANZ) msg.z = 1; if (queueable) msg.q = 1; if (n > 1) { msg.part = i; msg.parts = n; } ws.send(JSON.stringify(msg)); }
+    });
+  }
+  async function lanReq(path, body, timeout, queueable) {
+    if (LINK && LINK.mode === 'cloud') return cloudReq(LINK, path, body, LINK.token || '', timeout, queueable);
     var r = await call('http', { url: 'http://' + LINK.host + ':' + (LINK.port || 8765) + path, method: 'POST', body: JSON.stringify(body || {}), headers: { 'Content-Type': 'application/json', 'X-Token': LINK.token || '' }, timeout: timeout || 20000 });
     if (!r.ok) throw new Error('Can’t reach the store PC (' + (r.error || 'no answer') + ')');
     var j; try { j = JSON.parse(r.body || '{}'); } catch (e) { throw new Error('The store PC sent a bad answer'); }
@@ -163,6 +221,7 @@
     while (snap) {
       linkSt.progress = 'Copying from the store PC… ' + n + ' records';
       var res = await lanReq('/sync', { snap: Object.assign({}, snap, { startSeq: startSeq }) }, 90000);
+      if (res.__queued) throw new Error('The store PC is off or not online right now');
       if (first) {
         var wipe = [['DELETE FROM products', []], ['DELETE FROM orders', []], ['DELETE FROM order_lines', []]];
         sql('SELECT key FROM kv').forEach(function (r) { if (LOCAL_KV.indexOf(r.key) < 0 && r.key !== 'settings') wipe.push(['DELETE FROM kv WHERE key=?', [r.key]]); });
@@ -180,8 +239,9 @@
       if (!LINK.ready) await snapshot();
       var rows = sql('SELECT * FROM outbox ORDER BY id LIMIT 250');
       var ops = rows.map(function (r) { return { store: r.store, key: r.key, op: r.op, data: r.data ? JSON.parse(r.data) : null, delta: r.delta }; });
-      var res = await lanReq('/sync', { since: LINK.since || 0, epoch: LINK.epoch, ops: ops });
-      if (res.resync) { LINK.ready = false; saveLink(); again = true; }
+      var res = await lanReq('/sync', { since: LINK.since || 0, epoch: LINK.epoch, ops: ops }, 60000, ops.length > 0);
+      if (res.__queued) { if (rows.length) run('DELETE FROM outbox WHERE id<=?', [rows[rows.length - 1].id]); again = sql('SELECT COUNT(*) n FROM outbox')[0].n > 0; }
+      else if (res.resync) { LINK.ready = false; saveLink(); again = true; }
       else {
         if (rows.length) run('DELETE FROM outbox WHERE id<=?', [rows[rows.length - 1].id]);
         var ch = applyItems(res.items, true);
@@ -189,17 +249,17 @@
         if (ch.products.length || ch.orders || Object.keys(ch.kv).length) emit(ch);
         again = !!res.more || sql('SELECT COUNT(*) n FROM outbox')[0].n > 0;
       }
-      linkSt.online = true; linkSt.lastOk = Date.now(); linkSt.lastErr = '';
+      linkSt.online = true; linkSt.lastOk = Date.now(); linkSt.lastErr = res.__queued ? 'The store PC is off — your changes are saved in Cloud Sync and reach it when it is back on.' : '';
     } catch (e) {
       linkSt.online = false; linkSt.lastErr = e.message; linkSt.progress = '';
       if (e.status === 401) { linkSt.lastErr = e.message; }
     } finally { linkSt.busy = false; }
     if (again) setTimeout(syncOnce, 150);
   }
-  setInterval(function () { if (linked()) syncOnce(); }, 5000);
+  setInterval(function () { if (linked() && (LINK.mode !== 'cloud' || !linkSt.online || Date.now() - linkSt.lastOk > 25000)) syncOnce(); }, 5000);
   if (linked()) setTimeout(syncOnce, 1500);
   async function viaPc(method, args, local) {
-    if (linked() && LINK.ready && linkSt.online) { try { return (await lanReq('/api', { method: method, args: args }, 30000)).result; } catch (e) { } }
+    if (linked() && LINK.ready && linkSt.online && linkSt.hostOn !== false) { try { var r = await lanReq('/api', { method: method, args: args }, 30000); if (!r.__queued) return r.result; } catch (e) { } }
     return local.apply(null, args);
   }
 
@@ -335,8 +395,26 @@
     ocrImage: async function () { return { ok: false, error: 'Reading invoice photos works on the Windows POS for now — PDFs and Excel files work here.' }; },
     saveDownload: function (name, text, mime) { return call('saveFile', { name: name, b64: utf8b64(text), mime: mime || 'text/plain' }); },
     onSync: function (f) { syncCbs.push(f); },
-    linkState: async function () { return { linked: linked(), ready: !!(LINK && LINK.ready), host: LINK && LINK.host, store: LINK && LINK.store, reg: LINK && LINK.reg, online: linkSt.online, lastOk: linkSt.lastOk, lastErr: linkSt.lastErr, progress: linkSt.progress, pending: sql('SELECT COUNT(*) n FROM outbox')[0].n, deviceName: LINK && LINK.name }; },
+    linkState: async function () { return { linked: linked(), mode: LINK && LINK.mode, hostOn: linkSt.hostOn, ready: !!(LINK && LINK.ready), host: LINK && (LINK.mode === 'cloud' ? 'over the internet' : LINK.host), store: LINK && LINK.store, reg: LINK && LINK.reg, online: linkSt.online, lastOk: linkSt.lastOk, lastErr: linkSt.lastErr, progress: linkSt.progress, pending: sql('SELECT COUNT(*) n FROM outbox')[0].n, deviceName: LINK && LINK.name }; },
     linkPair: async function (o) {
+      if (o.mode === 'cloud') {
+        var prevC = LINK;
+        try {
+          var code = normCode(o.cloudCode); if (code.length !== 8) throw new Error('Type the 8-letter Cloud code shown on the store PC');
+          await findCloud(); if (cloudBase().indexOf('REPLACE_ME') >= 0) throw new Error('Cloud Sync is not switched on yet — check for updates and try again');
+          var g; try { g = await fetch(cloudBase() + '/v1/pair/' + (await pairId(code))); } catch (e) { throw new Error('Can’t reach the Cloud Sync server (check the internet)'); }
+          var gj = await g.json(); if (!g.ok) throw new Error(gj.error || 'That code is wrong or expired');
+          var offer; try { offer = await unseal(await pairKey(code), gj.blob); } catch (e) { throw new Error('That code is wrong or expired'); }
+          var base = { mode: 'cloud', url: cloudBase(), storeId: offer.storeId, key: offer.key, token: '' };
+          LINK = base; CW.ws = null; CW.ready = null;
+          var rc = await cloudReq(base, '/pair', { code: offer.lanCode, deviceId: N.deviceId(), name: o.name || 'Tablet' }, '', 20000);
+          if (rc.__queued) throw new Error('The store PC is off or not online right now');
+          LINK = Object.assign(base, { token: rc.token, reg: rc.reg, store: rc.store, epoch: rc.epoch, since: 0, ready: false, name: o.name || 'Tablet' });
+          saveLink(); run('DELETE FROM outbox');
+          await snapshot(); linkSt.online = true; linkSt.lastOk = Date.now(); linkSt.lastErr = '';
+          return { ok: true, store: rc.store, reg: rc.reg };
+        } catch (e) { LINK = prevC; saveLink(); return { ok: false, error: e.message }; }
+      }
       var host = String(o.host || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), port = 8765;
       if (host.indexOf(':') > 0) { port = Number(host.split(':')[1]) || 8765; host = host.split(':')[0]; }
       if (!host) return { ok: false, error: 'Type the store PC address (shown on the PC under Settings → Tablets)' };
@@ -352,7 +430,7 @@
       } catch (e) { LINK = prev; saveLink(); return { ok: false, error: e.message }; }
     },
     linkSyncNow: async function () { await syncOnce(); return this.linkState(); },
-    unlink: async function () { LINK = null; saveLink(); run('DELETE FROM outbox'); return { ok: true }; }
+    unlink: async function () { LINK = null; saveLink(); run('DELETE FROM outbox'); if (CW.ws) { try { CW.ws.close(); } catch (e) { } } return { ok: true }; }
   };
   var LOCALQ = {}; ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'].forEach(function (m) { LOCALQ[m] = window.posAPI['_' + m]; });
 })();

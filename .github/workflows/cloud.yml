@@ -1,0 +1,30 @@
+name: Cloud Sync server
+on:
+  push:
+    branches: [main]
+    paths: ['cloud/**', '.github/workflows/cloud.yml']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Waiting for the Cloudflare key
+        if: env.HAS_TOKEN != 'true'
+        run: echo "Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in GitHub → Settings → Secrets → Actions, then run this again."
+      - name: Put the server online at Cloudflare
+        id: deploy
+        if: env.HAS_TOKEN == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud
+      - name: Check it answers
+        if: env.HAS_TOKEN == 'true'
+        run: |
+          echo "Server address: ${{ steps.deploy.outputs.deployment-url }}"
+          sleep 5
+          curl -sS "${{ steps.deploy.outputs.deployment-url }}/v1" || true

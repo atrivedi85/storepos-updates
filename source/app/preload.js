@@ -48,5 +48,11 @@ contextBridge.exposeInMainWorld('posAPI', {
   lanSet: on => ipcRenderer.invoke('lanSet', on),
   lanPairCode: () => ipcRenderer.invoke('lanPairCode'),
   lanRemove: id => ipcRenderer.invoke('lanRemove', id),
-  onLan: cb => ipcRenderer.on('lan', (e, s) => cb(s))
+  onLan: cb => ipcRenderer.on('lan', (e, s) => cb(s)),
+  cloudSet: on => ipcRenderer.invoke('cloudSet', on),
+  linkState: () => ipcRenderer.invoke('linkState'),
+  linkPair: o => ipcRenderer.invoke('linkPair', o),
+  linkSyncNow: () => ipcRenderer.invoke('linkSyncNow'),
+  unlink: () => ipcRenderer.invoke('unlink'),
+  onLink: cb => ipcRenderer.on('link', (e, s) => cb(s))
 });

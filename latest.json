@@ -1,6 +1,6 @@
 {
- "version": "1.12.4",
- "notes": "Inventory: new Purchasing tab on each item - vendors you bought it from (last cost, last date, times, units, part #, default vendor) and monthly Sales vs Purchases for this year and last year.",
- "url": "updates/StorePOS-Update-1.12.4.posupdate",
- "sha256": "8e023d1dd0a8ecc46b4e87c849eeb9fa74785715d998ce9267c3d276749c3eae"
+ "version": "1.13.0",
+ "notes": "Link a second Windows PC to the store PC (Settings - Link to Store PC). Cloud Sync over the internet: make changes from home and they show up at the store - switches on once the Cloud Sync server is online.",
+ "url": "updates/StorePOS-Update-1.13.0.posupdate",
+ "sha256": "6b21c7c7cf871b0070b81fbdfd84631a1a004db65dee6226a1e53264d9422eb9"
 }
