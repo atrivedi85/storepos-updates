@@ -274,7 +274,7 @@
   }
 
   // ---------------- navigation ----------------
-  let view = 'dashboard';
+  let view = 'accounts';   // the owner wants Chart of Accounts first when Ledger Desk opens
   const views = {};
   function go(v, opts) {
     view = v;
