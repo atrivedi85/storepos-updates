@@ -1,0 +1,61 @@
+/* Ledger Desk Server additions: sign-in area, AI Assistant, logins */
+.srv-banner { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 8px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,.2); background: var(--warn-soft); color: var(--ink); border: 1px solid var(--warn); }
+.srv-banner[data-kind="err"] { background: var(--neg); color: #fff; border-color: var(--neg); }
+.srv-banner[data-kind="info"] { background: var(--panel); border-color: var(--line); }
+.who { border-top: 1px solid rgba(255,255,255,.1); padding: 12px 8px 0; margin-top: 4px; font-size: 12px; color: var(--side-muted); display: grid; gap: 6px; }
+.who b { color: var(--side-ink); font-weight: 600; }
+.who .link { color: var(--side-ink); font-size: 12px; text-align: left; }
+.who-links { display: flex; gap: 12px; flex-wrap: wrap; }
+.nav-sep { height: 1px; background: rgba(255,255,255,.1); margin: 6px 4px; }
+.ai-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
+.ai-dot.on { background: var(--pos); }
+.ai-dot.off { background: var(--neg); }
+.conf { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+.conf.high { background: var(--accent-soft); color: var(--accent); }
+.conf.medium { background: var(--panel-2); color: var(--ink); }
+.conf.low { background: var(--warn-soft); color: var(--warn); }
+.ai-reason { font-size: 12px; color: var(--muted); margin-top: 2px; max-width: 360px; }
+.chat { display: grid; gap: 10px; margin: 12px 0; max-height: 520px; overflow: auto; }
+.msg { padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; line-height: 1.5; max-width: 92%; }
+.msg.q { background: var(--accent-soft); justify-self: end; }
+.msg.a { background: var(--panel-2); }
+.msg.err { background: var(--warn-soft); }
+.ask-row { display: flex; gap: 8px; }
+.ask-row textarea { flex: 1; min-height: 44px; resize: vertical; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.examples { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.examples .btn { font-size: 12px; padding: 3px 10px; border-radius: 14px; }
+.check-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.check-grid img { max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-weight: 600; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (max-width: 760px) { .check-grid { grid-template-columns: 1fr; } }
+textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type=password] { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+
+/* AI Bookkeeper chat */
+.msg.bk { white-space: normal; }
+.bk-card { border: 1px solid var(--accent); }
+.bk-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.bk-btns select { max-width: 280px; }
+.bk-say { display: flex; gap: 6px; margin-top: 8px; }
+.bk-say input { flex: 1; min-width: 0; }
+.bk-pic img { max-width: 360px; width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; background: #fff; display: block; }
+.bk-drop { border: 2px dashed var(--line); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+#bkDrop.bk-over .bk-drop { border-color: var(--accent); background: var(--accent-soft); }
+
+.acct-row { cursor: pointer; }
+.acct-row:hover td { background: var(--accent-soft); }
+
+/* QuickBooks-style Profit & Loss */
+.qb-report { max-width: 760px; margin: 0 auto; }
+.qb-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.qb-table th { border-bottom: 1px solid var(--line); padding: 4px 8px; font-size: 12px; }
+.qb-table td { padding: 2px 8px; border: 0; }
+.qb-table td.num { text-align: right; font-variant-numeric: tabular-nums; width: 160px; }
+.qb-table .pl-head td, .qb-table .pl-total td, .qb-table .pl-grand td { font-weight: 700; }
+.qb-table .pl-total:not(.pl-plain) td.num span { border-top: 1px solid currentColor; display: inline-block; min-width: 100px; }
+.qb-table .pl-grand td.num span { border-top: 1px solid currentColor; border-bottom: 3px double currentColor; display: inline-block; min-width: 100px; }
+.qb-table tr:hover td { background: var(--accent-soft); }

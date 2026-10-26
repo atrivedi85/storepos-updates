@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+<title>Sign in · Ledger Desk</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="icon.png">
+<style>
+  body { display: grid; place-items: center; min-height: 100%; padding: 16px; background: var(--side); }
+  .card { background: var(--panel); border-radius: 12px; padding: 28px; width: min(380px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .brand { padding: 0; margin-bottom: 20px; }
+  .brand-name { color: var(--ink); }
+  .card .field { margin-top: 12px; }
+  .card input { width: 100%; font-size: 15px; padding: 9px 10px; }
+  .card input.check { width: 16px; height: 16px; flex: none; padding: 0; }
+  input[type=password] { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .tip .link { font-size: 12px; }
+  .card .btn { width: 100%; margin-top: 18px; padding: 10px; font-size: 15px; }
+  .err { color: var(--neg); min-height: 20px; margin: 12px 0 0; font-size: 13px; }
+  .tip { color: var(--muted); font-size: 12px; margin: 16px 0 0; }
+  .code { font: 600 19px/1.4 var(--f-num); letter-spacing: .04em; background: var(--panel-2); border: 1px dashed var(--muted); border-radius: 8px; padding: 12px; text-align: center; margin: 14px 0 10px; word-break: break-all; user-select: all; }
+  .row2 { display: flex; gap: 8px; } .row2 .btn { margin-top: 0; font-size: 13px; padding: 7px; }
+  .lock { display: flex; gap: 8px; align-items: flex-start; background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div><div class="brand-name">Ledger Desk</div><div class="brand-co" id="sub" style="color:var(--muted)">Sign in to your books</div></div>
+  </div>
+  <div id="setup" hidden>
+    <h1 style="font-size:19px">Set up the owner login</h1>
+    <p class="muted small" style="margin:6px 0 0">This is the first time the server has started. Create your own login. You'll add your friends' logins after this.</p>
+    <label class="field">Your name<input type="text" id="name" autocomplete="name" maxlength="80"></label>
+  </div>
+  <div id="invite" hidden>
+    <h1 style="font-size:19px">Create your account</h1>
+    <p class="muted small" style="margin:6px 0 0" id="invMsg">You were invited to use Ledger Desk. Your books are private: only you can see your companies.</p>
+    <label class="field">Your name<input type="text" id="iName" autocomplete="name" maxlength="80"></label>
+    <label class="field">Your company name (you can add more later)<input type="text" id="iCo" autocomplete="organization" maxlength="80"></label>
+  </div>
+  <label class="field">User name<input type="text" id="user" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" required></label>
+  <label class="field">Password<input type="password" id="pw" autocomplete="current-password" required></label>
+  <label class="field" id="pw2Row" hidden>Type the password again<input type="password" id="pw2" autocomplete="new-password"></label>
+  <p class="err" id="err" role="alert"></p>
+  <button class="btn primary" id="go" type="submit">Sign in</button>
+  <p class="tip" id="tip"><button class="link" type="button" id="forgot">Forgot your password?</button> Reset it with the recovery code you saved.</p>
+  <p class="lock" id="lockNote" hidden>🔒 Your books are locked with a key made from your password, right here in your browser. The server only stores locked files, so nobody else, including the server's owner, can open them.</p>
+</form>
+<script src="vault.js"></script>
+<script src="login.js"></script>
+</body>
+</html>

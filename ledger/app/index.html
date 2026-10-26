@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'">
+<title>Ledger Desk</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="server.css">
+<link rel="icon" href="icon.png">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <div class="brand-name">Ledger Desk</div>
+        <div class="brand-co" id="brandCo">My Company</div>
+      </div>
+    </div>
+    <div class="co-pick" id="coPick" hidden><label for="coSel">Company</label><select id="coSel"></select></div>
+    <nav id="nav">
+      <button data-view="dashboard" class="on">Dashboard</button>
+      <button data-view="register">Transactions <span class="badge" id="uncatBadge" hidden></span></button>
+      <button data-view="import">Import .QBO</button>
+      <button data-view="accounts">Chart of Accounts</button>
+      <button data-view="rules">Bank Rules</button>
+      <button data-view="reports">Reports</button>
+      <button data-view="settings">Company &amp; Backup</button>
+    </nav>
+    <div class="side-foot">Books are locked with your key and saved on the Ledger Desk server.</div>
+  </aside>
+  <main id="main" tabindex="-1"></main>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
+<script src="vault.js"></script>
+<script src="bridge.js"></script>
+</body>
+</html>
