@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id), V = window.LDVault;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let mode = 'login';
-  const code = location.pathname === '/invite' ? new URLSearchParams(location.search).get('code') || '' : '';
+  const code = location.pathname === '/books/invite' ? new URLSearchParams(location.search).get('code') || '' : '';
   const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-LD': '1' }, body: JSON.stringify(body) })
     .then(async r => { let d = {}; try { d = await r.json(); } catch (e) {} if (!r.ok) throw new Error(d.error || 'Could not reach the server'); return d; });
   function newPassword(btn, sub) {
@@ -54,7 +54,7 @@
     };
     { const m = V.recoveryMail(username, rec); $('rcGmail').href = m.gmail; $('rcOutlook').href = m.outlook; $('rcMail').href = m.mailto; }
     $('rcOk').onchange = () => { $('rcGo').disabled = !$('rcOk').checked; };
-    $('rcGo').onclick = () => { location.href = '/'; };
+    $('rcGo').onclick = () => { location.href = '/books/'; };
   }
 
   // ----- after a password reset: unlock with the recovery code -----
@@ -78,7 +78,7 @@
       let dek; try { dek = await V.unlockWithRecovery(vault, $('rCode').value); } catch (x) { return err('That recovery code isn\'t right. Check it and try again.'); }
       try {
         await post('/api/password', { old: tempAuth, auth: await V.authFor(username, pw), vaultPw: await V.passwordWrap(dek, pw) });
-        await V.keepKey(username, dek); location.href = '/';
+        await V.keepKey(username, dek); location.href = '/books/';
       } catch (x) { err(x.message); }
     };
     $('lost').onclick = async () => {
@@ -120,7 +120,7 @@
         const r = await post('/api/recover/check', { username, recAuth });
         const dek = await V.unlockWithRecovery({ rec: r.rec }, $('rCode').value);
         await post('/api/recover', { username, recAuth, auth: await V.authFor(username, pw), vaultPw: await V.passwordWrap(dek, pw) });
-        await V.keepKey(username, dek); location.href = '/';
+        await V.keepKey(username, dek); location.href = '/books/';
       } catch (x) { err(x.message === 'wrong' ? 'That recovery code isn\'t right.' : x.message); }
     };
     ($('fUser').value ? $('rCode') : $('fUser')).focus();
@@ -133,7 +133,7 @@
     if (r.needRecovery) { showRecover(username, auth, r.vault); return; }
     let dek; try { dek = await V.unlockWithPassword(r.vault, pw); } catch (x) { throw new Error('Your books could not be unlocked with this password.'); }
     await V.keepKey(username, dek);
-    location.href = '/';
+    location.href = '/books/';
   }
   function show2fa(r, username, pw, auth) {
     mode = '2fa';
@@ -181,7 +181,7 @@
         const bad = V.passwordProblem(pw); if (bad) throw new Error(bad);
         $('go').textContent = 'Making your key…';
         const nv = await V.newVault(pw), auth = await V.authFor(username, pw), recAuth = await V.recAuthFor(username, nv.recovery);
-        if (mode === 'setup') await post('/api/setup', { name: $('name').value, username, auth, recAuth, vault: nv.vault });
+        if (mode === 'setup') await post('/api/setup', { setupCode: $('setupCode').value, name: $('name').value, username, auth, recAuth, vault: nv.vault });
         else await post('/api/invite/accept', { code, name: $('iName').value, username, auth, recAuth, vault: nv.vault });
         await V.keepKey(username, nv.dek);
         if (mode === 'invite' && $('iCo').value.trim()) try { sessionStorage.setItem('ld-newco', $('iCo').value.trim()); } catch (x) {}

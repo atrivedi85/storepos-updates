@@ -8,7 +8,7 @@
   async function api(url, opts) {
     opts = opts || {};
     const r = await fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts, { headers: Object.assign({ 'X-LD': '1' }, opts.headers || {}) }));
-    if (r.status === 401) { V.forgetKeys(); location.href = '/login'; throw new Error('signed out'); }
+    if (r.status === 401) { V.forgetKeys(); location.href = '/books/login'; throw new Error('signed out'); }
     let data = {}; try { data = await r.json(); } catch (e) {}
     if (!r.ok) { const err = new Error(data.error || ('Server error ' + r.status)); err.status = r.status; throw err; }
     return data;
@@ -33,7 +33,7 @@
         <p class="small" id="ulErr" style="color:var(--neg);min-height:18px"></p>
         <div class="toolbar"><button class="btn primary" id="ulGo" type="submit">Unlock</button><button class="link" type="button" id="ulOut">Sign out</button></div></form></div>`;
       document.getElementById('ulPw').focus();
-      document.getElementById('ulOut').onclick = async () => { try { await post('/api/logout', {}); } catch (e) {} location.href = '/login'; };
+      document.getElementById('ulOut').onclick = async () => { try { await post('/api/logout', {}); } catch (e) {} location.href = '/books/login'; };
       document.getElementById('ulF').onsubmit = async e => {
         e.preventDefault();
         const b = document.getElementById('ulGo'); b.disabled = true; b.textContent = 'Unlocking…';
@@ -47,8 +47,8 @@
     if (!window.crypto || !crypto.subtle || !window.CompressionStream) { fail('This browser is too old for locked books. Use a current Microsoft Edge or Google Chrome, and the https:// address.'); return; }
     let me, co, cur, text = null, version = null, dek, isNew = false;
     try { me = await api('/api/me'); }
-    catch (e) { if (e.message !== 'signed out') fail('Could not reach the Ledger Desk server. Check that the server PC is on and that Tailscale is connected, then reload this page.'); return; }
-    if (me.needRecovery) { V.forgetKeys(); try { await post('/api/logout', {}); } catch (e) {} location.href = '/login'; return; }
+    catch (e) { if (e.message !== 'signed out') fail('Could not reach Ledger Desk. Check your internet connection, then reload this page.'); return; }
+    if (me.needRecovery) { V.forgetKeys(); try { await post('/api/logout', {}); } catch (e) {} location.href = '/books/login'; return; }
     dek = await V.keptKey(me.username);
     if (!dek) dek = await askToUnlock(me);
     main.innerHTML = '<div class="empty"><span class="spin"></span>Unlocking your books…</div>';

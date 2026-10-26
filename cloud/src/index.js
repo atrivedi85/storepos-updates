@@ -3,6 +3,7 @@
 // connect as clients. Everything they send each other is encrypted on the registers with a key this server
 // never sees — the server only passes sealed messages along, and keeps them for the store PC while it is off.
 import { DurableObject } from 'cloudflare:workers';
+export { Ledger } from './ledger.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json', ...CORS } });
@@ -14,6 +15,10 @@ export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const p = new URL(req.url).pathname.split('/').filter(Boolean);
+    const path = new URL(req.url).pathname;
+    // Ledger Desk (trivedipos.com/books): its sign-in pages and its server
+    if (path === '/books/login' || path === '/books/invite') return env.ASSETS.fetch(new Request(new URL('/books/login.html', req.url), req));
+    if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });
     if ((p[1] === 'store' || p[1] === 'pair') && ID.test(p[2] || '')) return env.HUB.get(env.HUB.idFromName(p[1] + ':' + p[2])).fetch(req);
     return J({ error: 'Not found' }, 404);

@@ -17,7 +17,7 @@
   who.innerHTML = `<div>Signed in as <b>${esc(me.name)}</b>${me.admin ? ' (owner)' : ''}</div>
     <div class="who-links"><button class="link" id="wPw">Change password</button><button class="link" id="wRec">New recovery code</button><button class="link" id="w2fa">Two-step sign-in</button><button class="link" id="wOut">Sign out</button></div>`;
   foot.appendChild(who);
-  $('#wOut').onclick = async () => { await SV.flushed(); window.LDVault.forgetKeys(); try { await SV.post('/api/logout', {}); } catch (e) {} location.href = '/login'; };
+  $('#wOut').onclick = async () => { await SV.flushed(); window.LDVault.forgetKeys(); try { await SV.post('/api/logout', {}); } catch (e) {} location.href = '/books/login'; };
   $('#wPw').onclick = () => pwModal(false);
   // ----- two-step sign-in (code from email or an authenticator app after the password) -----
   $('#w2fa').onclick = () => tfaModal();
@@ -115,14 +115,13 @@
   const US = { list: null, err: '', inv: null };
   async function loadUsers() {
     try { US.list = (await SV.api('/api/admin/users')).users; US.inv = await SV.api('/api/admin/invites'); US.err = ''; } catch (e) { US.err = e.message; }
-    loadGem();
     US.at = Date.now();
     if (L.view === 'users' && !document.querySelector('#main input:focus')) L.render();
   }
   const fmtWhen = s => s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
   const fmtDay = s => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const isLocal = () => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-  const baseUrl = () => (US.inv && US.inv.publicUrl) || (isLocal() ? '' : location.origin);
+  const baseUrl = () => location.origin + '/books';
   const INV_LABEL = { waiting: 'Waiting', used: 'Used', expired: 'Expired', cancelled: 'Cancelled' };
   views.users = () => {
     if (!US.busy && Date.now() - (US.at || 0) > 4000) { US.busy = true; US.at = Date.now(); loadUsers().finally(() => { US.busy = false; }); }
@@ -131,7 +130,6 @@
       <button class="btn primary" data-act="uInvite">Invite someone</button></div>
       <div class="notice" style="background:var(--accent-soft)">🔒 Everyone's books are locked with their own key, made from their password in their own browser. The server only stores locked files, so you can't open your friends' books, and they can't open yours.</div>
       ${US.err ? '<div class="notice">' + esc(US.err) + '</div>' : ''}
-      ${US.inv && !base ? '<div class="notice"><b>Set the server address first</b> (below), so invite links work from your friends\' PCs. "3 Turn on remote access.cmd" fills it in for you.</div>' : ''}
       <div class="panel" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Name</th><th>User name</th><th class="num">Companies</th><th>Last sign-in</th><th></th></tr></thead><tbody>
       ${(US.list || []).map(u => `<tr data-user="${esc(u.username)}"><td>${esc(u.name)}${u.admin ? ' <span class="chip cc">owner</span>' : ''}${u.disabled ? ' <span class="chip">turned off</span>' : ''}${u.mustChange ? ' <span class="chip">password was reset</span>' : ''}</td>
         <td class="num" style="text-align:left">${esc(u.username)}</td><td class="num">${u.companies}</td><td class="small">${esc(fmtWhen(u.lastLogin))}</td>
@@ -149,48 +147,11 @@
         ${inv.mailFrom ? `<p style="margin:0 0 10px">✓ Invites are emailed from <b>${esc(inv.mailFrom)}</b>.</p><div class="toolbar" style="margin:0"><button class="btn" data-act="mailSetup">Change</button><button class="btn danger" data-act="mailOff">Turn off</button></div>`
           : `<p class="muted small" style="margin-top:0">Let Ledger Desk send invite emails for you. Use your Gmail with a Google <b>app password</b>: a separate 16-letter password just for Ledger Desk, which you can cancel any time. Your normal Gmail password won't work and isn't needed.</p><button class="btn primary" data-act="mailSetup">Set up email</button>`}
       </div>
-      <div class="panel" style="margin-top:16px"><h2>Google Gemini (optional)</h2>
-        ${US.gem && US.gem.configured ? `<p style="margin:0 0 6px">✓ Gemini is set up (key ending <b>${esc(US.gem.last4)}</b>, model <b>${esc(US.gem.model)}</b>). ${US.gem.forAll ? 'Everyone with a login can choose it' : 'Only you can choose it'} in AI Assistant; each person decides for themselves.</p><div class="toolbar" style="margin:0"><button class="btn" data-act="gemSetup">Change</button><button class="btn danger" data-act="gemOff">Turn off</button></div>`
-          : `<p class="muted small" style="margin-top:0">Let people choose Google's Gemini AI instead of this PC's AI. It's smarter and faster. It uses your paid Gemini API key; nobody is switched over unless they choose it themselves.</p><button class="btn primary" data-act="gemSetup">Set up Gemini</button>`}
-      </div>
       <div class="panel" style="margin-top:16px"><h2>Invite settings</h2>
         <div class="grid" style="gap:12px;max-width:640px">
-          <label class="field">Server address (what your friends open)<input type="text" id="sUrl" value="${esc(inv.publicUrl || '')}" placeholder="https://lawmangolfsim.your-network.ts.net"></label>
-          <label class="field">Tailscale share link for this PC (optional, reusable)<input type="text" id="sTs" value="${esc(inv.tailscaleInvite || '')}" placeholder="https://login.tailscale.com/admin/invite/…">
-            <span class="small muted">Tailscale admin console › Machines › this PC › … › Share › Copy invite link, with "Reusable link" on. It's added to every invite message. It only lets people reach this PC; they still need a Ledger Desk invite to get an account.</span></label>
-          <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s2fa"${inv.require2fa ? ' checked' : ''}> Require two-step sign-in for everyone (a 6-digit code by email or an authenticator app after the password). Recommended when Ledger Desk is open to the internet.</label>
+          <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s2fa"${inv.require2fa ? ' checked' : ''}> Require two-step sign-in for everyone (a 6-digit code by email or an authenticator app after the password). Recommended.</label>
           <div><button class="btn" data-act="uSaveSet">Save settings</button></div></div>
-        <p class="small muted" style="margin:12px 0 0">"Turn off" stops a login from signing in but keeps their books. Books are in Documents\\Ledger Desk Server\\Users on this PC.</p></div>`;
-  };
-  async function loadGem() { try { US.gem = await SV.api('/api/admin/gemini'); } catch (e) { US.gem = null; } if (L.view === 'users' && !document.querySelector('#main input:focus')) L.render(); }
-  acts.gemOff = async () => {
-    if (!(await L.confirmBox('Turn off Gemini?', 'Everyone goes back to this PC\'s AI, and Ledger Desk forgets the API key.', 'Turn off', true))) return;
-    try { await SV.post('/api/admin/gemini', { off: true }); toast('Gemini turned off'); loadGem(); } catch (e) { toast(e.message); }
-  };
-  acts.gemSetup = () => {
-    const g = US.gem || {};
-    modal(`<h2>Set up Google Gemini</h2>
-      <ol class="steps" style="margin-top:0">
-        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and sign in with the Google account that has your paid Gemini plan.</li>
-        <li>Click <b>Create API key</b> and copy it. Make sure billing is on for that key's project (AI Studio shows "Paid" or "Tier 1"). Free keys let Google use the data, so don't use one for books.</li>
-        <li>Paste it below. Ledger Desk asks Gemini a test question to check it works.</li></ol>
-      <div class="grid" style="gap:12px;margin-top:10px">
-        <label class="field">Gemini API key<input type="password" id="gKey" autocomplete="off" placeholder="${g.configured ? 'Leave empty to keep the key ending ' + esc(g.last4) : 'AIza…'}"></label>
-        ${g.models && g.models.length ? `<label class="field">Model<select id="gModel">${g.models.map(m => `<option value="${esc(m.id)}"${m.id === g.model ? ' selected' : ''}>${esc(m.name)} (${esc(m.id)})</option>`).join('')}</select><span class="small muted">A "Flash" model is fast and cheap and plenty for bookkeeping.</span></label>` : ''}
-        <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="gAll"${g.forAll ? ' checked' : ''}> Let everyone with a login choose Gemini (on your account). Each person still decides for themselves.</label>
-      </div>
-      <p class="small muted">The key is kept on the server PC only (Documents\\Ledger Desk Server\\config.json) and is never sent to anyone's browser. In Google Cloud you can set a monthly spending limit.</p>
-      <p class="small" id="gErr" style="color:var(--neg)"></p>
-      <div class="actions"><button class="btn" id="gCancel">Cancel</button><button class="btn primary" id="gSave">Save and test</button></div>`, card => {
-      card.querySelector('#gCancel').onclick = closeModal;
-      card.querySelector('#gSave').onclick = async () => {
-        const b = card.querySelector('#gSave'); b.disabled = true; b.textContent = 'Testing…'; card.querySelector('#gErr').textContent = '';
-        try {
-          const r = await SV.post('/api/admin/gemini', { key: card.querySelector('#gKey').value, model: card.querySelector('#gModel') ? card.querySelector('#gModel').value : '', forAll: card.querySelector('#gAll').checked });
-          closeModal(); toast('Gemini works (' + r.model + '). Each person can now choose it in AI Assistant.'); loadGem();
-        } catch (e) { card.querySelector('#gErr').textContent = e.message; b.disabled = false; b.textContent = 'Save and test'; }
-      };
-    });
+        <p class="small muted" style="margin:12px 0 0">"Turn off" stops a login from signing in but keeps their books. Books are stored locked on the Trivedi POS server; nobody can read them without the person's own password.</p></div>`;
   };
   acts.mailOff = async () => {
     if (!(await L.confirmBox('Stop sending invite emails?', 'Ledger Desk forgets the email account and app password. You can still make invite links and send them yourself.', 'Turn off', true))) return;
@@ -226,7 +187,7 @@
     try { await SV.post('/api/admin/2fa-reset', { username: name }); toast('Two-step sign-in reset for ' + name); loadUsers(); } catch (e) { toast(e.message); }
   };
   acts.uSaveSet = async () => {
-    try { await SV.post('/api/admin/settings', { publicUrl: $('#sUrl').value, tailscaleInvite: $('#sTs').value, require2fa: $('#s2fa').checked }); toast('Settings saved'); loadUsers(); } catch (e) { toast(e.message); }
+    try { await SV.post('/api/admin/settings', { require2fa: $('#s2fa').checked }); toast('Settings saved'); loadUsers(); } catch (e) { toast(e.message); }
   };
   acts.uInvCancel = async b => {
     if (!(await L.confirmBox('Cancel this invite?', 'The link will stop working. Accounts already made are not affected.', 'Cancel invite', true))) return;
@@ -261,18 +222,15 @@
         if (opts.withShare && !files.length) { card.querySelector('#iErr').textContent = 'Tick at least one company to share.'; return; }
         try {
           const r = await SV.post('/api/admin/invite', { name, days: card.querySelector('#iDays').value, share: files.length ? { files, role } : null });
-          if (US.inv) { US.inv.publicUrl = r.publicUrl; US.inv.tailscaleInvite = r.tailscaleInvite; }
-          const base = r.publicUrl || (isLocal() ? '' : location.origin);
-          const link = (base || 'https://YOUR-SERVER-ADDRESS') + '/invite?code=' + r.code;
+          const base = baseUrl();
+          const link = base + '/invite?code=' + r.code;
           const until = new Date(r.expires).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
           const coNames = mine.filter(x => files.includes(x.file)).map(x => x.plainName || x.name);
           const msg = (name ? 'Hi ' + name.split(' ')[0] + ',\n\n' : 'Hi,\n\n') +
             (coNames.length ? 'I\'m sharing my books in Ledger Desk with you (' + (role === 'view' ? 'view only' : 'you can work on them') + '): ' + coNames.join(', ') + '.\n\n' : 'I\'m inviting you to use Ledger Desk for your bookkeeping. Your books are private: only you can see your companies.\n\n') +
-            '1. Install Tailscale (free) and sign in: https://tailscale.com/download\n' +
-            (r.tailscaleInvite ? '2. Open this link and accept, so your PC can reach my Ledger Desk server: ' + r.tailscaleInvite + '\n' : '2. I\'ll send you a separate Tailscale link. Open it and accept, so your PC can reach my Ledger Desk server.\n') +
-            '3. Create your Ledger Desk account here (works once, until ' + until + '):\n' + link + '\n\n' +
+            'Create your Ledger Desk account here (the link works once, until ' + until + '):\n' + link + '\n\n' +
             (coNames.length ? 'The companies show up in the company list at the top left once you\'re signed in. ' : '') +
-            'After that, sign in any time at ' + (base || 'https://YOUR-SERVER-ADDRESS') + ' (bookmark it).\n';
+            'After that, sign in any time at ' + base + ' (bookmark it).\n';
           let sent = '', sendErr = '';
           if (email && mailFrom()) {
             try { await SV.post('/api/admin/invite/email', { id: r.id, to: email, subject: coNames.length ? 'Ledger Desk: ' + coNames.join(', ') + ' shared with you' : 'Your Ledger Desk invite', text: msg }); sent = email; }
@@ -281,7 +239,6 @@
           modal(`<h2>${sent ? 'Invite sent ✓' : 'Invite ready'}</h2>
             ${sent ? '<div class="notice" style="background:var(--accent-soft)">Emailed to <b>' + esc(sent) + '</b> from ' + esc(mailFrom()) + '. Ask them to check their spam folder if it doesn\'t arrive in a few minutes. The message below is a copy.</div>' : ''}
             ${sendErr ? '<div class="notice">' + esc(sendErr) + ' Copy the message below and send it yourself instead.</div>' : ''}
-            ${base ? '' : '<div class="notice">The server address isn\'t set yet, so the link says YOUR-SERVER-ADDRESS. Set it on the Logins screen (or run "3 Turn on remote access.cmd") and make a new invite.</div>'}
             <p class="small muted" style="margin-top:0">Send this to ${esc(name || 'them')}. The link is shown only now. If it gets lost, cancel it and make a new one.${coNames.length ? ' Keep Ledger Desk open now and then: your browser hands them the company keys after they sign up.' : ''}</p>
             <textarea id="iMsg" readonly style="width:100%;min-height:230px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:10px;font-size:13px">${esc(msg)}</textarea>
             <div class="actions"><button class="btn" id="iCopyLink">Copy link only</button><a class="btn" id="iMail" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Your Ledger Desk invite')}&body=${encodeURIComponent(msg)}">Email it…</a><button class="btn primary" id="iCopy">Copy message</button></div>`, c => {

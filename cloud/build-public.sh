@@ -10,5 +10,7 @@ cp -r site/. public/
 cp ../source/app/index.html ../source/app/web-shim.js ../source/app/android-shim.js ../source/app/package.json ../source/app/icon.png public/pos/
 cp ../source/app/lib/pdf.js ../source/app/lib/pdf.worker.js public/pos/lib/
 cp ../source/app/icon.png public/icon.png
-printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /v1/\n' > public/robots.txt
+# Ledger Desk (trivedipos.com/books)
+mkdir -p public/books && cp -r ../ledger/app/. public/books/
+printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /books/\nDisallow: /api/\nDisallow: /v1/\n' > public/robots.txt
 echo "website ready: $(find public -type f | wc -l) files"

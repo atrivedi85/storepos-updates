@@ -1,4 +1,4 @@
-/* Ledger Desk AI Assistant. The AI runs on the Ledger Desk server PC (Ollama). Nothing is sent anywhere else.
+/* Ledger Desk AI Assistant. The AI runs on the owner's own AI PC (Ledger Desk AI). Nothing is sent anywhere else.
    It only suggests: nothing in the books changes until you click Approve or Apply. */
 (function () {
   'use strict';
@@ -163,40 +163,12 @@
     L.save(); L.updateBadge(); L.render(); toast(n + ' approved');
   };
   acts.aiClear = () => { ST.sugg = []; L.render(); };
-  acts.aiProv = async b => {
-    const want = b.dataset.p, g = ST.status && ST.status.gemini; if (!g || (want === 'gemini') === !!g.on) return;
-    const go = async () => { try { await SV.post('/api/me/ai', { provider: want }); toast(want === 'gemini' ? 'Using Google Gemini for your AI requests' : 'Using this PC\'s AI again'); } catch (e) { toast(e.message); } await refreshStatus(); L.render(); };
-    if (want === 'local') return go();
-    L.modal(`<h2>Use Google Gemini?</h2>
-      <p>Gemini is Google's AI. It's smarter and faster than the AI on the server PC.</p>
-      <ul class="small" style="padding-left:18px;line-height:1.6"><li><b>What goes to Google:</b> only what each AI request needs (the transactions you ask it to sort, your question and the figures for it, a receipt or check picture). Your whole books are not sent and stay locked on the server PC.</li>
-      <li>It uses ${esc(SV.me.admin ? 'your' : 'the owner\'s')} paid Google account. Google says it doesn't use paid requests to train its AI, but keeps them for a short time for abuse checks.</li>
-      <li>You can switch back to <b>This PC's AI</b> any time. If Google doesn't answer, Ledger Desk uses this PC's AI automatically.</li>
-      <li>Everything you approve or fix still teaches Ledger Desk, whichever AI you use.</li></ul>
-      <div class="actions"><button class="btn" id="gNo">Keep this PC's AI</button><button class="btn primary" id="gYes">Use Gemini</button></div>`, card => { card.querySelector('#gNo').onclick = L.closeModal; card.querySelector('#gYes').onclick = () => { L.closeModal(); go(); }; });
-  };
-  // Gemini writes better "Notes for the AI" from how this company was categorized; the PC's own AI reads them every time.
-  function historySummary() {
-    const g = {};
-    L.live().forEach(t => { if (L.isUncat(t) || t.source === 'income' || t.source === 'opening') return; const c = acc(t.categoryId); if (!c || c.sys === 'deposits') return;
-      const k = C.normPayee(t.payee) + '|' + (t.amount < 0 ? 'out' : 'in') + '|' + c.name; const x = g[k] || (g[k] = { p: t.payee, s: t.amount < 0 ? 'out' : 'in', c: c.name, n: 0 }); x.n++; });
-    return Object.values(g).sort((a, b) => b.n - a.n).slice(0, 400).map(x => `${x.p} | ${x.s} | ${x.c} | ${x.n}`).join('\n');
-  }
-  async function teach(card) {
-    const btn = card.querySelector('#nTeach'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Gemini is studying ' + esc(S().company) + '…';
-    try {
-      const r = await SV.post('/api/ai/teach', { company: S().company, business: S().company, notes: card.querySelector('#nTxt').value, categories: categoryList().map(c => c.name), history: historySummary() });
-      card.querySelector('#nTxt').value = r.notes || ''; card.querySelector('#nHint').innerHTML = '<b>Gemini rewrote these notes from how this company\'s transactions were categorized.</b> Read them over, change anything, then click Save. The AI on this PC follows them from now on.';
-    } catch (e) { toast('Gemini: ' + e.message); }
-    btn.disabled = false; btn.textContent = 'Teach this PC\'s AI with Gemini';
-  }
   acts.aiNotes = () => {
     L.modal(`<h2>Notes for the AI (${esc(S().company)})</h2><p class="muted small" style="margin-top:0">Tell the AI how this company's books work. It reads these every time it suggests categories. For example: "We run hotels. Sam's Club, Walmart and Costco are Hotel Supplies. A RAJU payments are Payroll."</p>
       <textarea id="nTxt" style="width:100%;min-height:180px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px" maxlength="3000">${esc(S().aiNotes || '')}</textarea>
-      <p class="small muted" id="nHint" style="margin:6px 0 0">${ST.status && ST.status.gemini && ST.status.gemini.on ? 'Tip: "Teach this PC\'s AI with Gemini" has Gemini study how this company was categorized and write these notes for you, so the AI on the server PC gets smarter too.' : ''}</p>
-      <div class="actions">${ST.status && ST.status.gemini && ST.status.gemini.on ? '<button class="btn" id="nTeach" style="margin-right:auto">Teach this PC\'s AI with Gemini</button>' : ''}<button class="btn" id="nCancel">Cancel</button><button class="btn primary" id="nSave">Save notes</button></div>`, card => {
+ <p class="small muted" id="nHint" style="margin:6px 0 0">${false ? 'Tip: "Teach this PC\'s AI with Gemini" has Gemini study how this company was categorized and write these notes for you, so the AI on the server PC gets smarter too.' : ''}</p>
+      <div class="actions"><button class="btn" id="nCancel">Cancel</button><button class="btn primary" id="nSave">Save notes</button></div>`, card => {
       card.querySelector('#nCancel').onclick = L.closeModal;
-      const tb = card.querySelector('#nTeach'); if (tb) tb.onclick = () => teach(card);
       card.querySelector('#nSave').onclick = () => { S().aiNotes = card.querySelector('#nTxt').value.trim(); L.save(); L.closeModal(); L.render(); toast('Notes saved'); };
     });
   };
@@ -501,11 +473,10 @@
     if (!ST.statusAt || Date.now() - ST.statusAt > 3000) { ST.statusAt = Date.now(); setTimeout(refreshStatus, 0); }
     const st = ST.status, waiting = candidates().length;
     const statusLine = !st ? '<span class="spin"></span>Checking the AI…'
-      : !st.ok ? '<span class="ai-dot off"></span><b>The AI is not available.</b> ' + esc(st.reason) + (SV.me.admin ? ' On the server PC, start Ollama (it runs in the system tray).' : ' Ask the owner to check the server PC.')
-      : !st.hasText ? '<span class="ai-dot off"></span><b>The AI model is not downloaded yet.</b> ' + (SV.me.admin ? 'On the server PC, run "Set up the AI.cmd" in the Ledger Desk Server folder.' : 'Ask the owner to finish the AI setup.')
-      : st.provider === 'gemini' ? '<span class="ai-dot on"></span>Ready · <b>Google Gemini</b> · only what each AI request needs is sent to Google (paid account, not used to train Google\'s AI)'
-      : '<span class="ai-dot on"></span>Ready · runs on the server\'s graphics card · your books never leave that PC' + (st.busy ? ' · busy with ' + st.busy + ' request' + (st.busy === 1 ? '' : 's') : '');
-    const g = st && st.gemini, prov = g && g.available ? `<div class="seg" style="display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-right:8px" title="Which AI does the work for you">
+      : !st.ok ? '<span class="ai-dot off"></span><b>The AI is not available.</b> ' + esc(st.reason) + (SV.me.admin ? ' Start <b>Ledger Desk AI</b> on your AI PC and make sure it is online.' : ' Ask the owner to check the AI PC.')
+      : !st.hasText ? '<span class="ai-dot off"></span><b>The AI model is not downloaded yet.</b> ' + (SV.me.admin ? 'Ledger Desk AI on your AI PC is still downloading the model. It can take a while the first time.' : 'Ask the owner to finish the AI setup.')
+      : '<span class="ai-dot on"></span>Ready · runs on your own AI PC · only what each AI request needs is sent to it' + (st.busy ? ' · busy with ' + st.busy + ' request' + (st.busy === 1 ? '' : 's') : '');
+    const g = null, prov = g ? `<div class="seg" style="display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-right:8px" title="Which AI does the work for you">
       <button class="btn sm${g.on ? '' : ' primary'}" style="border:0;border-radius:0" data-act="aiProv" data-p="local">This PC's AI</button><button class="btn sm${g.on ? ' primary' : ''}" style="border:0;border-radius:0" data-act="aiProv" data-p="gemini">Google Gemini</button></div>` : '';
     const head = `<div class="page-head"><div><h1>AI Assistant</h1><p class="sub">${statusLine}</p></div>
       <div class="toolbar" style="margin:0">${prov}<button class="btn" data-act="aiNotes">Notes for the AI${S().aiNotes ? ' ✓' : ''}</button></div></div>

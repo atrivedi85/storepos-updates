@@ -1,6 +1,7 @@
 name = "storepos-sync"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 routes = [
   { pattern = "trivedipos.com", custom_domain = true },
@@ -11,11 +12,20 @@ routes = [
 name = "HUB"
 class_name = "Hub"
 
+[[durable_objects.bindings]]
+name = "LEDGER"
+class_name = "Ledger"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Hub"]
 
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Ledger"]
+
 # The web back office (the POS screens + web-shim.js), copied in by the deploy workflow.
 [assets]
 directory = "./public"
+binding = "ASSETS"
 not_found_handling = "none"

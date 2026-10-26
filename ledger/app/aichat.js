@@ -30,7 +30,7 @@
     if (by.heic) say(`${esc(by.heic.map(f => f.name).join(', '))}: that's an iPhone HEIC photo, which browsers can't open. On the iPhone, go to Settings › Camera › Formats › <b>Most Compatible</b>, or send the photo as a screenshot, and drop it again.`);
     if (by.qb) say(`${esc(by.qb.map(f => f.name).join(', '))}: spreadsheets and QuickBooks files aren't bank statements. To bring over a whole QuickBooks company, use <b>Company &amp; Backup › Restore from QuickBooks</b>. For bank or card transactions, download the <b>QuickBooks Web Connect (.QBO)</b> file from the bank instead. See <b>Get statements</b> for where.`);
     if (by.other) say(`I can't read ${esc(by.other.map(f => f.name).join(', '))}. I can read bank and card statements (.QBO, .QFX, .OFX), PDF statements with check pictures, and pictures or PDFs of receipts, bills and invoices.`);
-    if (!ready() && (by.pdf || by.img)) { say('The AI on the server PC isn\'t ready right now, so I can\'t read PDFs or pictures. Check that Ollama is running on that PC.', 'err'); delete by.pdf; delete by.img; }
+    if (!ready() && (by.pdf || by.img)) { say('The AI isn\'t ready right now, so I can\'t read PDFs or pictures. Check that Ledger Desk AI is running on your AI PC.', 'err'); delete by.pdf; delete by.img; }
     try {
       if (by.stmt) { const goOn = await statements(by.stmt); if (!goOn) { BK.later = { pdf: by.pdf || [], img: by.img || [] }; busy(''); next(); return; } }
       for (const f of by.pdf || []) await pdfFile(f);
@@ -172,7 +172,7 @@
   // ---------------- sort what's waiting ----------------
   async function sortWaiting(fromFiles) {
     const h = H(); if (!h.candidates) return;
-    if (!ready()) { say('The AI on the server PC isn\'t ready right now, so I can\'t sort. Check that Ollama is running on that PC.', 'err'); return; }
+    if (!ready()) { say('The AI isn\'t ready right now, so I can\'t sort. Check that Ledger Desk AI is running on your AI PC.', 'err'); return; }
     fixCardPayments();
     const rulesN = L.applyRulesToUncat ? L.applyRulesToUncat() : 0; if (rulesN) { L.save(); BK.stats.rules += rulesN; }
     const skip = queuedIds(), list = h.candidates().filter(t => !skip.has(t.id)).slice(0, 300);
