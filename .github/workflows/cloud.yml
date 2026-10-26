@@ -2,7 +2,7 @@ name: Cloud Sync server
 on:
   push:
     branches: [main]
-    paths: ['cloud/**', 'source/app/**', '.github/workflows/cloud.yml']
+    paths: ['cloud/**', 'source/app/**', 'ledger/**', '.github/workflows/cloud.yml']
   workflow_dispatch:
 jobs:
   deploy:
