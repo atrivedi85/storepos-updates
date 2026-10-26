@@ -10,3 +10,8 @@ class_name = "Hub"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Hub"]
+
+# The web back office (the POS screens + web-shim.js), copied in by the deploy workflow.
+[assets]
+directory = "./public"
+not_found_handling = "none"

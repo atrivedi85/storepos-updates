@@ -21,7 +21,7 @@ jobs:
       - name: Put the POS screens into the Android app
         run: |
           mkdir -p android/app/src/main/assets/www/lib
-          cp source/app/index.html source/app/package.json source/app/android-shim.js source/app/icon.png android/app/src/main/assets/www/
+          cp source/app/index.html source/app/package.json source/app/android-shim.js source/app/web-shim.js source/app/icon.png android/app/src/main/assets/www/
           cp source/app/lib/pdf.js source/app/lib/pdf.worker.js android/app/src/main/assets/www/lib/
       - name: Signing key (from repository secrets, if set)
         env:

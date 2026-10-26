@@ -1,6 +1,6 @@
 {
- "version": "1.13.0",
- "notes": "Link a second Windows PC to the store PC (Settings - Link to Store PC). Cloud Sync over the internet: make changes from home and they show up at the store - switches on once the Cloud Sync server is online.",
- "url": "updates/StorePOS-Update-1.13.0.posupdate",
- "sha256": "6b21c7c7cf871b0070b81fbdfd84631a1a004db65dee6226a1e53264d9422eb9"
+ "version": "1.14.0",
+ "notes": "Web back office: open your store from any browser (Cloud Sync). Second Windows PC can link to the store PC.",
+ "url": "updates/StorePOS-Update-1.14.0.posupdate",
+ "sha256": "6b2b427e72e97e4eb35d2aa97b9792fba952375919c6625efd98e8c598aa34ee"
 }
