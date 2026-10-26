@@ -17,7 +17,13 @@ export default {
     const p = new URL(req.url).pathname.split('/').filter(Boolean);
     const path = new URL(req.url).pathname;
     // Ledger Desk (trivedipos.com/books): its sign-in pages and its server
-    if (path === '/books/login' || path === '/books/invite') return env.ASSETS.fetch(new Request(new URL('/books/login.html', req.url), req));
+    if (path === '/books/login' || path === '/books/invite') {
+      // Serve the sign-in page at the address the person opened (an invite keeps its ?code=…). Cloudflare's assets
+      // redirect "login.html" to "login", so ask for "/books/login" and never pass a redirect on to the browser.
+      const r = await env.ASSETS.fetch(new Request(new URL('/books/login', req.url), { method: 'GET' }));
+      if (r.status >= 300 && r.status < 400) { const r2 = await env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/books/login.html', req.url), { method: 'GET' })); return new Response(r2.body, { status: 200, headers: r2.headers }); }
+      return r;
+    }
     if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });
     if ((p[1] === 'store' || p[1] === 'pair') && ID.test(p[2] || '')) return env.HUB.get(env.HUB.idFromName(p[1] + ':' + p[2])).fetch(req);
