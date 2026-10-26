@@ -1,7 +1,7 @@
 {
   "name": "store-pos",
   "productName": "Store POS",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "Touch screen point of sale for convenience and smoke shops",
   "main": "main.js",
   "private": true

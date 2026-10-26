@@ -1,6 +1,7 @@
 {
- "version": "1.14.0",
- "notes": "Web back office: open your store from any browser (Cloud Sync). Second Windows PC can link to the store PC.",
- "url": "updates/StorePOS-Update-1.14.0.posupdate",
- "sha256": "6b2b427e72e97e4eb35d2aa97b9792fba952375919c6625efd98e8c598aa34ee"
+ "version": "1.14.1",
+ "notes": "Cloud Sync is on: Settings - Tablets - Sync over the internet, then manage your store from trivedipos.com/pos or a home PC.",
+ "url": "updates/StorePOS-Update-1.14.1.posupdate",
+ "sha256": "5cfa252f0becaec56a06e9cae8b891b6afcab604990bb659af31e828357584c4",
+ "cloudUrl": "https://trivedipos.com"
 }
