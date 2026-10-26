@@ -129,11 +129,11 @@
   function queueDel(store, key) { return linked() && store !== 'kv' ? [['INSERT INTO outbox(store,key,op,data,delta,ts) VALUES(?,?,?,?,?,?)', [store, String(key), 'del', null, null, Date.now()]]] : []; }
   var kickT = null; function kick() { if (!linked()) return; clearTimeout(kickT); kickT = setTimeout(syncOnce, 400); }
   /* ---------- Cloud Sync (link over the internet; everything sealed with the store's key) ---------- */
-  var CLOUD_URL = 'https://storepos-sync.REPLACE_ME.workers.dev';
+  var CLOUD_URL = 'https://trivedipos.com';
   function cloudBase() { var c = cfgGet(); return String(c.cloudUrl || c.cloudUrlAuto || CLOUD_URL).replace(/\/+$/, ''); }
   async function findCloud() {   // the Cloud Sync address is published with the updates
     if (cloudBase().indexOf('REPLACE_ME') < 0) return;
-    try { var r = await call('http', { url: 'https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json?t=' + Date.now(), method: 'GET', timeout: 15000 }); var j = JSON.parse(r.body || '{}'); if (/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i.test(j.cloudUrl || '')) { var c = cfgGet(); c.cloudUrlAuto = j.cloudUrl; cfgSet(c); } } catch (e) { }
+    try { var r = await call('http', { url: 'https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json?t=' + Date.now(), method: 'GET', timeout: 15000 }); var j = JSON.parse(r.body || '{}'); if (/^https:\/\/([a-z0-9-]+\.)*(trivedipos\.com|workers\.dev)$/i.test(j.cloudUrl || '')) { var c = cfgGet(); c.cloudUrlAuto = j.cloudUrl; cfgSet(c); } } catch (e) { }
   }
   var TE = new TextEncoder(), TD = new TextDecoder();
   var CANZ = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';

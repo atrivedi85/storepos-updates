@@ -507,7 +507,7 @@ async function checkOnline(manual) {
     } catch (e) { lastErr = e.message; }
   }
   if (!best) return { ok: false, error: 'Could not reach the update server (' + lastErr + '). Check the internet connection.' };
-  if (/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i.test(String(best.cloudUrl || '')) && cfg.cloudUrlAuto !== best.cloudUrl) { cfg.cloudUrlAuto = best.cloudUrl; saveCfg(); if (cfg.cloud && cfg.cloud.on) cloudStart(); send('lan', lanState()); }
+  if (/^https:\/\/([a-z0-9-]+\.)*(trivedipos\.com|workers\.dev)$/i.test(String(best.cloudUrl || '')) && cfg.cloudUrlAuto !== best.cloudUrl) { cfg.cloudUrlAuto = best.cloudUrl; saveCfg(); if (cfg.cloud && cfg.cloud.on) cloudStart(); send('lan', lanState()); }
   onlineUpdate = verGt(best.version, require('./package.json').version) ? best : null;
   if (onlineUpdate) send('updateAvailable', onlineUpdate);
   return { ok: true, available: onlineUpdate };
@@ -911,7 +911,7 @@ ipcMain.handle('lanRemove', (e, id) => { cfg.tablets = (cfg.tablets || []).filte
 /* ---------- Cloud Sync: registers share data over the internet through the Store POS relay ----------
    Everything is sealed (AES-256-GCM) with the store's own key before it leaves this PC; the relay only
    passes sealed messages along and holds changes for the store PC while it is off. */
-const CLOUD_URL = 'https://storepos-sync.REPLACE_ME.workers.dev';
+const CLOUD_URL = 'https://trivedipos.com';
 const cloudUrl = () => String(cfg.cloudUrl || cfg.cloudUrlAuto || CLOUD_URL).replace(/\/+$/, '');
 const wsUrl = u => u.replace(/^http/, 'ws');
 const B64U = b => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

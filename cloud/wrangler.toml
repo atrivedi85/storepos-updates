@@ -2,6 +2,10 @@ name = "storepos-sync"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
+routes = [
+  { pattern = "trivedipos.com", custom_domain = true },
+  { pattern = "www.trivedipos.com", custom_domain = true }
+]
 
 [[durable_objects.bindings]]
 name = "HUB"

@@ -14,12 +14,8 @@ jobs:
       - name: Waiting for the Cloudflare key
         if: env.HAS_TOKEN != 'true'
         run: echo "Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in GitHub → Settings → Secrets → Actions, then run this again."
-      - name: Put the web back office next to the server
-        run: |
-          mkdir -p cloud/public/lib
-          cp source/app/index.html source/app/web-shim.js source/app/android-shim.js source/app/package.json source/app/icon.png cloud/public/
-          cp source/app/lib/pdf.js source/app/lib/pdf.worker.js cloud/public/lib/
-          printf 'User-agent: *\nDisallow: /\n' > cloud/public/robots.txt
+      - name: Build the website
+        run: bash cloud/build-public.sh
       - name: Put the server online at Cloudflare
         id: deploy
         if: env.HAS_TOKEN == 'true'
