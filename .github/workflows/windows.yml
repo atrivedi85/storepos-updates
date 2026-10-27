@@ -33,4 +33,5 @@ jobs:
           ls -la build/dist
           printf '{"version":"%s","build":%s,"commit":"%s","bytes":%s}\n' "$V" "${{ github.run_number }}" "${{ github.sha }}" "$(stat -c %s build/dist/StorePOS-Setup.exe)" > pos-windows.json
           gh release view pos-windows-latest >/dev/null 2>&1 || gh release create pos-windows-latest --title "Store POS for Windows" --notes "Latest Windows installer of Store POS (blank edition for new stores)." --latest=false
-          gh release upload pos-windows-latest build/dist/StorePOS-Setup.exe pos-windows.json --clobber
+          (cd build/dist/win-unpacked && find . -type f | sort | sed 's|^\./||' > ../../../pos-windows-files.txt)
+          gh release upload pos-windows-latest build/dist/StorePOS-Setup.exe pos-windows.json pos-windows-files.txt --clobber

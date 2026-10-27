@@ -11,11 +11,55 @@ const ID = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_INBOX = 20000;
 async function sha(s) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); }
 
+
+/* ---------- Store POS for Windows download: only for people who have a Store POS license key (the "owner code") ---------- */
+const LIC_PUB_DER = 'MCowBQYDK2VwAyEAChLk2xj5iczD4MkE2RBkAppOTPz5qaThemEoawP+iro=';
+const LB32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const POS_EXE = 'https://github.com/atrivedi85/storepos-updates/releases/download/pos-windows-latest/StorePOS-Setup.exe';
+const POS_INFO = 'https://github.com/atrivedi85/storepos-updates/releases/download/pos-windows-latest/pos-windows.json';
+function licBytes(str) {
+  const clean = String(str || '').toUpperCase().replace(/^\s*SPOS/, '').replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  let bits = 0, val = 0; const out = [];
+  for (const ch of clean) { const i = LB32.indexOf(ch); if (i < 0) throw new Error('bad'); val = (val << 5) | i; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return new Uint8Array(out);
+}
+export async function checkLicense(key) {
+  try {
+    const raw = licBytes(key); if (raw.length < 70) return { ok: false, error: 'That code is too short. Check it was copied completely.' };
+    const n = (raw[0] << 8) | raw[1], payload = raw.slice(2, 2 + n), sig = raw.slice(2 + n, 2 + n + 64);
+    if (sig.length !== 64) return { ok: false, error: 'That code is not valid.' };
+    const der = Uint8Array.from(atob(LIC_PUB_DER), c => c.charCodeAt(0));
+    const pk = await crypto.subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
+    if (!(await crypto.subtle.verify({ name: 'Ed25519' }, pk, sig, payload))) return { ok: false, error: 'That code is not valid.' };
+    const data = JSON.parse(new TextDecoder().decode(payload));
+    if (data.e && String(data.e) < new Date().toISOString().slice(0, 10)) return { ok: false, error: 'That code has expired. Ask for a new one.' };
+    return { ok: true, data };
+  } catch (e) { return { ok: false, error: 'That code is not valid.' }; }
+}
+async function posDownload(req) {
+  let code = '';
+  try { const f = await req.formData(); code = String(f.get('code') || ''); } catch (e) { /* no form */ }
+  const lic = await checkLicense(code);
+  if (!lic.ok) return Response.redirect(new URL('/download?err=' + encodeURIComponent(lic.error), req.url).toString(), 303);
+  const r = await fetch(POS_EXE, { redirect: 'follow' });
+  if (!r.ok) return Response.redirect(new URL('/download?err=' + encodeURIComponent('The download is being updated. Try again in a few minutes.'), req.url).toString(), 303);
+  const h = new Headers({ 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="StorePOS-Setup.exe"', 'Cache-Control': 'no-store' });
+  if (r.headers.get('content-length')) h.set('Content-Length', r.headers.get('content-length'));
+  return new Response(r.body, { status: 200, headers: h });
+}
+async function posInfo() {
+  try { const r = await fetch(POS_INFO, { redirect: 'follow' }); if (r.ok) { const j = await r.json(); return J({ version: j.version, bytes: j.bytes }); } } catch (e) { /* not built yet */ }
+  return J({ version: null });
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const p = new URL(req.url).pathname.split('/').filter(Boolean);
     const path = new URL(req.url).pathname;
+    if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
+    if (path === '/dl/info') return posInfo();
+    if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
     // Ledger Desk (trivedipos.com/books): its sign-in pages and its server
     if (path === '/books/login' || path === '/books/invite') {
       // Serve the sign-in page at the address the person opened (an invite keeps its ?code=…). Cloudflare's assets

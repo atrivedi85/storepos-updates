@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Download Store POS</title>
+<meta name="description" content="Download Store POS for Windows with your owner code.">
+<link rel="icon" href="/icon.png">
+<style>
+:root{--bg:#0f1b2d;--panel:#fff;--ink:#14213a;--muted:#5b6880;--blue:#1f6fd1;--green:#1f9d55;--line:#e3e8f0;--red:#c62828}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;background:var(--bg);color:#fff;min-height:100vh;display:flex;flex-direction:column}
+header{padding:22px 16px;max-width:1040px;width:100%;margin:0 auto;display:flex;align-items:center;gap:12px}
+header a{color:#fff;text-decoration:none;display:flex;align-items:center;gap:12px}
+header img{width:40px;height:40px;border-radius:10px}
+header b{font-size:20px}
+main{flex:1;max-width:640px;width:100%;margin:0 auto;padding:16px}
+.card{background:var(--panel);color:var(--ink);border-radius:16px;padding:26px}
+h1{margin:0 0 6px;font-size:28px}
+p{color:var(--muted);line-height:1.5;margin:8px 0}
+label{display:block;font-weight:700;font-size:14px;margin:18px 0 6px;color:var(--ink)}
+textarea{width:100%;font:600 16px/1.4 ui-monospace,Consolas,monospace;padding:12px;border:1px solid #c8d0dc;border-radius:10px;min-height:96px;resize:vertical;text-transform:uppercase}
+button{margin-top:16px;width:100%;font-size:18px;font-weight:700;padding:14px;border:0;border-radius:10px;background:var(--green);color:#fff;cursor:pointer}
+button:disabled{opacity:.6}
+.err{color:var(--red);font-weight:600;min-height:20px}
+.steps{margin:20px 0 0;padding-left:20px;color:var(--ink);line-height:1.6;font-size:15px}
+.steps li{margin-bottom:6px}
+.small{font-size:13px}
+.ver{font-size:13px;color:var(--muted)}
+footer{color:#8d9ab0;font-size:13px;text-align:center;padding:24px 16px}
+</style>
+</head>
+<body>
+<header><a href="/"><img src="/icon.png" alt=""><b>Trivedi POS</b></a></header>
+<main>
+  <div class="card">
+    <h1>Download Store POS for Windows</h1>
+    <p>Type the <b>owner code</b> you received (it starts with <b>SPOS-</b>). The same code activates your Store POS after you install it.</p>
+    <form method="post" action="/dl/windows" id="f">
+      <label for="code">Owner code</label>
+      <textarea id="code" name="code" placeholder="SPOS-XXXXX-XXXXX-…" autocomplete="off" spellcheck="false" required></textarea>
+      <div class="err" id="err"></div>
+      <button type="submit" id="go">Download Store POS</button>
+      <div class="ver" id="ver"></div>
+    </form>
+    <ol class="steps">
+      <li>Open <b>StorePOS-Setup.exe</b> from your Downloads.</li>
+      <li>If Windows says <b>"Windows protected your PC"</b>, click <b>More info</b> → <b>Run anyway</b>.</li>
+      <li>Store POS installs and opens. On the setup screen enter your store details, your owner PIN, and paste the <b>same owner code</b> into <b>License key</b>.</li>
+      <li>Want tablets or to manage from home? Settings → Tablets → <b>Sync over the internet</b>, then use <a href="/pos/">trivedipos.com/pos</a>.</li>
+    </ol>
+    <p class="small">Needs Windows 10 or 11. Your store's data stays on your own computer.</p>
+  </div>
+</main>
+<footer>© <span id="y"></span> Indo American LLC · <a style="color:#8d9ab0" href="mailto:atrivedi2508@gmail.com">atrivedi2508@gmail.com</a></footer>
+<script>
+document.getElementById('y').textContent = new Date().getFullYear();
+var e = new URLSearchParams(location.search).get('err'); if (e) document.getElementById('err').textContent = e;
+document.getElementById('f').addEventListener('submit', function () { var b = document.getElementById('go'); b.textContent = 'Starting the download…'; setTimeout(function () { b.textContent = 'Download Store POS'; }, 8000); });
+fetch('/dl/info').then(function (r) { return r.json(); }).then(function (j) { if (j.version) document.getElementById('ver').textContent = 'Version ' + j.version + (j.bytes ? ' · ' + Math.round(j.bytes / 1048576) + ' MB' : ''); }).catch(function () { });
+</script>
+</body>
+</html>
