@@ -48,7 +48,12 @@ async function posDownload(req) {
   return new Response(r.body, { status: 200, headers: h });
 }
 async function posInfo() {
-  try { const r = await fetch(POS_INFO, { redirect: 'follow' }); if (r.ok) { const j = await r.json(); return J({ version: j.version, bytes: j.bytes }); } } catch (e) { /* not built yet */ }
+  try {
+    const r = await fetch(POS_INFO, { redirect: 'follow', headers: { 'User-Agent': 'trivedipos.com', 'Accept': 'application/octet-stream' }, cf: { cacheTtl: 300 } });
+    const t = (await r.text()).replace(/^\uFEFF/, '').trim();
+    if (r.ok && t.startsWith('{')) { const j = JSON.parse(t); return J({ version: j.version, bytes: j.bytes }); }
+    return J({ version: null, status: r.status });
+  } catch (e) { return J({ version: null, error: String(e && e.message || e) }); }
   return J({ version: null });
 }
 
