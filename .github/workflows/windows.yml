@@ -1,0 +1,36 @@
+name: Windows installer
+on:
+  push:
+    branches: [main]
+    paths: ['source/app/**', 'installer/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Put the POS program together (blank edition, no store data)
+        shell: bash
+        run: |
+          mkdir -p build/app/lib
+          cp source/app/package.json source/app/main.js source/app/preload.js source/app/index.html source/app/android-shim.js source/app/web-shim.js source/app/icon.png source/app/icon.ico build/app/
+          cp source/app/lib/pdf.js source/app/lib/pdf.worker.js build/app/lib/
+      - name: Build StorePOS-Setup.exe
+        shell: bash
+        working-directory: build/app
+        run: npx --yes electron-builder@25.1.8 --win nsis --x64 --config ../../installer/builder.json --publish never
+      - name: Publish to the pos-windows-latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./source/app/package.json').version")
+          ls -la build/dist
+          printf '{"version":"%s","build":%s,"commit":"%s","bytes":%s}\n' "$V" "${{ github.run_number }}" "${{ github.sha }}" "$(stat -c %s build/dist/StorePOS-Setup.exe)" > pos-windows.json
+          gh release view pos-windows-latest >/dev/null 2>&1 || gh release create pos-windows-latest --title "Store POS for Windows" --notes "Latest Windows installer of Store POS (blank edition for new stores)." --latest=false
+          gh release upload pos-windows-latest build/dist/StorePOS-Setup.exe pos-windows.json --clobber

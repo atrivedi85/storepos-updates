@@ -1,0 +1,26 @@
+{
+  "appId": "com.storeposapp.pos",
+  "productName": "Store POS",
+  "electronVersion": "37.6.0",
+  "directories": { "output": "../dist" },
+  "files": ["**/*"],
+  "asar": false,
+  "npmRebuild": false,
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "icon.ico",
+    "artifactName": "StorePOS-Setup.exe"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "Store POS",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "fileAssociations": [
+    { "ext": "posupdate", "name": "Store POS update", "description": "Store POS update", "icon": "icon.ico" }
+  ]
+}
