@@ -4,7 +4,7 @@ Everything we built lives here: the **Store POS** cash register (Windows, Androi
 **Ledger Desk** accounting, and the **trivedipos.com** website and server.
 Program code only — never store data, sales, customers, card numbers, PINs, passwords or private keys.
 
-The same files are copied to the NAS master folder `Y:\POS and LedgerDesk\`
+The same files are copied to the NAS master folder `Y:\Vape & Smoke Studio POS\POS and LedgerDesk\`
 after every change, so the NAS always has the complete, current set.
 
 ## Map — what is where
