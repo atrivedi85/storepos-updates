@@ -169,6 +169,14 @@ body.osk-on .mback{bottom:var(--oskh,330px)}body.osk-on #app{height:calc(100vh -
 #hist{position:fixed;right:14px;top:10px;max-width:330px;pointer-events:none;background:#14213d;color:#fff;padding:12px 16px;border-radius:12px;font-weight:700;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.35);display:none}#hist.on{display:block}#hist small{display:block;font-weight:600;opacity:.8}.pbar{height:8px;background:#33415c;border-radius:4px;margin-top:8px;overflow:hidden}.pbar i{display:block;height:100%;background:#1e9e5a}
 .rc{width:72mm;font:12px/1.35 "Courier New",monospace;color:#000}.rc .c{text-align:center}.rc .r{display:flex;justify-content:space-between;gap:6px}.rc .b{font-weight:700;font-size:14px}.rc hr{border:0;border-top:1px dashed #000;margin:5px 0}.rc .sm{font-size:11px}
 @media print{body{background:#fff;overflow:visible;height:auto}#app,#modal,#toast{display:none!important}#print{display:block}@page{size:80mm auto;margin:3mm}}
+/* 1.15: plain (not bold) text on the register, pay screen and bottom bar; Home screen */
+.reg *,.pay *,footer *{font-weight:400!important}
+.home{height:100%;overflow:auto;padding:28px 32px;background:var(--panel2)}
+.home h2{margin:0 0 4px;font-weight:600;font-size:26px}.home .hint{margin-bottom:20px}
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.htile{background:#fff;border:1px solid var(--line);border-left:8px solid var(--hc);border-radius:12px;padding:22px 20px;min-height:120px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.htile b{font-size:22px;font-weight:500;color:var(--ink)}.htile span{font-size:14px;color:var(--mut);line-height:1.3}.htile i{font-style:normal;font-size:28px}
+.htile:hover{background:#f7f9fc}
 </style>
 </head>
 <body>
@@ -384,21 +392,25 @@ function kpPress(key){const k=S.kp;if(!k)return;if(k.fresh&&key!=='⌫'){k.buf='
  const d=$('#kpd');if(d){d.innerHTML=kpDisp();d.classList.remove('fresh')}if(k.onKey)k.onKey()}
 
 /* ---------- rendering ---------- */
-const TITLES={register:'Register',pay:'Pay',items:'Inventory',orders:'Transactions',accounting:'Accounting',receive:'Inventory — Receive Invoice',cats:'Inventory — Categories',vendors:'Inventory — Vendors',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
+const TITLES={register:'Register',home:'Home',pay:'Pay',items:'Inventory',orders:'Transactions',accounting:'Accounting',receive:'Inventory — Receive Invoice',cats:'Inventory — Categories',vendors:'Inventory — Vendors',reports:'Sales Report',promos:'Promos & Coupons',settings:'Settings'};
 function render(){
  if(S.setupMode){$('#app').innerHTML=renderSetup();return}
  if(!S.user){$('#app').innerHTML=renderLogin();return}
  if(S.screen==='pay'&&!S.cart.lines.length)S.screen='register';
  if(DESK&&S.lic&&S.lic.locked&&(S.screen==='register'||S.screen==='pay')){$('#app').innerHTML=`<main>${renderLicLock()}</main>${footer()}`;tick();return}
- const f={register:renderRegister,pay:renderPay,items:renderItems,orders:renderOrders,receive:renderReceive,cats:renderCats,vendors:renderVendors,accounting:renderAccounting,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
+ const f={register:renderRegister,home:renderHome,pay:renderPay,items:renderItems,orders:renderOrders,receive:renderReceive,cats:renderCats,vendors:renderVendors,accounting:renderAccounting,reports:renderReports,promos:renderPromos,settings:renderSettings}[S.screen]||renderRegister;
  $('#app').innerHTML=`<main>${f()}</main>${footer()}`;tick();saveCart();
  if(S.screen==='register'){requestAnimationFrame(()=>{const el=document.querySelector('.line.sel');el&&el.scrollIntoView({block:'nearest'})})}
 }
 let cartT;function saveCart(){clearTimeout(cartT);cartT=setTimeout(()=>DB.put('kv',clone(S.cart),'cart'),300)}
+/* home: every screen except the register lives here */
+const HOME_TILES=[['items','📦','Inventory','Items, receive invoices, categories, vendors','items_view','#2563eb'],['orders','🧾','Transactions','Past sales, refunds and cash payouts','txn_view','#0f766e'],['reports','📊','Reports','Sales by day, category, item and payment','reports_view','#7c3aed'],['accounting','📒','Accounting','Profit and loss, expenses, payroll','accounting','#15803d'],['promos','🏷️','Promos','Discounts, mix & match deals, coupons','promos','#d97706'],['settings','⚙️','Settings','Store, tax, users, printers, backups','settings','#475569']];
+function renderHome(){const tiles=HOME_TILES.filter(t=>can(t[4]));
+ return `<div class="home"><h2>${esc(S.settings.storeName||'Home')}</h2><div class="hint">Hi ${esc(S.user.name)} — pick where you want to go. Tap <b>Register</b> at the bottom to sell.</div><div class="hgrid">${tiles.map(([k,ic,n,d,,c])=>`<button class="htile" style="--hc:${c}" data-a="go" data-v="${k}"><i>${ic}</i><b>${n}</b><span>${d}</span></button>`).join('')||'<div class="hint">Nothing else is turned on for your PIN.</div>'}</div></div>`}
 function footer(){
- const tabs=[['register','Register'],['items','Inventory','items_view'],['orders','Transactions','txn_view'],['reports','Reports','reports_view'],['accounting','Accounting','accounting'],['promos','Promos','promos'],['settings','Settings','settings']];
+ const tabs=[['register','Register'],['home','Home']];
  return `<footer><div class="who"><b>${esc(TITLES[S.screen])}</b><span>Logged in: ${esc(S.user.name)}</span></div>
- <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${S.screen===t[0]||(S.screen==='pay'&&t[0]==='register')||(['receive','cats','vendors'].includes(S.screen)&&t[0]==='items')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
+ <div class="nav">${tabs.filter(t=>!t[2]||can(t[2])).map(t=>`<button class="${(t[0]==='register')===(S.screen==='register'||S.screen==='pay')?'on':''}" data-a="go" data-v="${t[0]}">${t[1]}</button>`).join('')}</div>
  ${DESK&&S.lic&&['trial','grace','trialover','expired','wrongpc'].includes(S.lic.status)||(DESK&&S.lic&&S.lic.status==='licensed'&&S.lic.expires&&S.lic.daysLeft<=14)?`<button class="lock" style="background:${S.lic.locked?'var(--red)':'var(--amber)'}" data-a="licOpen">${S.lic.status==='trial'?`Trial: ${S.lic.daysLeft}d`:S.lic.locked?'License needed':`License: ${S.lic.daysLeft}d`}</button>`:''}<div class="clock" id="clock"></div><button class="fs" data-a="fullscreen" title="Full screen">⛶</button>${can('items_view')&&pcCount()?`<button class="lock" style="background:#b45309" data-a="pcShow" data-v="check" title="Items that need a price check">🔔 ${pcCount()}</button>`:''}${payOf(S.user).type==='hourly'||clockOpen(S.user)?`<button class="lock" style="background:${clockOpen(S.user)?'#15803d':'#475569'}" data-a="clockMe" title="Clock in / out">⏱ ${clockOpen(S.user)?'Clock Out':'Clock In'}</button>`:''}<button class="lock" data-a="lock">🔒 Lock</button></footer>`;
 }
 function tick(){const el=$('#clock');if(!el)return;const n=new Date();el.innerHTML=`<b>${n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}</b>${n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'})}`}
