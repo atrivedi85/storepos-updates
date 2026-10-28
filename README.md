@@ -4,7 +4,7 @@ Everything we built lives here: the **Store POS** cash register (Windows, Androi
 **Ledger Desk** accounting, and the **trivedipos.com** website and server.
 Program code only — never store data, sales, customers, card numbers, PINs, passwords or private keys.
 
-The same files are copied to the NAS master folder `Y:\Vape & Smoke Studio POS\TRIVEDI POS - EVERYTHING (backup)\`
+The same files are copied to the NAS master folder `Y:\Vape & Smoke Studio POS\POS and LedgerDesk\`
 after every change, so the NAS always has the complete, current set.
 
 ## Map — what is where
@@ -43,7 +43,7 @@ after every change, so the NAS always has the complete, current set.
    - build `StorePOS-Setup.exe` for the download page (`windows.yml`) — about 3 minutes,
    - build the Android app (`android.yml`).
 5. Copy the new `.posupdate` to the NAS `Updates\` folder (and a "NEWEST UPDATE - …" copy at the top).
-6. Refresh the NAS master folder (`TRIVEDI POS - EVERYTHING (backup)`) and the project notes.
+6. Refresh the NAS master folder (`POS and LedgerDesk`) and the project notes.
 
 ## Secrets (stored in GitHub → Settings → Secrets → Actions, never in files)
 
