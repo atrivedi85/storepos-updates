@@ -1,7 +1,7 @@
 {
- "version": "1.15.0",
- "notes": "Cleaner register: plain (not bold) text, bottom bar has only Register and Home; Inventory, Transactions, Reports, Accounting, Promos and Settings are on the new Home screen",
- "url": "updates/StorePOS-Update-1.15.0.posupdate",
- "sha256": "879e4ef3a039016d16d76c3e6decc746fcd182d4577637104dfe67440629e7dd",
+ "version": "1.16.0",
+ "notes": "Purchase Orders: Home - Inventory - Purchase Orders. Pick a vendor, add items (Find Items, scan, or Reorder Low Stock), save the PO as a PDF for the vendor, mark it paid, and tap Receive when it arrives. New Reorder qty on each item.",
+ "url": "updates/StorePOS-Update-1.16.0.posupdate",
+ "sha256": "719836594a8ee32ea4f0f44c58d9e9f33f9e8b5cc110f1883e59a64bace18cab",
  "cloudUrl": "https://trivedipos.com"
 }

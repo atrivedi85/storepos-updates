@@ -1,7 +1,8 @@
 # Store POS program (`source/`)
 
 ## Files in `app/`
-- `index.html` — every screen and all register logic (sell, pay, inventory, receive invoices, reports, accounting, settings).
+- `index.html` — every screen and all register logic (sell, pay, Home screen, inventory, purchase orders, receive invoices, reports, accounting, settings).
+  Purchase orders are stored in the `porders` list (owner + managers only); Receive on a PO makes a Receive Invoice draft, and receiving it fills in the PO's received quantities.
   It talks to the computer through `window.posAPI`.
 - `main.js` — the Windows engine (Electron 37.6.0): SQLite database `%APPDATA%\Store POS\data\pos.db`, receipts and drawer,
   barcode scanners, backups, updates, license keys, the store-Wi-Fi link for tablets (port 8765) and **Cloud Sync** with trivedipos.com.

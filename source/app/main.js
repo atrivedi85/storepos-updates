@@ -780,7 +780,7 @@ let win = null, quitting = false;
 /* ---------- tablets on the store network (Android Store POS linked to this PC) ---------- */
 const http = require('http');
 function bumpEpoch() { cfg.syncEpoch = (Number(cfg.syncEpoch) || 0) + 1; saveCfg(); }
-const UNION_KV = { payouts: r => r.id, timeclock: r => r.id, invoices: r => r.id, invlog: r => `${r.time}|${r.sku}|${r.change}` };
+const UNION_KV = { payouts: r => r.id, timeclock: r => r.id, invoices: r => r.id, porders: r => r.id, invlog: r => `${r.time}|${r.sku}|${r.change}` };
 function mergeKv(key, local, incoming) {
   if (key === 'settings') return { ...(incoming || {}), nextOrder: local && local.nextOrder ? local.nextOrder : (incoming || {}).nextOrder };
   const kf = UNION_KV[key];
