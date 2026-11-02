@@ -379,7 +379,7 @@
     </div>`;
   }
 
-  function monthlyChart(n, from, to) {
+  function monthlyChart(n, from, to, pick) {
     let keys = [];
     if (from && to) {
       let d = new Date(+from.slice(0, 4), +from.slice(5, 7) - 1, 1);
@@ -392,7 +392,7 @@
     const data = keys.map(k => ({ k, inc: 0, exp: 0 }));
     const idx = {}; keys.forEach((k, i) => idx[k] = i);
     live().forEach(t => {
-      const i = idx[monthKey(t.date)]; if (i == null) return;
+      const i = idx[monthKey(t.date)]; if (i == null || !inStore(t, pick)) return;
       const c = acc(t.categoryId); if (!c) return;
       const v = C.categoryAmount(c, t);
       if (c.type === 'income') data[i].inc += v; else if (c.type === 'expense') data[i].exp += v;
@@ -887,14 +887,14 @@
     if (st.tab === 'pl') body = plReport(from, to, label);
     if (st.tab === 'bs') body = bsReport(to || '9999-12-31');
     if (st.tab === 'spend') body = spendReport(from, to, label);
-    if (st.tab === 'trend') body = `<div class="panel chart"><div class="page-head" style="margin:0 0 8px"><h2 style="margin:0">Income vs. expenses · ${esc(label)}</h2><div class="legend"><span><i style="background:var(--bar-a)"></i>Income</span><span><i style="background:var(--bar-b)"></i>Expenses</span></div></div>${monthlyChart(12, from || firstDate(), to || today())}</div>`;
+    if (st.tab === 'trend') body = `<div class="panel chart"><div class="page-head" style="margin:0 0 8px"><h2 style="margin:0">Income vs. expenses · ${esc(label)}${hasStores() && st.store !== 'all' && st.store !== 'cols' ? ' · ' + esc(st.store ? storeName(st.store) : 'No store') : ''}</h2><div class="legend"><span><i style="background:var(--bar-a)"></i>Income</span><span><i style="background:var(--bar-b)"></i>Expenses</span></div></div>${monthlyChart(12, from || firstDate(), to || today(), st.store)}</div>`;
     if (st.tab === 'detail') body = detailReport(from, to, label);
     return sampleBanner() + `<div class="page-head"><div><h1>Reports</h1><p class="sub">${esc(S.company)}</p></div>
       <div class="toolbar" style="margin:0">
         ${st.tab === 'bs' ? `<label class="small muted" style="display:flex;gap:6px;align-items:center">As of <input type="date" id="rTo" data-change="rAsOf" value="${to || today()}"></label>` :
         `<select id="rRange" data-change="rRange" aria-label="Report period">${Object.entries(R).map(([k, v]) => `<option value="${k}"${st.range === k ? ' selected' : ''}>${v[0]}</option>`).join('')}<option value="custom"${st.range === 'custom' ? ' selected' : ''}>Custom…</option></select>
         ${st.range === 'custom' ? `<input type="date" id="rFrom" data-change="rFrom" value="${st.from}" aria-label="From"><input type="date" id="rTo2" data-change="rTo" value="${st.to}" aria-label="To">` : ''}`}
-        ${hasStores() && st.tab !== 'trend' ? `<select id="rStore" data-change="rStore" aria-label="Store"><option value="all"${st.store === 'all' ? ' selected' : ''}>All stores (total)</option>${st.tab === 'pl' || st.tab === 'bs' ? `<option value="cols"${st.store === 'cols' ? ' selected' : ''}>Each store in its own column</option>` : ''}${stores().map(x => `<option value="${x.id}"${st.store === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}<option value=""${st.store === '' ? ' selected' : ''}>No store</option></select>` : ''}
+        ${hasStores() ? `<select id="rStore" data-change="rStore" aria-label="Store"><option value="all"${st.store === 'all' ? ' selected' : ''}>All stores (total)</option>${st.tab === 'pl' || st.tab === 'bs' ? `<option value="cols"${st.store === 'cols' ? ' selected' : ''}>Each store in its own column</option>` : ''}${stores().map(x => `<option value="${x.id}"${st.store === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}<option value=""${st.store === '' ? ' selected' : ''}>No store</option></select>` : ''}
         ${st.tab !== 'trend' ? '<button class="btn primary" data-act="exportXlsx">Download Excel</button><button class="btn" data-act="exportReport">CSV</button>' : ''}</div></div>
       <div class="tabs">${tabs.map(([k, l]) => `<button data-act="rTab" data-tab="${k}" class="${st.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   };

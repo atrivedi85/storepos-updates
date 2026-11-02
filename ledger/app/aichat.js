@@ -14,6 +14,14 @@
   const draw = () => { if (L.view === 'ai' && ST.tab === 'chat') L.render(); };
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const busy = t => { BK.busy = t; draw(); };
+  // ---------------- stores: suggest the store from what was picked before for the same payee ----------------
+  const storeOn = () => !!(L.stores && L.stores().length);
+  function storeGuess(t) {
+    const k = C.normPayee(t.payee), cnt = {};
+    S().txns.forEach(y => { if (y === t || y.ignored || C.normPayee(y.payee) !== k) return; const st = L.storeOf(y); if (st) cnt[st] = (cnt[st] || 0) + 1; });
+    const best = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+    return best ? best[0] : '';
+  }
   const queuedIds = () => new Set(BK.q.concat(BK.cur ? [BK.cur] : []).flatMap(x => x.ids || (x.tid ? [x.tid] : [])));
 
   // ---------------- files in ----------------
@@ -194,6 +202,7 @@
       const r = res[t.id]; if (!r || r.conf !== 'high' || BK.noAuto) return;
       BK.auto.push({ id: t.id, prev: t.categoryId, run });
       t.categoryId = r.id; t.why = 'Sorted by the AI Bookkeeper: ' + r.reason; h.logResult(t, r.id, r.id); autoN++;
+      if (storeOn() && !L.storeOf(t)) { const sg = storeGuess(t); if (sg) { t.store = sg; t.why += ' · store ' + L.storeName(sg) + ', same as before'; } }
     });
     const groups = {};
     list.filter(t => L.isUncat(t)).forEach(t => {
@@ -260,7 +269,10 @@
       const what = `<b>${esc(t.payee)}</b>${t.memo ? ' <span class="muted">(' + esc(t.memo.slice(0, 60)) + ')</span>' : ''} · ${many ? x.ids.length + ' ' + (x.sign === 'o' ? 'charges' : 'deposits') + ', ' + money(Math.abs(x.total)) + ' total' : money(x.total)} · ${span} · ${esc(x.accts.join(', '))}`;
       const q = x.said ? `Got it. That goes under <b>${c ? esc(c.name) : '?'}</b>. Right?` : c ? `My guess is <b>${esc(c.name)}</b>${x.reason ? ': ' + esc(x.reason) : ''}. Is that right?` : `What ${many ? 'are these' : 'is this'}?`;
       const big = x.sign === 'o' && Math.abs(x.total) / x.ids.length >= 2500 ? `<div class="small" style="margin-top:6px;background:var(--warn-soft);padding:6px 8px;border-radius:6px">💡 Tax tip: if this was one item over $2,500 (furniture, TVs, appliances, HVAC, a roof), it's usually a fixed asset, not a repair or supply. It can often still be written off this year with bonus depreciation. Tell me in your words ("new TVs for the rooms") and I'll put it in the right place, or flag it for your accountant.</div>` : '';
-      return `${what}${big}<div style="margin-top:6px">${q}</div>
+      const noStore = storeOn() ? x.ids.map(id => S().txns.find(y => y.id === id)).filter(y => y && !L.storeOf(y)) : [];
+      if (noStore.length && x.store == null) x.store = storeGuess(t);
+      const storeRow = noStore.length ? `<div class="bk-btns"><span class="small">Store</span><select id="bkStore"><option value="">No store</option>${L.stores().map(o => `<option value="${o.id}"${o.id === x.store ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select><span class="small muted">${x.store ? 'Same store as before for this payee.' : 'Which store was this for?'}</span></div>` : '';
+      return `${what}${big}<div style="margin-top:6px">${q}</div>${storeRow}
         <div class="bk-btns">${c ? `<button class="btn sm primary" data-act="bkYes">Yes</button>` : ''}${catSel(c ? '' : '', t)}<button class="btn sm" data-act="bkPick">Use this</button><button class="btn sm" data-act="bkSkip">Skip for now</button></div>
         <div class="bk-say"><input type="text" id="bkSay" placeholder="Or tell me in your words, e.g. &quot;towels for the rooms&quot;" maxlength="300"><button class="btn sm" data-act="bkSay">Send</button></div>
         ${/^(check|chk|deposit|withdrawal|atm|transfer|online transfer|mobile deposit|pos|debit|ach)\b/i.test(t.payee) ? '' : `<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="bkRule"${many ? ' checked' : ''}> Do this every time for ${esc(L.suggestMatch(t.payee))} (make a Bank Rule)</label>`}`;
@@ -287,11 +299,12 @@
   const curSel = () => { const s = document.querySelector('#bkCard [data-bk-cat]'); return s ? s.value : ''; };
   function applyGroup(g, cat, how) {
     const h = H(); let n = 0;
-    g.ids.forEach(id => { const t = S().txns.find(y => y.id === id); if (!t || !L.isUncat(t) || !L.allowedCat(t, cat)) return; t.categoryId = cat; t.why = how; if (g.ai) h.logResult(t, g.ai, cat); n++; });
+    const ss = document.querySelector('#bkStore'), store = ss ? ss.value : '';
+    g.ids.forEach(id => { const t = S().txns.find(y => y.id === id); if (!t || !L.isUncat(t) || !L.allowedCat(t, cat)) return; t.categoryId = cat; t.why = how; if (store && !L.storeOf(t)) t.store = store; if (g.ai) h.logResult(t, g.ai, cat); n++; });
     const rb = document.querySelector('#bkRule');
     if (rb && rb.checked && n) {
       const t = S().txns.find(y => y.id === g.ids[0]), match = L.suggestMatch(t.payee);
-      if (!S().rules.some(r => r.match.toLowerCase() === match.toLowerCase() && r.categoryId === cat)) S().rules.push({ id: L.uid(), match, sign: g.sign === 'o' ? 'out' : 'in', categoryId: cat, rename: '' });
+      if (!S().rules.some(r => r.match.toLowerCase() === match.toLowerCase() && r.categoryId === cat)) { const nr = { id: L.uid(), match, sign: g.sign === 'o' ? 'out' : 'in', categoryId: cat, rename: '' }; if (store) nr.store = store; S().rules.push(nr); }
     }
     L.save(); L.updateBadge(); BK.stats.asked++;
     return n;

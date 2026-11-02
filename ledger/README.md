@@ -21,3 +21,6 @@ The AI runs on the owner's own AI PC ("Ledger Desk AI", still to be built), whic
 - Reports › store picker: All stores, Each store in its own column (P&L and Balance Sheet), one store, or No store.
   Balance Sheet by store: bank/card/loan accounts go to their home store; owner's equity and draws are company-wide (TOTAL);
   each store's "Store equity & transfers between stores" is what's left, so every column balances.
+- Monthly Trend and Spending/Account Detail follow the store picked.
+- AI Bookkeeper (`aichat.js`): for transactions with no store (shared cards), the question card has a Store choice, pre-set to the
+  store most used before for that payee (`storeGuess`); sure-of sorts fill that store too. A Bank Rule made there keeps the store.
