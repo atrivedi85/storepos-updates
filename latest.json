@@ -1,7 +1,7 @@
 {
- "version": "1.16.1",
- "notes": "Mix & Match deals: the item search box is now at the top, right under Items in this deal, with results showing right below it. The category picker comes next, then the list of items in the deal.",
- "url": "updates/StorePOS-Update-1.16.1.posupdate",
- "sha256": "00e580c154193df384ffb9fb871625f7934f78852057e07c24c5582402cce947",
+ "version": "1.16.2",
+ "notes": "Deals: leave End date blank and the deal keeps running with no end until you turn it off (uncheck Active). Leave Start date blank and it starts right away. The date labels now say this.",
+ "url": "updates/StorePOS-Update-1.16.2.posupdate",
+ "sha256": "7b55ca6cd93bd742d369d60d91a44f20faa972d58a3975f7c541991de4005821",
  "cloudUrl": "https://trivedipos.com"
 }
