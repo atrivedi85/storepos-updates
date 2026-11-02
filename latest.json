@@ -1,7 +1,7 @@
 {
- "version": "1.16.0",
- "notes": "Purchase Orders: Home - Inventory - Purchase Orders. Pick a vendor, add items (Find Items, scan, or Reorder Low Stock), save the PO as a PDF for the vendor, mark it paid, and tap Receive when it arrives. New Reorder qty on each item.",
- "url": "updates/StorePOS-Update-1.16.0.posupdate",
- "sha256": "719836594a8ee32ea4f0f44c58d9e9f33f9e8b5cc110f1883e59a64bace18cab",
+ "version": "1.16.1",
+ "notes": "Mix & Match deals: the item search box is now at the top, right under Items in this deal, with results showing right below it. The category picker comes next, then the list of items in the deal.",
+ "url": "updates/StorePOS-Update-1.16.1.posupdate",
+ "sha256": "00e580c154193df384ffb9fb871625f7934f78852057e07c24c5582402cce947",
  "cloudUrl": "https://trivedipos.com"
 }
