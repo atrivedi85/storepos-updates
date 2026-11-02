@@ -61,4 +61,9 @@ input[type=password] { background: var(--panel); border: 1px solid var(--line); 
 .qb-table tr:hover td { background: var(--accent-soft); }
 /* stores */
 .store-sel { max-width: 160px; font-size: 12px; padding: 3px 6px; }
-.qb-report[style*="max-width:none"] .qb-table td.num { width: 115px; }
+.qb-report.multi { max-width: none; }
+.qb-report.multi .qb-table { font-size: 12px; }
+.qb-report.multi .qb-table th { white-space: normal; text-transform: none; letter-spacing: 0; font-size: 12px; vertical-align: bottom; }
+.qb-report.multi .qb-table td.num { width: auto; padding: 2px 6px; white-space: nowrap; }
+.qb-report.multi .qb-table td:first-child { min-width: 170px; }
+.qb-report.multi .qb-table .pl-total:not(.pl-plain) td.num span, .qb-report.multi .qb-table .pl-grand td.num span { min-width: 80px; }
