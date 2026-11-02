@@ -13,6 +13,7 @@
   const nb = document.createElement('button');
   nb.dataset.view = 'ai'; nb.innerHTML = '<span><span class="ai-dot" id="aiDot"></span>AI Assistant</span>';
   after.insertAdjacentElement('afterend', nb);
+  nb.addEventListener('click', () => { ST.tab = 'ask'; }); // the sidebar button always opens the Chat
 
   async function refreshStatus() {
     ST.statusAt = Date.now();
@@ -288,7 +289,7 @@
   const aiReady = () => ST.status && ST.status.ok && ST.status.hasText;
   const visionReady = () => ST.status && ST.status.ok && ST.status.hasVision;
   const dism = () => S().aiDismissed || (S().aiDismissed = []);
-  Object.assign(ST, { tab: 'chat', month: lastFull(), sum: null, sumBusy: false, probs: null, aiFlags: null, flagBusy: false, doc: null, docBusy: false, docImg: '' });
+  Object.assign(ST, { tab: 'ask', month: lastFull(), sum: null, sumBusy: false, probs: null, aiFlags: null, flagBusy: false, doc: null, docBusy: false, docImg: '' });
 
   // ================= Month-end check (exact, no AI needed) =================
   function monthEndCheck(k) {
@@ -454,7 +455,7 @@
   acts.docClear = () => { ST.doc = null; ST.docImg = ''; L.render(); };
 
   // ================= the screen (tabs) =================
-  const TABS = [['chat', 'Bookkeeper'], ['sort', 'Sort'], ['ask', 'Ask'], ['month', 'Month-end'], ['summary', 'Summary'], ['problems', 'Problems'], ['receipts', 'Receipts']];
+  const TABS = [['ask', 'Chat'], ['chat', 'Bookkeeper'], ['sort', 'Sort'], ['month', 'Month-end'], ['summary', 'Summary'], ['problems', 'Problems'], ['receipts', 'Receipts']];
   acts.aiTab = b => { ST.tab = b.dataset.tab; L.render(); };
   function learnPanel() {
     const m = accuracy(L.today().slice(0, 7) + '-01'), d = new Date(); d.setDate(d.getDate() - 90);
@@ -506,11 +507,11 @@
         <td style="white-space:nowrap;text-align:right"><button class="btn sm primary" data-act="aiApprove">Approve</button> <button class="btn sm" data-act="aiSkip">Skip</button></td></tr>`; }).join('')}
       </tbody></table></div>` : ''}</div>`;
     },
-    ask: () => `<div class="panel"><div class="page-head" style="margin:0"><div><h2 style="margin:0">Ask about ${esc(S().company)}</h2>
-      <p class="sub small">Answers come from this company's books. For exact figures you'll file or send, check them in Reports.</p></div>${ST.chat.length ? '<button class="link" data-act="aiChatClear">Clear</button>' : ''}</div>
-      ${ST.chat.length || ST.asking ? `<div class="chat" id="chat">${ST.chat.map(m => `<div class="msg ${m.role === 'user' ? 'q' : m.err ? 'a err' : 'a'}">${esc(m.text)}</div>`).join('')}${ST.asking ? '<div class="msg a"><span class="spin"></span>Thinking…</div>' : ''}</div>` : ''}
-      <div class="ask-row" style="margin-top:12px"><textarea id="askQ" placeholder="e.g. How much did we spend on utilities this year?" maxlength="1000" aria-label="Your question"></textarea><button class="btn primary" data-act="aiAsk"${ST.asking ? ' disabled' : ''}>Ask</button></div>
-      ${ST.chat.length ? '' : `<div class="examples">${['What were our biggest expenses last month?', 'How much did we pay Spectrum this year?', 'How much do we owe on all credit cards?', 'Compare this year\'s expenses to last year.'].map(q => `<button class="btn" data-act="aiEx">${esc(q)}</button>`).join('')}</div>`}</div>`,
+    ask: () => `<div class="panel"><div class="page-head" style="margin:0"><div><h2 style="margin:0">Ask me, or tell me what to do · ${esc(S().company)}</h2>
+      <p class="sub small">Ask about this company's books, or tell me to delete, ignore, move, rename or set the store of transactions. I always show you the list first, and nothing changes until you click. For exact figures you'll file or send, check them in Reports.</p></div>${ST.chat.length ? '<button class="link" data-act="aiChatClear">Clear</button>' : ''}</div>
+      ${ST.chat.length || ST.asking ? `<div class="chat" id="chat">${ST.chat.map(m => `<div class="msg ${m.role === 'user' ? 'q' : m.err ? 'a err' : 'a'}${m.html ? ' bk' : ''}">${m.html ? m.html : esc(m.text)}</div>`).join('')}${ST.asking ? '<div class="msg a"><span class="spin"></span>Thinking…</div>' : ''}</div>` : ''}
+      <div class="ask-row" style="margin-top:12px"><textarea id="askQ" placeholder="e.g. How much did we spend on utilities this year?  or  Move all that say VECTREN to Utilities" maxlength="1000" aria-label="Your question"></textarea><button class="btn primary" data-act="aiAsk"${ST.asking ? ' disabled' : ''}>Send</button></div>
+      ${ST.chat.length ? '' : `<div class="examples">${['What were our biggest expenses last month?', 'How much do we owe on all credit cards?', 'Move all that say SPECTRUM to Utilities', 'Ignore everything that says PAYMENT THANK YOU'].map(q => `<button class="btn" data-act="aiEx">${esc(q)}</button>`).join('')}</div>`}</div>`,
     month: () => {
       const r = monthEndCheck(ST.month), left = r.items.filter(x => !x.ok && !x.info).length;
       return `<div class="panel"><div class="page-head" style="margin:0 0 8px"><div><h2 style="margin:0">Month-end check: ${esc(monthName(ST.month))}</h2>

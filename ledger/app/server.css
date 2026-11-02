@@ -67,3 +67,7 @@ input[type=password] { background: var(--panel); border: 1px solid var(--line); 
 .qb-report.multi .qb-table td.num { width: auto; padding: 2px 6px; white-space: nowrap; }
 .qb-report.multi .qb-table td:first-child { min-width: 170px; }
 .qb-report.multi .qb-table .pl-total:not(.pl-plain) td.num span, .qb-report.multi .qb-table .pl-grand td.num span { min-width: 80px; }
+
+/* New category box (opens over anything, even another dialog) */
+.nc-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; z-index: 10000; }
+.nc-card { background: var(--panel, #fff); color: var(--ink); border-radius: 10px; padding: 18px 20px; width: min(420px, calc(100vw - 32px)); box-shadow: 0 10px 40px rgba(0,0,0,.35); }

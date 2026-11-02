@@ -24,3 +24,13 @@ The AI runs on the owner's own AI PC ("Ledger Desk AI", still to be built), whic
 - Monthly Trend and Spending/Account Detail follow the store picked.
 - AI Bookkeeper (`aichat.js`): for transactions with no store (shared cards), the question card has a Store choice, pre-set to the
   store most used before for that payee (`storeGuess`); sure-of sorts fill that store too. A Bank Rule made there keeps the store.
+
+## AI Assistant › Chat (`aitasks.js`) and "+ New category…"
+
+- The sidebar's AI Assistant opens on **Chat** (first tab). Questions go to the AI as before. Commands are read in the browser
+  (`LedgerTasks.parse`, no AI needed): delete / ignore / restore / move to a category / set store / rename, filtered by text
+  ("that say …", quoted text, "all VECTREN"), a month or year, and "on <account>". It lists the matches with totals and warnings
+  (statement balances, matched transfers, income on deposits) and changes nothing until the button is clicked. Delete/Ignore
+  go through `deleteTxns`/`ignoreTxns` (Undo). Category/store changes offer a Bank Rule.
+- Every category list (from `catOptions`) starts with **+ New category…**: a small box (`#ncBox`, works over other dialogs) makes the
+  account and selects it, then fires the select's normal change. Bulk categorize and Bank Rules refuse an empty choice.

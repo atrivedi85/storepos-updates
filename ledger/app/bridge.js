@@ -232,7 +232,7 @@
       setTimeout(run, 1500); setInterval(run, 60000);
     }
     main.innerHTML = '';
-    ['core.js', 'xlsx.js', 'merchants.js', 'qbimport.js', 'app.js', 'ai.js', 'server-ui.js', 'statements.js', 'checks.js', 'pdfstmt.js', 'aichat.js', 'tax.js'].forEach(src => {
+    ['core.js', 'xlsx.js', 'merchants.js', 'qbimport.js', 'app.js', 'ai.js', 'server-ui.js', 'statements.js', 'checks.js', 'pdfstmt.js', 'aichat.js', 'tax.js', 'aitasks.js'].forEach(src => {
       const s = document.createElement('script'); s.src = src; s.async = false; document.body.appendChild(s);
     });
   }

@@ -245,13 +245,57 @@
   // ---------------- category <select> ----------------
   function catOptions(selected, excludeId, deposit, hideIncome) {
     const order = ['expense', 'income', 'liability', 'asset', 'equity'];
-    return order.map(type => {
+    return '<option value="__new">+ New category…</option>' + order.map(type => {
       if ((deposit || hideIncome) && type === 'income') return '';
       const list = sortAccs(S.accounts.filter(a => a.type === type && a.id !== excludeId && !a.archived && (a.sys !== 'deposits' || deposit || a.id === selected)));
       if (!list.length) return '';
       return '<optgroup label="' + TYPE_LABEL[type] + '">' + list.map(a =>
         '<option value="' + a.id + '"' + (a.id === selected ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</optgroup>';
     }).join('');
+  }
+  // "+ New category…" in any category list: make the category right there, then pick it (no trip to Chart of Accounts)
+  document.addEventListener('focusin', e => { const el = e.target; if (el && el.tagName === 'SELECT' && el.value !== '__new') el.dataset.prev = el.value; }, true);
+  document.addEventListener('change', e => {
+    const sel = e.target; if (!sel || sel.tagName !== 'SELECT' || sel.value !== '__new') return;
+    e.stopImmediatePropagation();
+    const prev = sel.dataset.prev && sel.dataset.prev !== '__new' ? sel.dataset.prev : '';
+    sel.value = prev; if (sel.value !== prev) sel.selectedIndex = -1;
+    newCategoryBox(sel);
+  }, true);
+  function newCategoryBox(sel) {
+    const old = document.getElementById('ncBox'); if (old) old.remove();
+    const canIncome = !!sel.querySelector('optgroup[label="' + TYPE_LABEL.income + '"]');
+    const box = document.createElement('div'); box.id = 'ncBox'; box.className = 'nc-wrap';
+    box.innerHTML = `<div class="nc-card" role="dialog" aria-label="New category"><h2 style="margin:0 0 4px">New category</h2>
+      <p class="small muted" style="margin:0 0 10px">It's added to your Chart of Accounts and picked here right away.</p>
+      <label class="field">Name<input type="text" id="ncName" maxlength="80" placeholder="e.g. Pool Supplies, or HOTEL SUPPLY:LAUNDRY"></label>
+      <label class="field" style="margin-top:8px">Type<select id="ncType"><option value="expense">Expense</option>${canIncome ? '<option value="income">Income</option>' : ''}<option value="equity">Equity (owner's money, transfers)</option></select></label>
+      <p class="small" id="ncErr" style="color:var(--neg);min-height:16px;margin:6px 0 0"></p>
+      <div class="actions"><button class="btn" id="ncCancel">Cancel</button><button class="btn primary" id="ncSave">Add and use it</button></div></div>`;
+    document.body.appendChild(box);
+    const name = box.querySelector('#ncName'); name.focus();
+    const close = () => { box.remove(); try { sel.focus(); } catch (e) {} };
+    const make = () => {
+      const n = name.value.trim().replace(/\s*:\s*/g, ':'), type = box.querySelector('#ncType').value;
+      if (!n) { box.querySelector('#ncErr').textContent = 'Type a name.'; name.focus(); return; }
+      const same = S.accounts.find(a => a.name.toLowerCase() === n.toLowerCase());
+      let a = same;
+      if (same && same.archived) { box.querySelector('#ncErr').textContent = n + ' already exists (hidden). Use another name.'; return; }
+      if (!a) { a = { id: uid(), name: n, type, detail: 'other', sys: '' }; S.accounts.push(a); save(); }
+      if (!sel.querySelector('option[value="' + a.id + '"]')) {
+        let grp = sel.querySelector('optgroup[label="' + TYPE_LABEL[a.type] + '"]');
+        if (!grp) { grp = document.createElement('optgroup'); grp.label = TYPE_LABEL[a.type]; sel.appendChild(grp); }
+        const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; grp.appendChild(o);
+      }
+      box.remove();
+      sel.value = a.id; sel.dataset.prev = a.id;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      toast(same ? a.name + ' already existed, so it was picked' : a.name + ' added and picked');
+    };
+    box.querySelector('#ncCancel').onclick = close;
+    box.querySelector('#ncSave').onclick = make;
+    box.addEventListener('mousedown', e => { if (e.target === box) close(); });
+    box.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); make(); } if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   }
   function registerOptions(selected, withAll) {
     return (withAll ? '<option value="all">All accounts</option>' : '') +
@@ -569,6 +613,7 @@
       card.querySelector('#rSave').onclick = () => {
         const match = card.querySelector('#rMatch').value.trim();
         if (!match) { card.querySelector('#rErr').textContent = 'Enter the text to look for.'; return; }
+        if (!acc(card.querySelector('#rCat').value)) { card.querySelector('#rErr').textContent = 'Pick a category.'; return; }
         const r = prefill.id ? S.rules.find(x => x.id === prefill.id) : { id: uid() };
         Object.assign(r, { match, sign: card.querySelector('#rSign').value, categoryId: card.querySelector('#rCat').value, rename: card.querySelector('#rRename').value.trim() });
         const rs = card.querySelector('#rStore'); if (rs) { if (rs.value) r.store = rs.value; else delete r.store; }
@@ -1200,6 +1245,7 @@
     },
     bulkCat: () => {
       const c = $('#bulkCat').value; let n = 0;
+      if (!acc(c)) { toast('Pick a category first'); return; }
       let skipped = 0;
       S.txns.forEach(t => { if (!viewState.register.sel.has(t.id) || t.source === 'income') return; if (allowedCat(t, c)) { t.categoryId = c; delete t.why; n++; } else skipped++; });
       viewState.register.sel.clear(); save(); render(); toast(n + ' transaction' + (n === 1 ? '' : 's') + ' categorized' + (skipped ? ' · ' + skipped + ' bank deposit' + (skipped === 1 ? '' : 's') + ' skipped (deposits can\'t be income)' : ''));
@@ -1473,7 +1519,7 @@
   window.ledgerDeskApp = {
     get S() { return S; }, C, M, views, acts, afterRender, viewState, go, render, save, toast, modal, closeModal, confirmBox,
     acc, sysAcc, isUncat, live, allowedCat, defaultCat, isBankDeposit, catOptions, sortAccs, registers, memorized, suggestMatch,
-    esc, money, usDate, uid, today, ranges, TYPE_LABEL, stores, storeOf, storeName, updateBadge, txnModal, doImport, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
+    esc, money, usDate, uid, today, ranges, TYPE_LABEL, stores, storeOf, storeName, updateBadge, txnModal, doImport, deleteTxns, ignoreTxns, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
   };
   if (FILE) FILE.onExternalChange(applyExternal);
   setInterval(() => { if (pendingExternal && $('#modal').hidden) { const t = pendingExternal; pendingExternal = null; applyExternal(t); } }, 1000);
