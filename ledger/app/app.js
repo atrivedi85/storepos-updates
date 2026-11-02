@@ -480,6 +480,50 @@
     list.sort((a, b) => a.date.localeCompare(b.date) || (a.seq || 0) - (b.seq || 0));
     return list;
   }
+  // ---------------- similar transactions, grouped (Uncategorized only) ----------------
+  // Same payee once store numbers, check numbers, dates and reference codes are taken out; money in and out kept apart.
+  // A bare "CHECK 1234" or "DEPOSIT" says nothing about what it was, so those are never grouped.
+  const GENERIC = /^(CHECK|CHK|CHECK PAID|DEPOSIT|MOBILE DEPOSIT|ATM|ATM WITHDRAWAL|WITHDRAWAL|DEBIT|CREDIT|POS|POS PURCHASE|PURCHASE|PAYMENT|TRANSFER|ONLINE TRANSFER|FEE|SERVICE CHARGE|INTEREST|CASH|BRANCH DEPOSIT|ACH|WIRE|MISC|OTHER|UNKNOWN)$/;
+  function similarKey(t) {
+    const words = String(t.origPayee || t.payee || '').toUpperCase().replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' ').replace(/#\s*\d+/g, ' ')
+      .split(/[\s,]+/).map(w => w.replace(/^[^A-Z0-9*&]+|[^A-Z0-9*&]+$/g, '')).filter(w => w && !(/^\d{4,}$/.test(w)) && !(/\d/.test(w) && w.length >= 7));
+    const k = words.slice(0, 6).join(' ');
+    if (!k || GENERIC.test(k)) return 'one:' + t.id;
+    return k + '|' + (t.amount < 0 ? 'o' : 'i');
+  }
+  function similarGroups(list) {
+    const map = new Map();
+    list.forEach(t => { if (t.ignored) return; const k = similarKey(t); if (!map.has(k)) map.set(k, []); map.get(k).push(t); });
+    return Array.from(map.values()).map(ts => ({ ts: ts.sort((a, b) => b.date.localeCompare(a.date)), total: r2(ts.reduce((a, t) => a + t.amount, 0)) }))
+      .sort((a, b) => b.ts.length - a.ts.length || Math.abs(b.total) - Math.abs(a.total));
+  }
+  function groupedTable(list) {
+    const st = viewState.register, sel = st.sel, groups = similarGroups(list), open = st.openGroups || (st.openGroups = new Set());
+    const shown = groups.slice(0, st.limit);
+    return `<div class="small muted" style="padding:10px 12px;border-bottom:1px solid var(--line)">${list.length} uncategorized in <b>${groups.length} group${groups.length === 1 ? '' : 's'}</b> of similar transactions. Pick a category once and it's used for the whole group.</div>
+      <table><thead><tr><th style="width:28px"></th><th>Payee</th><th>How many</th><th>Category for all of them</th>${hasStores() ? '<th>Store</th>' : ''}<th class="num">Total</th><th></th></tr></thead><tbody>
+      ${shown.map((g, gi) => {
+        const t = g.ts[0], ids = g.ts.map(x => x.id).join(','), k = similarKey(t), isOpen = open.has(k), all = g.ts.every(x => sel.has(x.id));
+        const accts = Array.from(new Set(g.ts.map(x => (acc(x.accountId) || {}).name).filter(Boolean)));
+        const span = g.ts.length > 1 ? usDate(g.ts[g.ts.length - 1].date) + ' – ' + usDate(t.date) : usDate(t.date);
+        return `<tr data-ids="${ids}" data-gk="${esc(k)}" class="grp-row">
+          <td><input type="checkbox" class="check" data-act="selGroup"${all ? ' checked' : ''} aria-label="Select this group"></td>
+          <td style="min-width:200px"><div class="payee">${esc(t.payee)}</div><div class="memo">${esc(accts.join(', '))} · ${span}</div></td>
+          <td>${g.ts.length > 1 ? `<button class="link" data-act="toggleGroup">${g.ts.length} transactions ${isOpen ? '▲' : '▼'}</button>` : '1 transaction'}</td>
+          <td><select class="cat uncat" data-change="gcat" aria-label="Category for the group">${catOptions(t.categoryId, t.accountId, g.ts.some(isBankDeposit), g.ts.some(noIncome))}</select></td>
+          ${hasStores() ? `<td><select class="store-sel" data-change="gstore" aria-label="Store for the group">${storeOptions(g.ts.every(x => x.store === t.store) && storeById(t.store) ? t.store : '', storeOf(Object.assign({}, t, { store: '' })) ? storeName(storeOf(Object.assign({}, t, { store: '' }))) + ' (account)' : 'No store')}</select></td>` : ''}
+          <td class="num ${g.total < 0 ? '' : 'pos'}">${money(g.total)}</td>
+          <td style="white-space:nowrap;text-align:right"><button class="btn sm" data-act="groupIgnore" title="Keep them, but leave them out of balances and reports">Ignore ${g.ts.length > 1 ? 'all' : ''}</button></td></tr>` +
+          (isOpen ? g.ts.map(x => `<tr data-id="${x.id}" class="grp-item"><td></td><td colspan="2" class="small" style="padding-left:24px">${usDate(x.date)} · ${esc(x.payee)}${x.memo ? ' <span class="muted">' + esc(x.memo.slice(0, 60)) + '</span>' : ''} · <span class="muted">${esc((acc(x.accountId) || {}).name || '')}</span></td><td colspan="${hasStores() ? 2 : 1}"><select class="cat uncat" data-change="cat" aria-label="Category for just this one">${catOptions(x.categoryId, x.accountId, isBankDeposit(x) && !x.transferWith, noIncome(x))}</select></td><td class="num">${money(x.amount)}</td><td></td></tr>`).join('') : '');
+      }).join('')}
+      </tbody></table>${groups.length > shown.length ? `<div style="padding:12px;text-align:center"><button class="btn" data-act="more">Show ${Math.min(500, groups.length - shown.length)} more groups</button></div>` : ''}`;
+  }
+  function applyToGroup(ids, catId) {
+    const c = acc(catId); let n = 0, skipped = 0;
+    ids.forEach(id => { const t = S.txns.find(x => x.id === id); if (!t) return; if (!allowedCat(t, catId)) { skipped++; return; } t.categoryId = catId; delete t.why; if (c && (c.sys === 'uncatIn' || c.sys === 'uncatOut')) t.categoryId = defaultCat(t); n++; });
+    return { n, skipped };
+  }
+
   views.register = () => {
     const st = viewState.register;
     const single = st.acct !== 'all' ? acc(st.acct) : null;
@@ -513,11 +557,12 @@
       ${hasStores() ? `<select id="fStore" data-change="fStore" aria-label="Store"><option value="all"${st.store === 'all' ? ' selected' : ''}>All stores</option>${stores().map(x => `<option value="${x.id}"${st.store === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}<option value=""${st.store === '' ? ' selected' : ''}>No store</option></select>` : ''}
       <input type="search" class="grow" id="fQ" data-input="fQ" placeholder="Search payee, memo, category or amount" value="${esc(st.q)}">
       <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="check" id="fUncat" data-change="fUncat"${st.uncat ? ' checked' : ''}> Uncategorized only (${nUncat})</label>
+      ${st.uncat ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="check" id="fGroup" data-change="fGroup"${st.group !== false ? ' checked' : ''}> Group similar</label>` : ''}
       ${nIgn ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="check" id="fIgn" data-change="fIgn"${st.showIgn ? ' checked' : ''}> Show ignored (${nIgn})</label>` : ''}
     </div>
     ${sel.size ? `<div class="sel-bar"><b>${sel.size} selected</b><span>Categorize as</span><select id="bulkCat" aria-label="Category">${catOptions('')}</select><button class="btn sm primary" data-act="bulkCat">Apply</button>${hasStores() ? `<span>Store</span><select id="bulkStore" aria-label="Store">${storeOptions('', "Account's store")}</select><button class="btn sm" data-act="bulkStore">Set store</button>` : ''}<button class="btn sm" data-act="bulkIgnore">Ignore</button>${st.showIgn ? '<button class="btn sm" data-act="bulkRestore">Restore</button>' : ''}<button class="btn sm danger" data-act="bulkDel">Delete</button><button class="link" data-act="clearSel">Clear selection</button></div>` : ''}
     <div class="panel" style="padding:0"><div class="table-wrap">
-    ${list.length ? `<table><thead><tr><th style="width:28px"><input type="checkbox" class="check" data-act="selAll" aria-label="Select all"${shown.length && shown.every(t => sel.has(t.id)) ? ' checked' : ''}></th><th>Date</th><th>Payee</th>${single && !isCat ? '' : '<th>Account</th>'}<th>Category</th>${hasStores() ? '<th>Store</th>' : ''}<th class="num">${outL}</th><th class="num">${inL}</th>${showBal ? '<th class="num">Balance</th>' : ''}<th></th></tr></thead><tbody>
+    ${st.uncat && st.group !== false && list.length ? groupedTable(list) : list.length ? `<table><thead><tr><th style="width:28px"><input type="checkbox" class="check" data-act="selAll" aria-label="Select all"${shown.length && shown.every(t => sel.has(t.id)) ? ' checked' : ''}></th><th>Date</th><th>Payee</th>${single && !isCat ? '' : '<th>Account</th>'}<th>Category</th>${hasStores() ? '<th>Store</th>' : ''}<th class="num">${outL}</th><th class="num">${inL}</th>${showBal ? '<th class="num">Balance</th>' : ''}<th></th></tr></thead><tbody>
     ${shown.map(t => {
       const viaCat = single && !isCat && t.categoryId === single.id;
       const amt = viaCat ? -t.amount : t.amount;
@@ -1213,6 +1258,9 @@
     sel: b => { const id = b.closest('tr').dataset.id, s = viewState.register.sel; b.checked ? s.add(id) : s.delete(id); render(); },
     selAll: b => { const s = viewState.register.sel; const rows = registerRows().reverse().slice(0, viewState.register.limit); if (b.checked) rows.forEach(t => s.add(t.id)); else s.clear(); render(); },
     clearSel: () => { viewState.register.sel.clear(); render(); },
+    selGroup: b => { const ids = b.closest('tr').dataset.ids.split(','), s = viewState.register.sel; ids.forEach(id => b.checked ? s.add(id) : s.delete(id)); render(); },
+    toggleGroup: b => { const st = viewState.register, o = st.openGroups || (st.openGroups = new Set()), k = b.closest('tr').dataset.gk; o.has(k) ? o.delete(k) : o.add(k); render(); },
+    groupIgnore: b => { const ids = b.closest('tr').dataset.ids.split(','); ignoreTxns(ids, true); },
     bulkStore: () => {
       const v = $('#bulkStore').value; let n = 0;
       S.txns.forEach(t => { if (!viewState.register.sel.has(t.id)) return; if (v) t.store = v; else delete t.store; n++; });
@@ -1434,6 +1482,24 @@
       case 'fFrom': st.from = el.value; break;
       case 'fTo': st.to = el.value; break;
       case 'fUncat': st.uncat = el.checked; break;
+      case 'fGroup': st.group = el.checked; st.sel.clear(); break;
+      case 'gcat': {
+        const ids = el.closest('tr').dataset.ids.split(','), c = acc(el.value); if (!c) return;
+        const first = S.txns.find(x => x.id === ids[0]);
+        const r = applyToGroup(ids, c.id); save(); updateBadge();
+        const mk = first && !c.sys ? suggestMatch(first.payee) : '';
+        const msg = r.n + ' transaction' + (r.n === 1 ? '' : 's') + ' put under ' + c.name + (r.skipped ? ' · ' + r.skipped + ' skipped (money coming in can\'t be income)' : '');
+        if (mk && !S.rules.some(x => x.match.toLowerCase() === mk.toLowerCase())) toast(msg + '.', 'Do this every time for ' + mk, () => { S.rules.push({ id: uid(), match: mk, sign: first.amount < 0 ? 'out' : 'in', categoryId: c.id, rename: '' }); const n2 = applyRulesToUncat(); save(); render(); toast('Bank Rule made for ' + mk + (n2 ? ' · ' + n2 + ' more categorized' : '')); });
+        else toast(msg);
+        setTimeout(render, 200);
+        return;
+      }
+      case 'gstore': {
+        const ids = el.closest('tr').dataset.ids.split(',');
+        ids.forEach(id => { const t = S.txns.find(x => x.id === id); if (!t) return; if (el.value) t.store = el.value; else delete t.store; });
+        save(); toast('Store set for ' + ids.length + ' transaction' + (ids.length === 1 ? '' : 's'));
+        return;
+      }
       case 'fStore': st.store = el.value; st.sel.clear(); st.limit = 300; break;
       case 'rStore': rp.store = el.value; break;
       case 'store': {
@@ -1519,7 +1585,7 @@
   window.ledgerDeskApp = {
     get S() { return S; }, C, M, views, acts, afterRender, viewState, go, render, save, toast, modal, closeModal, confirmBox,
     acc, sysAcc, isUncat, live, allowedCat, defaultCat, isBankDeposit, catOptions, sortAccs, registers, memorized, suggestMatch,
-    esc, money, usDate, uid, today, ranges, TYPE_LABEL, stores, storeOf, storeName, updateBadge, txnModal, doImport, deleteTxns, ignoreTxns, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
+    esc, money, usDate, uid, today, ranges, TYPE_LABEL, similarKey, similarGroups, stores, storeOf, storeName, updateBadge, txnModal, doImport, deleteTxns, ignoreTxns, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
   };
   if (FILE) FILE.onExternalChange(applyExternal);
   setInterval(() => { if (pendingExternal && $('#modal').hidden) { const t = pendingExternal; pendingExternal = null; applyExternal(t); } }, 1000);

@@ -34,3 +34,6 @@ The AI runs on the owner's own AI PC ("Ledger Desk AI", still to be built), whic
   go through `deleteTxns`/`ignoreTxns` (Undo). Category/store changes offer a Bank Rule.
 - Every category list (from `catOptions`) starts with **+ New category…**: a small box (`#ncBox`, works over other dialogs) makes the
   account and selects it, then fires the select's normal change. Bulk categorize and Bank Rules refuse an empty choice.
+- Transactions › "Uncategorized only" shows **similar transactions grouped** (`similarKey`: payee without store/check numbers,
+  dates and long reference codes; money in and out apart; bare CHECK/DEPOSIT/ATM… never grouped). One category or store
+  choice applies to the whole group (skipping income on deposits), with an offer to make a Bank Rule. "Group similar" can be turned off.
