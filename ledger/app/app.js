@@ -486,7 +486,7 @@
   const GENERIC = /^(CHECK|CHK|CHECK PAID|DEPOSIT|MOBILE DEPOSIT|ATM|ATM WITHDRAWAL|WITHDRAWAL|DEBIT|CREDIT|POS|POS PURCHASE|PURCHASE|PAYMENT|TRANSFER|ONLINE TRANSFER|FEE|SERVICE CHARGE|INTEREST|CASH|BRANCH DEPOSIT|ACH|WIRE|MISC|OTHER|UNKNOWN)$/;
   function similarKey(t) {
     const words = String(t.origPayee || t.payee || '').toUpperCase().replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' ').replace(/#\s*\d+/g, ' ')
-      .split(/[\s,]+/).map(w => w.replace(/^[^A-Z0-9*&]+|[^A-Z0-9*&]+$/g, '')).filter(w => w && !(/^\d{4,}$/.test(w)) && !(/\d/.test(w) && w.length >= 7));
+      .split(/[\s,]+/).map(w => w.replace(/^[^A-Z0-9*&]+|[^A-Z0-9*&]+$/g, '')).filter(w => w && !/^\d+$/.test(w) && !(/\d/.test(w) && w.length >= 7));
     const k = words.slice(0, 6).join(' ');
     if (!k || GENERIC.test(k)) return 'one:' + t.id;
     return k + '|' + (t.amount < 0 ? 'o' : 'i');
@@ -1518,8 +1518,8 @@
         t.categoryId = el.value; const c = acc(el.value);
         if (c.sys === 'uncatIn' || c.sys === 'uncatOut') t.categoryId = defaultCat(t);
         save();
-        const np = C.normPayee(t.payee);
-        const similar = c.sys ? [] : S.txns.filter(x => x !== t && !x.ignored && isUncat(x) && C.normPayee(x.payee) === np && allowedCat(x, c.id));
+        const sk = similarKey(t);   // same "similar" test as the grouped list (keeps X0163 SI apart from X0163 AR)
+        const similar = c.sys ? [] : S.txns.filter(x => x !== t && !x.ignored && isUncat(x) && similarKey(x) === sk && allowedCat(x, c.id));
         if (similar.length) toast('Categorized as ' + c.name + '.', 'Also do ' + similar.length + ' more from ' + t.payee, () => { similar.forEach(x => { x.categoryId = c.id; delete x.why; }); save(); render(); toast(similar.length + ' more categorized'); });
         if (st.uncat) setTimeout(render, 250); else { el.classList.toggle('uncat', isUncat(t)); updateBadge(); }
         return;

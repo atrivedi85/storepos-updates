@@ -37,3 +37,18 @@ The AI runs on the owner's own AI PC ("Ledger Desk AI", still to be built), whic
 - Transactions › "Uncategorized only" shows **similar transactions grouped** (`similarKey`: payee without store/check numbers,
   dates and long reference codes; money in and out apart; bare CHECK/DEPOSIT/ATM… never grouped). One category or store
   choice applies to the whole group (skipping income on deposits), with an offer to make a Bank Rule. "Group similar" can be turned off.
+
+## Grouped uncategorized transactions
+
+- Transactions › "Uncategorized only" shows **similar transactions as one row** ("Group similar", on by default). `similarKey(t)`:
+  the payee in capitals without dates, `#store numbers`, plain numbers and long reference codes, first 6 words, plus money in/out.
+  Bare generic payees (CHECK, DEPOSIT, ATM, TRANSFER, …) are never grouped. One category (or store) choice applies to the whole
+  group (deposits never become income), with a Bank Rule offer; a group can be opened to sort single items, and its checkbox
+  selects all of it for the bulk bar. "Also do N more" after a single change uses the same `similarKey`.
+
+## Ledger Desk AI model (Nov 1, 2026)
+
+- Tested on 110 already-categorized transactions with no Bank Rule (4 companies): qwen2.5:7b 55% right (high-confidence 56%),
+  **qwen3.5:9b 72% (high-confidence 78%)**, qwen3:8b 58%. qwen3.5:9b is ~3× slower (81% on the 8 GB GPU) but now the text model.
+  Qwen 3.x is called with `think: false`. Vision stays qwen2.5vl:7b. The AI PC connector restarts itself when its file or config changes
+  (`run-ai.vbs` loops), so later updates need no one at the PC.

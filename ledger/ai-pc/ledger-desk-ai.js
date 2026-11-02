@@ -37,7 +37,9 @@ function ollama(pathname, body, timeoutMs) {
   });
 }
 async function chatJSON(model, messages, schema, numCtx) {
-  const r = await ollama('/api/chat', { model, messages, stream: false, format: schema, options: { temperature: 0, num_ctx: numCtx || 8192 }, keep_alive: '10m' });
+  const req = { model, messages, stream: false, format: schema, options: { temperature: 0, num_ctx: numCtx || 8192 }, keep_alive: '10m' };
+  if (/^qwen3/i.test(model)) req.think = false; // Qwen 3.x "thinks" out loud by default: slower, and not needed for these short JSON answers
+  const r = await ollama('/api/chat', req);
   const txt = (r.message && r.message.content) || '';
   try { return JSON.parse(txt); } catch (e) { const m = /\{[\s\S]*\}/.exec(txt); if (m) return JSON.parse(m[0]); throw new Error('The AI answer was not in the expected format. Try again.'); }
 }
@@ -218,5 +220,7 @@ function connect() {
   s.on('error', e => { if (sock === s) reconnect(e.message); });
   s.on('close', () => { if (sock === s) reconnect('connection closed'); });
 }
-log('Ledger Desk AI starting. Website:', CFG.url, '· Ollama:', CFG.ollama);
+log('Ledger Desk AI starting. Website:', CFG.url, '· Ollama:', CFG.ollama, '· text model:', CFG.textModel, '· vision model:', CFG.visionModel);
 connect();
+// When this program or its settings are updated, stop; run-ai.vbs starts the new version a few seconds later.
+for (const f of [__filename, CONFIG_PATH]) fs.watchFile(f, { interval: 10e3 }, (cur, prev) => { if (cur.mtimeMs !== prev.mtimeMs) { log('updated (' + path.basename(f) + '), restarting'); setTimeout(() => process.exit(0), 500); } });
