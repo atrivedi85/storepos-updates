@@ -114,6 +114,23 @@
   const defaultCat = t => isBankDeposit(t) ? depAcc().id : uncatFor(t.amount);
   // Deposits restored from QuickBooks may already be income (QuickBooks recorded them that way)
   const qbIncomeDeposit = t => t.source === 'qb' && isBankDeposit(t) && (acc(t.categoryId) || {}).type === 'income';
+  // ---------------- stores: one company with several stores (like QuickBooks Locations) ----------------
+  // S.stores = [{id, name}]. A bank/card account can have a home store (a.store); its transactions belong to that store
+  // unless a transaction or a Bank Rule says otherwise (t.store). Companies without stores never see any of this.
+  const stores = () => Array.isArray(S.stores) ? S.stores : [];
+  const hasStores = () => stores().length > 0;
+  const storeById = id => !!id && stores().find(s => s.id === id);
+  const storeName = id => (storeById(id) || {}).name || '';
+  const isRegAcc = a => !!a && (a.type === 'asset' || a.type === 'liability');
+  function storeOf(t) {
+    if (t.store && storeById(t.store)) return t.store;
+    const a = acc(t.accountId); if (a && storeById(a.store)) return a.store;
+    const c = acc(t.categoryId); if (isRegAcc(c) && storeById(c.store)) return c.store;
+    return '';
+  }
+  const storeOptions = (selected, blankLabel) => `<option value="">${esc(blankLabel || 'No store')}</option>` + stores().map(x => `<option value="${x.id}"${x.id === selected ? ' selected' : ''}>${esc(x.name)}</option>`).join('');
+  // Which transactions a report or list shows for the store picked: 'all' (or 'cols') = every one, '' = no store, else one store
+  const inStore = (t, pick) => pick == null || pick === 'all' || pick === 'cols' || !hasStores() ? true : storeOf(t) === pick;
   const tkey = t => t.accountId + '|' + (t.fitid ? 'f:' + t.fitid : 'k:' + t.date + '|' + t.amount + '|' + (t.origPayee || t.payee));
   function migrate() {
     if (!sysAcc('deposits')) S.accounts.push({ id: uid(), name: 'Bank Deposits (not income)', type: 'liability', detail: 'other', sys: 'deposits' });
@@ -252,7 +269,7 @@
   function autoCategorize(t, memo) {
     delete t.why;
     const r = C.matchRule(S.rules, t);
-    if (r && allowedCat(t, r.categoryId)) { if (r.rename) t.payee = r.rename; t.categoryId = r.categoryId; t.why = 'Your rule: “' + r.match + '”'; return 'rule'; }
+    if (r && allowedCat(t, r.categoryId)) { if (r.rename) t.payee = r.rename; if (storeById(r.store)) t.store = r.store; t.categoryId = r.categoryId; t.why = 'Your rule: “' + r.match + '”'; return 'rule'; }
     const m = memo[C.normPayee(t.payee)];
     if (m && allowedCat(t, m)) { t.categoryId = m; t.why = 'Same as before for this payee'; return 'memo'; }
     const moneyIn = t.amount > 0;
@@ -292,8 +309,8 @@
   }
 
   const viewState = {
-    register: { acct: 'all', q: '', range: 'all', from: '', to: '', uncat: false, limit: 300, sel: new Set() },
-    reports: { tab: 'pl', range: 'ytd', from: '', to: '', detailAcct: '' },
+    register: { acct: 'all', q: '', range: 'all', from: '', to: '', uncat: false, limit: 300, sel: new Set(), store: 'all' },
+    reports: { tab: 'pl', range: 'ytd', from: '', to: '', detailAcct: '', store: 'all' },
     import: { pending: null }
   };
 
@@ -407,6 +424,7 @@
       if (st.from && t.date < st.from) return false;
       if (st.to && t.date > st.to) return false;
       if (st.uncat && (!isUncat(t) || t.ignored)) return false;
+      if (!inStore(t, st.store)) return false;
       if (!st.showIgn && t.ignored) return false;
       if (st.q) {
         const q = st.q.toLowerCase();
@@ -448,13 +466,14 @@
       <select id="fAcct" data-change="fAcct" aria-label="Account">${isCat ? `<option value="${single.id}" selected>Category: ${esc(single.name)}</option>` : ''}${registerOptions(st.acct, true)}</select>
       <select id="fRange" data-change="fRange" aria-label="Date range">${Object.entries(R).map(([k, v]) => `<option value="${k}"${st.range === k ? ' selected' : ''}>${v[0]}</option>`).join('')}<option value="custom"${st.range === 'custom' ? ' selected' : ''}>Custom…</option></select>
       ${st.range === 'custom' ? `<input type="date" id="fFrom" data-change="fFrom" value="${st.from}" aria-label="From"><input type="date" id="fTo" data-change="fTo" value="${st.to}" aria-label="To">` : ''}
+      ${hasStores() ? `<select id="fStore" data-change="fStore" aria-label="Store"><option value="all"${st.store === 'all' ? ' selected' : ''}>All stores</option>${stores().map(x => `<option value="${x.id}"${st.store === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}<option value=""${st.store === '' ? ' selected' : ''}>No store</option></select>` : ''}
       <input type="search" class="grow" id="fQ" data-input="fQ" placeholder="Search payee, memo, category or amount" value="${esc(st.q)}">
       <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="check" id="fUncat" data-change="fUncat"${st.uncat ? ' checked' : ''}> Uncategorized only (${nUncat})</label>
       ${nIgn ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="check" id="fIgn" data-change="fIgn"${st.showIgn ? ' checked' : ''}> Show ignored (${nIgn})</label>` : ''}
     </div>
-    ${sel.size ? `<div class="sel-bar"><b>${sel.size} selected</b><span>Categorize as</span><select id="bulkCat" aria-label="Category">${catOptions('')}</select><button class="btn sm primary" data-act="bulkCat">Apply</button><button class="btn sm" data-act="bulkIgnore">Ignore</button>${st.showIgn ? '<button class="btn sm" data-act="bulkRestore">Restore</button>' : ''}<button class="btn sm danger" data-act="bulkDel">Delete</button><button class="link" data-act="clearSel">Clear selection</button></div>` : ''}
+    ${sel.size ? `<div class="sel-bar"><b>${sel.size} selected</b><span>Categorize as</span><select id="bulkCat" aria-label="Category">${catOptions('')}</select><button class="btn sm primary" data-act="bulkCat">Apply</button>${hasStores() ? `<span>Store</span><select id="bulkStore" aria-label="Store">${storeOptions('', "Account's store")}</select><button class="btn sm" data-act="bulkStore">Set store</button>` : ''}<button class="btn sm" data-act="bulkIgnore">Ignore</button>${st.showIgn ? '<button class="btn sm" data-act="bulkRestore">Restore</button>' : ''}<button class="btn sm danger" data-act="bulkDel">Delete</button><button class="link" data-act="clearSel">Clear selection</button></div>` : ''}
     <div class="panel" style="padding:0"><div class="table-wrap">
-    ${list.length ? `<table><thead><tr><th style="width:28px"><input type="checkbox" class="check" data-act="selAll" aria-label="Select all"${shown.length && shown.every(t => sel.has(t.id)) ? ' checked' : ''}></th><th>Date</th><th>Payee</th>${single && !isCat ? '' : '<th>Account</th>'}<th>Category</th><th class="num">${outL}</th><th class="num">${inL}</th>${showBal ? '<th class="num">Balance</th>' : ''}<th></th></tr></thead><tbody>
+    ${list.length ? `<table><thead><tr><th style="width:28px"><input type="checkbox" class="check" data-act="selAll" aria-label="Select all"${shown.length && shown.every(t => sel.has(t.id)) ? ' checked' : ''}></th><th>Date</th><th>Payee</th>${single && !isCat ? '' : '<th>Account</th>'}<th>Category</th>${hasStores() ? '<th>Store</th>' : ''}<th class="num">${outL}</th><th class="num">${inL}</th>${showBal ? '<th class="num">Balance</th>' : ''}<th></th></tr></thead><tbody>
     ${shown.map(t => {
       const viaCat = single && !isCat && t.categoryId === single.id;
       const amt = viaCat ? -t.amount : t.amount;
@@ -466,6 +485,7 @@
         <td style="min-width:180px"><button class="link payee" style="color:inherit;text-decoration:none" data-act="edit">${esc(t.payee)}</button>${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</td>
         ${single && !isCat ? '' : `<td><span class="chip ${(acc(t.accountId) || {}).detail === 'credit' ? 'cc' : ''}">${esc((acc(t.accountId) || {}).name || '?')}</span></td>`}
         <td>${t.matchOf ? '<span class="chip">Matched transfer · duplicate hidden</span>' : t.ignored ? '<span class="chip">Ignored · not counted</span>' : viaCat ? `<span class="small">${esc((acc(other) || {}).name)}</span>${t.transferWith ? '<div class="why">↔ Transfer, matched · <button class="link" data-act="unmatchOne">Unmatch</button></div>' : ''}` : (t.source === 'income' || qbIncomeDeposit(t)) ? `<span class="small">${esc((acc(t.categoryId) || {}).name)}</span>` : `<select class="cat${unc ? ' uncat' : ''}" data-change="cat" aria-label="Category">${catOptions(t.categoryId, t.accountId, isBankDeposit(t) && !t.transferWith, noIncome(t))}</select>`}${!t.ignored && t.transferWith ? '<div class="why">↔ Transfer, matched · <button class="link" data-act="unmatchOne">Unmatch</button></div>' : !t.ignored && t.why && !unc ? '<div class="why" title="' + esc(t.why) + '">Auto · ' + esc(t.why) + '</div>' : ''}</td>
+        ${hasStores() ? `<td>${t.ignored ? '' : `<select class="store-sel" data-change="store" aria-label="Store">${storeOptions(t.store && storeById(t.store) ? t.store : '', storeOf(Object.assign({}, t, { store: '' })) ? storeName(storeOf(Object.assign({}, t, { store: '' }))) + ' (account)' : 'No store')}</select>`}</td>` : ''}
         <td class="num">${amt < 0 ? money(-amt) : ''}</td>
         <td class="num pos">${amt >= 0 ? money(amt) : ''}</td>
         ${showBal ? `<td class="num">${t.ignored ? '' : money(balById[t.id])}</td>` : ''}
@@ -494,6 +514,7 @@
         <label class="field">Money out (charge / payment)<input type="number" step="0.01" min="0" id="mOut" value="${out}" placeholder="0.00"></label>
         <label class="field">Money in (deposit / card payment)<input type="number" step="0.01" min="0" id="mIn" value="${inn}" placeholder="0.00"></label>
         <label class="field" style="grid-column:1/-1">Memo<input type="text" id="mMemo" value="${esc(t.memo)}"></label>
+        ${hasStores() ? `<label class="field" style="grid-column:1/-1">Store<select id="mStore">${storeOptions(t.store && storeById(t.store) ? t.store : '', "The account's store" + (storeById((acc(t.accountId) || {}).store) ? ' (' + storeName(acc(t.accountId).store) + ')' : ''))}</select></label>` : ''}
       </div>
       <p class="small muted" id="mErr"></p>
       <div class="actions">${isNew ? '' : '<button class="btn danger" id="mDel">Delete</button><button class="btn" id="mIgn" style="margin-right:auto">' + (t.ignored ? 'Restore' : 'Ignore') + '</button>'}<button class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mSave">Save</button></div>`, card => {
@@ -523,6 +544,7 @@
         const x = isNew ? { id: uid(), seq: Date.now(), source: 'manual' } : S.txns.find(z => z.id === t.id);
         delete x.why;
         Object.assign(x, { date: card.querySelector('#mDate').value, payee: card.querySelector('#mPayee').value.trim() || '(no payee)', memo: card.querySelector('#mMemo').value.trim(), amount: amt, accountId, categoryId });
+        const ms = card.querySelector('#mStore'); if (ms) { if (ms.value) x.store = ms.value; else delete x.store; }
         const c = acc(categoryId); if (c && (c.sys === 'uncatIn' || c.sys === 'uncatOut')) x.categoryId = defaultCat(x);
         if (isNew) S.txns.push(x);
         save(); closeModal(); render(); toast(isNew ? 'Transaction added' : 'Transaction saved');
@@ -539,6 +561,7 @@
         <label class="field">Applies to<select id="rSign"><option value="any">Money in or out</option><option value="out"${prefill.sign === 'out' ? ' selected' : ''}>Money out only (charges)</option><option value="in"${prefill.sign === 'in' ? ' selected' : ''}>Money in only (payments, refunds)</option></select></label>
         <label class="field">Set category to<select id="rCat">${catOptions(prefill.categoryId || '')}</select><span class="small muted">Rules never turn a bank deposit into income.</span></label>
         <label class="field">Rename payee to (optional)<input type="text" id="rRename" value="${esc(prefill.rename || '')}" placeholder="e.g. Amazon"></label>
+        ${hasStores() ? `<label class="field">Set store to (optional)<select id="rStore">${storeOptions(prefill.store || '', "Don't change (the account's store)")}</select></label>` : ''}
         <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="check" id="rApply" checked> Also apply to existing uncategorized transactions</label>
       </div><p class="small muted" id="rErr"></p>
       <div class="actions"><button class="btn" id="rCancel">Cancel</button><button class="btn primary" id="rSave">Save rule</button></div>`, card => {
@@ -548,6 +571,7 @@
         if (!match) { card.querySelector('#rErr').textContent = 'Enter the text to look for.'; return; }
         const r = prefill.id ? S.rules.find(x => x.id === prefill.id) : { id: uid() };
         Object.assign(r, { match, sign: card.querySelector('#rSign').value, categoryId: card.querySelector('#rCat').value, rename: card.querySelector('#rRename').value.trim() });
+        const rs = card.querySelector('#rStore'); if (rs) { if (rs.value) r.store = rs.value; else delete r.store; }
         if (!prefill.id) S.rules.push(r);
         let n = 0;
         if (card.querySelector('#rApply').checked) n = applyRulesToUncat();
@@ -560,7 +584,7 @@
     S.txns.forEach(t => {
       if (t.ignored || !(isUncat(t) || t.categoryId === depAcc().id)) return;
       const r = C.matchRule(S.rules, t);
-      if (r && allowedCat(t, r.categoryId) && r.categoryId !== t.categoryId) { t.categoryId = r.categoryId; if (r.rename) t.payee = r.rename; n++; }
+      if (r && allowedCat(t, r.categoryId) && r.categoryId !== t.categoryId) { t.categoryId = r.categoryId; if (r.rename) t.payee = r.rename; if (storeById(r.store)) t.store = r.store; n++; }
     });
     return n;
   }
@@ -698,7 +722,7 @@
         const list = sortAccs(S.accounts.filter(a => a.type === g));
         return `<tr><td colspan="4" style="background:var(--panel-2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em">${TYPE_LABEL[g]}</td></tr>` +
           list.map(a => `<tr data-acct="${a.id}" class="acct-row" title="Double-click to see its transactions"><td><button class="link" data-act="openAcct" style="color:inherit;text-decoration:none;font:inherit;text-align:left">${esc(a.name)}</button>${a.sys ? ' <span class="chip">system</span>' : ''}${a.sample ? ' <span class="chip">sample</span>' : ''}</td>
-            <td class="muted small">${TYPE_LABEL[a.type]}${DETAIL_LABEL[a.detail] ? ' · ' + DETAIL_LABEL[a.detail] : ''}</td>
+            <td class="muted small">${TYPE_LABEL[a.type]}${DETAIL_LABEL[a.detail] ? ' · ' + DETAIL_LABEL[a.detail] : ''}${hasStores() && isRegAcc(a) && storeById(a.store) ? ' · <span class="chip">' + esc(storeName(a.store)) + '</span>' : ''}</td>
             <td class="num">${money(C.natural(a, d[a.id]))}</td>
             <td style="white-space:nowrap;text-align:right">${(a.type === 'asset' || a.type === 'liability') ? '<button class="btn sm" data-act="openReg">Transactions</button> ' : '<button class="btn sm" data-act="openAcct">Transactions</button> <button class="btn sm" data-act="openDetail">Report</button> '}<button class="btn sm" data-act="renameAcct">Rename</button>${!a.sys ? ` <button class="btn sm danger" data-act="delAcct" ${used.has(a.id) ? 'title="Has transactions"' : ''}>Delete</button>` : ''}</td></tr>`).join('');
       }).join('')}
@@ -714,6 +738,7 @@
         <option value="liability:credit">Credit card</option><option value="asset:bank">Bank account (checking / savings)</option>
         <option value="liability:loan">Loan or line of credit</option><option value="asset:other">Other asset</option><option value="equity">Equity</option></select></label>` : ''}
       ${!isNew && (a.type === 'income' || a.type === 'expense') ? `<label class="field">Show on the Profit &amp; Loss under<select id="aPl">${(a.type === 'income' ? [['', 'Income'], ['otherinc', 'Other Income']] : [['', 'Expense'], ['cogs', 'Cost of Goods Sold'], ['otherexp', 'Other Expense']]).map(([v, l]) => `<option value="${v}"${plSection(a) === (v || (a.type === 'income' ? 'inc' : 'exp')) ? ' selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
+      ${hasStores() && (isNew || isRegAcc(a)) ? `<label class="field" id="aStoreF">Store this account belongs to<select id="aStore">${storeOptions(a.store || '', 'No store (shared by the company)')}</select><span class="small muted">For a bank account or card used by one store. Everything in it counts for that store.</span></label>` : ''}
       <p class="small muted" style="margin:0">Tip: to make a sub-account, put the main account first with a colon, like <b>HOTEL SUPPLY:LAUNDRY SUPPLY</b>. The Profit &amp; Loss groups them with a total, like QuickBooks.</p>
       </div><p class="small muted" id="aErr"></p><div class="actions"><button class="btn" id="aCancel">Cancel</button><button class="btn primary" id="aSave">Save</button></div>`, card => {
       card.querySelector('#aCancel').onclick = closeModal;
@@ -721,8 +746,9 @@
         const name = card.querySelector('#aName').value.trim();
         if (!name) { card.querySelector('#aErr').textContent = 'Enter a name.'; return; }
         if (S.accounts.some(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== a.id)) { card.querySelector('#aErr').textContent = 'An account with that name already exists.'; return; }
-        if (isNew) { const [type, detail] = card.querySelector('#aType').value.split(':'); S.accounts.push({ id: uid(), name, type, detail: detail || 'other', sys: '' }); }
-        else { acc(a.id).name = name; const pl = card.querySelector('#aPl'); if (pl) acc(a.id).pl = pl.value; }
+        const as = card.querySelector('#aStore'), storeV = as ? as.value : '';
+        if (isNew) { const [type, detail] = card.querySelector('#aType').value.split(':'); const na = { id: uid(), name, type, detail: detail || 'other', sys: '' }; if (storeV && isRegAcc(na)) na.store = storeV; S.accounts.push(na); }
+        else { acc(a.id).name = name; const pl = card.querySelector('#aPl'); if (pl) acc(a.id).pl = pl.value; if (as) { if (storeV) acc(a.id).store = storeV; else delete acc(a.id).store; } }
         save(); closeModal(); render(); toast(isNew ? 'Account created' : 'Account saved');
       };
     });
@@ -819,6 +845,7 @@
           <option value="${depAcc().id}"${t.accountId === depAcc().id ? ' selected' : ''}>Already in a bank deposit (bank balance stays the same)</option>
           ${banks.map(a => `<option value="${a.id}"${t.accountId === a.id ? ' selected' : ''}>Add to ${esc(a.name)} (cash or a deposit not imported)</option>`).join('')}</select></label>
         <label class="field" style="grid-column:1/-1">Memo<input type="text" id="iMemo" value="${esc(t.memo)}" placeholder="Invoice number, notes"></label>
+        ${hasStores() ? `<label class="field" style="grid-column:1/-1">Store<select id="iStore">${storeOptions(t.store && storeById(t.store) ? t.store : (isNew && storeById(viewState.register.store) ? viewState.register.store : ''), 'No store (or the bank account\'s store)')}</select></label>` : ''}
       </div><p class="small muted" id="iErr"></p>
       <div class="actions">${isNew ? '' : '<button class="btn danger" id="iDel" style="margin-right:auto">Delete</button>'}<button class="btn" id="iCancel">Cancel</button><button class="btn primary" id="iSave">Save income</button></div>`, card => {
       card.querySelector('#iCancel').onclick = closeModal;
@@ -830,6 +857,7 @@
         if (!card.querySelector('#iCat').value) { err.textContent = 'Create an income category first (Chart of Accounts).'; return; }
         const x = isNew ? { id: uid(), seq: Date.now(), source: 'income' } : S.txns.find(z => z.id === t.id);
         Object.assign(x, { date: card.querySelector('#iDate').value, payee: card.querySelector('#iPayee').value.trim() || 'Income', memo: card.querySelector('#iMemo').value.trim(), amount: amt, accountId: card.querySelector('#iWhere').value, categoryId: card.querySelector('#iCat').value });
+        const is = card.querySelector('#iStore'); if (is) { if (is.value) x.store = is.value; else delete x.store; }
         if (isNew) S.txns.push(x);
         save(); closeModal(); render(); toast(isNew ? 'Income recorded' : 'Income saved');
       };
@@ -866,13 +894,14 @@
         ${st.tab === 'bs' ? `<label class="small muted" style="display:flex;gap:6px;align-items:center">As of <input type="date" id="rTo" data-change="rAsOf" value="${to || today()}"></label>` :
         `<select id="rRange" data-change="rRange" aria-label="Report period">${Object.entries(R).map(([k, v]) => `<option value="${k}"${st.range === k ? ' selected' : ''}>${v[0]}</option>`).join('')}<option value="custom"${st.range === 'custom' ? ' selected' : ''}>Custom…</option></select>
         ${st.range === 'custom' ? `<input type="date" id="rFrom" data-change="rFrom" value="${st.from}" aria-label="From"><input type="date" id="rTo2" data-change="rTo" value="${st.to}" aria-label="To">` : ''}`}
+        ${hasStores() && st.tab !== 'trend' ? `<select id="rStore" data-change="rStore" aria-label="Store"><option value="all"${st.store === 'all' ? ' selected' : ''}>All stores (total)</option>${st.tab === 'pl' || st.tab === 'bs' ? `<option value="cols"${st.store === 'cols' ? ' selected' : ''}>Each store in its own column</option>` : ''}${stores().map(x => `<option value="${x.id}"${st.store === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}<option value=""${st.store === '' ? ' selected' : ''}>No store</option></select>` : ''}
         ${st.tab !== 'trend' ? '<button class="btn primary" data-act="exportXlsx">Download Excel</button><button class="btn" data-act="exportReport">CSV</button>' : ''}</div></div>
       <div class="tabs">${tabs.map(([k, l]) => `<button data-act="rTab" data-tab="${k}" class="${st.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   };
   function firstDate() { return S.txns.reduce((m, t) => t.date < m ? t.date : m, today()); }
   let lastReportCSV = [];
-  function plData(from, to) {
-    const d = C.debits(live(), { from, to });
+  function plData(from, to, list) {
+    const d = C.debits(list || live(), { from, to });
     const line = type => sortAccs(S.accounts.filter(a => a.type === type)).map(a => ({ a, v: C.natural(a, d[a.id]) })).filter(x => Math.abs(x.v) >= 0.005);
     const inc = line('income'), exp = line('expense');
     const ti = inc.reduce((s, x) => s + x.v, 0), te = exp.reduce((s, x) => s + x.v, 0);
@@ -897,63 +926,87 @@
     return { long, short };
   }
   // Rows of a QuickBooks-style Profit & Loss: sections, sub-accounts (Parent:Child) with "Parent - Other" and "Total Parent"
-  function plRows(from, to) {
-    const d = C.debits(live(), { from, to });
+  function plRows(from, to, colTxns) {
+    colTxns = colTxns || [live()];
+    const ds = colTxns.map(l => C.debits(l, { from, to })), N = ds.length;
+    const Z = () => new Array(N).fill(0), add = (a, b) => a.map((x, i) => x + b[i]), sub = (a, b) => a.map((x, i) => x - b[i]);
+    const nz = vs => vs.some(x => Math.abs(x) >= 0.005);
     const sec = { inc: [], cogs: [], exp: [], otherinc: [], otherexp: [] };
-    S.accounts.filter(a => a.type === 'income' || a.type === 'expense').forEach(a => { const v = C.natural(a, d[a.id]); if (Math.abs(v) >= 0.005) sec[plSection(a)].push({ a, v }); });
+    S.accounts.filter(a => a.type === 'income' || a.type === 'expense').forEach(a => { const vs = ds.map(d => C.natural(a, d[a.id])); if (nz(vs)) sec[plSection(a)].push({ a, vs }); });
     const tree = list => {
-      const root = { kids: {}, own: 0, id: null };
-      list.forEach(({ a, v }) => {
+      const root = { kids: {}, own: Z(), id: null };
+      list.forEach(({ a, vs }) => {
         const path = a.name.split(':').map(x => x.trim()).filter(Boolean); let n = root;
-        path.forEach((p, i) => { n = n.kids[p.toLowerCase()] || (n.kids[p.toLowerCase()] = { name: p, kids: {}, own: 0, id: null }); if (i === path.length - 1) { n.own += v; n.id = a.id; } });
+        path.forEach((p, i) => { n = n.kids[p.toLowerCase()] || (n.kids[p.toLowerCase()] = { name: p, kids: {}, own: Z(), id: null }); if (i === path.length - 1) { n.own = add(n.own, vs); n.id = a.id; } });
       });
       return root;
     };
-    const sum = n => n.own + Object.values(n.kids).reduce((s, k) => s + sum(k), 0);
+    const sum = n => Object.values(n.kids).reduce((s, k) => add(s, sum(k)), n.own);
     const sorted = n => Object.values(n.kids).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     const rows = [];
     const emit = (n, lvl) => {
-      const kids = sorted(n).filter(k => Math.abs(sum(k)) >= 0.005);
-      if (!kids.length) { rows.push({ kind: 'acct', label: n.name, v: n.own, lvl, id: n.id }); return; }
+      const kids = sorted(n).filter(k => nz(sum(k)));
+      if (!kids.length) { rows.push({ kind: 'acct', label: n.name, vs: n.own, lvl, id: n.id }); return; }
       rows.push({ kind: 'head', label: n.name, lvl, id: n.id });
       kids.forEach(k => emit(k, lvl + 1));
-      if (Math.abs(n.own) >= 0.005) rows.push({ kind: 'acct', label: n.name + ' - Other', v: n.own, lvl: lvl + 1, id: n.id });
-      rows.push({ kind: 'total', label: 'Total ' + n.name, v: sum(n), lvl });
+      if (nz(n.own)) rows.push({ kind: 'acct', label: n.name + ' - Other', vs: n.own, lvl: lvl + 1, id: n.id });
+      rows.push({ kind: 'total', label: 'Total ' + n.name, vs: sum(n), lvl });
     };
-    const block = (title, list, totalLabel, lvl) => { const t = tree(list); rows.push({ kind: 'head', label: title, lvl }); sorted(t).filter(k => Math.abs(sum(k)) >= 0.005).forEach(k => emit(k, lvl + 1)); const v = list.reduce((s, x) => s + x.v, 0); rows.push({ kind: 'total', label: totalLabel, v, lvl }); return v; };
+    const block = (title, list, totalLabel, lvl) => { const t = tree(list); rows.push({ kind: 'head', label: title, lvl }); sorted(t).filter(k => nz(sum(k))).forEach(k => emit(k, lvl + 1)); const vs = list.reduce((s, x) => add(s, x.vs), Z()); rows.push({ kind: 'total', label: totalLabel, vs, lvl }); return vs; };
     rows.push({ kind: 'head', label: 'Ordinary Income/Expense', lvl: 0 });
     const ti = block('Income', sec.inc, 'Total Income', 1);
-    const tc = sec.cogs.length ? block('Cost of Goods Sold', sec.cogs, 'Total COGS', 1) : 0;
-    rows.push({ kind: 'total', label: 'Gross Profit', v: ti - tc, lvl: 1, plain: true });
+    const tc = sec.cogs.length ? block('Cost of Goods Sold', sec.cogs, 'Total COGS', 1) : Z();
+    rows.push({ kind: 'total', label: 'Gross Profit', vs: sub(ti, tc), lvl: 1, plain: true });
     const te = block('Expense', sec.exp, 'Total Expense', 1);
-    const noi = ti - tc - te;
-    rows.push({ kind: 'total', label: 'Net Ordinary Income', v: noi, lvl: 0 });
-    let noth = 0;
+    const noi = sub(sub(ti, tc), te);
+    rows.push({ kind: 'total', label: 'Net Ordinary Income', vs: noi, lvl: 0 });
+    let noth = Z();
     if (sec.otherinc.length || sec.otherexp.length) {
       rows.push({ kind: 'head', label: 'Other Income/Expense', lvl: 0 });
-      const toi = sec.otherinc.length ? block('Other Income', sec.otherinc, 'Total Other Income', 1) : 0;
-      const toe = sec.otherexp.length ? block('Other Expense', sec.otherexp, 'Total Other Expense', 1) : 0;
-      noth = toi - toe; rows.push({ kind: 'total', label: 'Net Other Income', v: noth, lvl: 0 });
+      const toi = sec.otherinc.length ? block('Other Income', sec.otherinc, 'Total Other Income', 1) : Z();
+      const toe = sec.otherexp.length ? block('Other Expense', sec.otherexp, 'Total Other Expense', 1) : Z();
+      noth = sub(toi, toe); rows.push({ kind: 'total', label: 'Net Other Income', vs: noth, lvl: 0 });
     }
-    rows.push({ kind: 'grand', label: 'Net Income', v: noi + noth, lvl: 0 });
-    return { rows, ti, tc, te, net: r2(noi + noth) };
+    const net = add(noi, noth);
+    rows.push({ kind: 'grand', label: 'Net Income', vs: net, lvl: 0 });
+    rows.forEach(r => { if (r.vs) r.v = r.vs[N - 1]; });
+    return { rows, ti: ti[N - 1], tc: tc[N - 1], te: te[N - 1], net: r2(net[N - 1]), nets: net.map(r2) };
   }
+  // The store columns for a report: one per store (plus "No store" when it has activity) and TOTAL
+  function storeCols(hasActivity) {
+    const lv = live(), cols = stores().map(x => ({ label: x.name, id: x.id, txns: lv.filter(t => storeOf(t) === x.id) }));
+    const none = lv.filter(t => !storeOf(t));
+    if (hasActivity(none)) cols.push({ label: 'No store', id: '', txns: none });
+    cols.push({ label: 'TOTAL', id: 'all', txns: lv, total: true });
+    return cols;
+  }
+  const xlCol = i => String.fromCharCode(65 + i);
   let lastReportXLSX = null;
   function plReport(from, to, label) {
-    const p = plRows(from, to), dt = qbDates(from, to);
-    lastReportCSV = [[S.company], ['Profit & Loss'], [dt.long], ['', dt.short]].concat(p.rows.map(r => ['    '.repeat(r.lvl) + r.label, r.v == null ? '' : r.v.toFixed(2)]));
-    lastReportXLSX = { name: S.company + ' Profit & Loss ' + dt.short.replace(/,/g, ''), sheet: 'Profit & Loss', cols: [52, 18], grid: false, merges: ['A1:B1', 'A2:B2', 'A3:B3'],
-      rows: [[{ v: S.company, s: 'title' }], [{ v: 'Profit & Loss', s: 'title' }], [{ v: dt.long, s: 'subtitle' }], [], [null, { v: dt.short, s: 'colHead' }]].concat(p.rows.map(r => {
+    const dt = qbDates(from, to), pick = hasStores() ? viewState.reports.store : 'all';
+    const isPL = t => { const c = acc(t.categoryId), a = acc(t.accountId); return (c && (c.type === 'income' || c.type === 'expense')) || (a && (a.type === 'income' || a.type === 'expense')); };
+    const cols = pick === 'cols' ? storeCols(list => list.some(t => isPL(t) && (!from || t.date >= from) && (!to || t.date <= to)))
+      : [{ label: dt.short, txns: live().filter(t => inStore(t, pick)) }];
+    const p = plRows(from, to, cols.map(c => c.txns)), N = cols.length;
+    const sub = pick === 'cols' ? 'By store' : pick !== 'all' && hasStores() ? 'Store: ' + (pick ? storeName(pick) : 'No store') : '';
+    const heads = pick === 'cols' ? cols.map(c => c.label) : [dt.short];
+    lastReportCSV = [[S.company], ['Profit & Loss'], [dt.long + (sub ? ' · ' + sub : '')], [''].concat(heads)].concat(p.rows.map(r => ['    '.repeat(r.lvl) + r.label].concat(r.vs ? r.vs.map(v => v.toFixed(2)) : [])));
+    const last = xlCol(N);
+    lastReportXLSX = { name: S.company + ' Profit & Loss ' + (pick === 'cols' ? 'by store ' : pick !== 'all' && hasStores() ? (pick ? storeName(pick) : 'No store') + ' ' : '') + dt.short.replace(/,/g, ''), sheet: 'Profit & Loss', cols: [52].concat(new Array(N).fill(N > 1 ? 15 : 18)), grid: false, merges: ['A1:' + last + '1', 'A2:' + last + '2', 'A3:' + last + '3'],
+      rows: [[{ v: S.company, s: 'title' }], [{ v: 'Profit & Loss', s: 'title' }], [{ v: dt.long + (sub ? ' · ' + sub : ''), s: 'subtitle' }], [], [null].concat(heads.map(h => ({ v: h, s: 'colHead' })))].concat(p.rows.map(r => {
         const bold = r.kind !== 'acct';
         const ls = r.lvl === 0 ? (bold ? 'bold' : '') : (bold ? 'bold' + Math.min(3, r.lvl) : 'indent' + Math.min(4, r.lvl));
-        return [{ v: r.label, s: ls }, r.v == null ? null : { v: r2(r.v), s: r.kind === 'grand' ? 'moneyGrand' : r.kind === 'total' && !r.plain ? 'moneyTotal' : bold ? 'moneyBold' : 'money' }];
+        const ms = r.kind === 'grand' ? 'moneyGrand' : r.kind === 'total' && !r.plain ? 'moneyTotal' : bold ? 'moneyBold' : 'money';
+        return [{ v: r.label, s: ls }].concat(r.vs ? r.vs.map(v => ({ v: r2(v), s: ms })) : []);
       })) };
-    const row = r => `<tr class="pl-${r.kind}${r.plain ? ' pl-plain' : ''}"><td style="padding-left:${10 + r.lvl * 18}px">${r.kind === 'acct' && r.id ? `<button class="link" style="color:inherit;text-decoration:none;text-align:left;font:inherit" data-act="drill" data-acct="${r.id}">${esc(r.label)}</button>` : esc(r.label)}</td><td class="num">${r.v == null ? '' : `<span>${money(r.v).replace('$', '')}</span>`}</td></tr>`;
-    return `<div class="panel report qb-report"><div style="text-align:center"><div style="font-size:18px;font-weight:700">${esc(S.company)}</div><div style="font-size:17px;font-weight:700">Profit &amp; Loss</div><div style="font-weight:600">${esc(dt.long)}</div></div>
-      <table class="qb-table"><thead><tr><th></th><th class="num">${esc(dt.short)}</th></tr></thead><tbody>${p.rows.map(row).join('')}</tbody></table>
-      <p class="small muted" style="margin:10px 0 0">Click an account to see its transactions. Sub-accounts come from names like HOTEL SUPPLY:LAUNDRY SUPPLY. To move an account to Cost of Goods Sold or Other Income/Expense, use Chart of Accounts › Rename.</p></div>`;
+    const row = r => `<tr class="pl-${r.kind}${r.plain ? ' pl-plain' : ''}"><td style="padding-left:${10 + r.lvl * 18}px">${r.kind === 'acct' && r.id ? `<button class="link" style="color:inherit;text-decoration:none;text-align:left;font:inherit" data-act="drill" data-acct="${r.id}">${esc(r.label)}</button>` : esc(r.label)}</td>${r.vs ? r.vs.map(v => `<td class="num"><span>${money(v).replace('$', '')}</span></td>`).join('') : heads.map(() => '<td class="num"></td>').join('')}</tr>`;
+    return `<div class="panel report qb-report"${N > 2 ? ' style="max-width:none"' : ''}><div style="text-align:center"><div style="font-size:18px;font-weight:700">${esc(S.company)}</div><div style="font-size:17px;font-weight:700">Profit &amp; Loss</div><div style="font-weight:600">${esc(dt.long)}</div>${sub ? `<div class="muted">${esc(sub)}</div>` : ''}</div>
+      <div class="table-wrap"><table class="qb-table"><thead><tr><th></th>${heads.map(h => `<th class="num">${esc(h)}</th>`).join('')}</tr></thead><tbody>${p.rows.map(row).join('')}</tbody></table></div>
+      <p class="small muted" style="margin:10px 0 0">Click an account to see its transactions. Sub-accounts come from names like HOTEL SUPPLY:LAUNDRY SUPPLY. To move an account to Cost of Goods Sold or Other Income/Expense, use Chart of Accounts › Rename.${hasStores() ? ' A transaction counts for its bank or card account\'s store unless you picked another store for it.' : ''}</p></div>`;
   }
   function bsReport(asOf) {
+    const pick = hasStores() ? viewState.reports.store : 'all';
+    if (pick !== 'all') return bsStores(asOf, pick);
     const d = C.debits(live(), { to: asOf });
     const line = type => sortAccs(S.accounts.filter(a => a.type === type)).map(a => ({ a, v: C.natural(a, d[a.id]) })).filter(x => Math.abs(x.v) >= 0.005);
     const as = line('asset'), li = line('liability'), eq = line('equity');
@@ -968,8 +1021,43 @@
       <div class="line grand"><span>Total Liabilities and Equity</span><span class="num">${money(tl + te)}</span></div>
       ${Math.abs(ta - tl - te) > 0.009 ? '<div class="notice">Out of balance by ' + money(ta - tl - te) + '.</div>' : ''}</div>`;
   }
+  // Balance sheet by store: bank, card and loan accounts belong to their home store; accounts without a store are company-wide.
+  // Each store's equity is what's left (money the owner put in or took out, and transfers between stores), so every column balances.
+  function bsStores(asOf, pick) {
+    const lv = live().filter(t => t.date <= asOf), d = C.debits(lv);
+    const home = a => storeById(a.store) ? a.store : '';
+    let cols = stores().map(x => ({ label: x.name, id: x.id })).concat([{ label: 'Company-wide', id: '' }]);
+    if (pick !== 'cols') cols = cols.filter(c => c.id === pick);
+    const N = cols.length + (pick === 'cols' ? 1 : 0);
+    const val = (a, ci) => { if (ci === cols.length) return C.natural(a, d[a.id]); return home(a) === cols[ci].id ? C.natural(a, d[a.id]) : 0; };
+    const nz = vs => vs.some(x => Math.abs(x) >= 0.005), idx = [...Array(N).keys()];
+    const lines = type => sortAccs(S.accounts.filter(a => a.type === type && (type !== 'equity'))).map(a => ({ a, vs: idx.map(i => val(a, i)) })).filter(x => nz(x.vs));
+    const as = lines('asset'), li = lines('liability');
+    const tot = list => idx.map(i => list.reduce((s, x) => s + x.vs[i], 0));
+    const ta = tot(as), tl = tot(li);
+    // net income per column comes from each transaction's store
+    const ni = idx.map(i => {
+      const list = i === cols.length ? lv : lv.filter(t => storeOf(t) === cols[i].id), dd = C.debits(list);
+      let v = 0; S.accounts.forEach(a => { if (a.type === 'income') v += C.natural(a, dd[a.id]); if (a.type === 'expense') v -= C.natural(a, dd[a.id]); }); return v;
+    });
+    // Equity accounts (owner's equity, draws) are company-wide: they show in the TOTAL column. Each store column's equity is what's left.
+    const eqAccts = sortAccs(S.accounts.filter(a => a.type === 'equity')).map(a => ({ a, vs: idx.map(i => i === cols.length ? C.natural(a, d[a.id]) : 0) })).filter(x => nz(x.vs));
+    const teq = tot(eqAccts);
+    const plug = idx.map(i => i === cols.length ? 0 : ta[i] - tl[i] - ni[i]);
+    const te = idx.map(i => teq[i] + ni[i] + plug[i]);
+    const heads = cols.map(c => c.label).concat(pick === 'cols' ? ['TOTAL'] : []);
+    const rows = [{ kind: 'head', label: 'ASSETS', lvl: 0 }].concat(as.map(x => ({ kind: 'acct', label: x.a.name, vs: x.vs, lvl: 1 })), [{ kind: 'grand', label: 'TOTAL ASSETS', vs: ta, lvl: 0 }, { kind: 'head', label: 'LIABILITIES & EQUITY', lvl: 0 }, { kind: 'head', label: 'Liabilities', lvl: 1 }],
+      li.map(x => ({ kind: 'acct', label: x.a.name, vs: x.vs, lvl: 2 })), [{ kind: 'total', label: 'Total Liabilities', vs: tl, lvl: 1 }, { kind: 'head', label: 'Equity', lvl: 1 }],
+      (pick === 'cols' ? eqAccts : []).map(x => ({ kind: 'acct', label: x.a.name, vs: x.vs, lvl: 2 })), [{ kind: 'acct', label: 'Store equity & transfers between stores', vs: plug, lvl: 2 }, { kind: 'acct', label: 'Net Income (retained earnings)', vs: ni, lvl: 2 }, { kind: 'total', label: 'Total Equity', vs: te, lvl: 1 }, { kind: 'grand', label: 'TOTAL LIABILITIES & EQUITY', vs: idx.map(i => tl[i] + te[i]), lvl: 0 }]);
+    const when = 'As of ' + usDate(asOf > '9000' ? today() : asOf), sub = pick === 'cols' ? 'By store' : 'Store: ' + (cols[0] ? cols[0].label : '');
+    lastReportCSV = [[S.company], ['Balance Sheet'], [when + ' · ' + sub], [''].concat(heads)].concat(rows.map(r => ['    '.repeat(r.lvl) + r.label].concat(r.vs ? r.vs.map(v => v.toFixed(2)) : [])));
+    const row = r => `<tr class="pl-${r.kind}"><td style="padding-left:${10 + r.lvl * 18}px">${esc(r.label)}</td>${r.vs ? r.vs.map(v => `<td class="num"><span>${money(v).replace('$', '')}</span></td>`).join('') : heads.map(() => '<td class="num"></td>').join('')}</tr>`;
+    return `<div class="panel report qb-report"${N > 2 ? ' style="max-width:none"' : ''}><div style="text-align:center"><div style="font-size:18px;font-weight:700">${esc(S.company)}</div><div style="font-size:17px;font-weight:700">Balance Sheet</div><div style="font-weight:600">${esc(when)}</div><div class="muted">${esc(sub)}</div></div>
+      <div class="table-wrap"><table class="qb-table"><thead><tr><th></th>${heads.map(h => `<th class="num">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>
+      <p class="small muted" style="margin:10px 0 0">Bank, card and loan accounts count for the store set on them in Chart of Accounts › Rename; the rest are company-wide. Owner's equity and draws are company-wide and show in TOTAL. A store's "Store equity &amp; transfers between stores" is what's left: money put in or taken out of that store, and money moved between stores.</p></div>`;
+  }
   function spendReport(from, to, label) {
-    const p = plData(from, to);
+    const p = plData(from, to, live().filter(t => inStore(t, viewState.reports.store)));
     const list = p.exp.filter(x => x.v > 0).sort((a, b) => b.v - a.v);
     const max = list.length ? list[0].v : 1, tot = list.reduce((s, x) => s + x.v, 0);
     lastReportCSV = [['Spending by Category', label], ['Category', 'Amount', 'Share']].concat(list.map(x => [x.a.name, x.v.toFixed(2), (x.v / tot * 100).toFixed(1) + '%']));
@@ -980,7 +1068,7 @@
     const st = viewState.reports;
     if (!acc(st.detailAcct)) st.detailAcct = (S.accounts.find(a => a.type === 'expense') || S.accounts[0]).id;
     const a = acc(st.detailAcct);
-    const rows = live().filter(t => (t.accountId === a.id || t.categoryId === a.id) && (!from || t.date >= from) && (!to || t.date <= to)).sort((x, y) => x.date.localeCompare(y.date));
+    const rows = live().filter(t => (t.accountId === a.id || t.categoryId === a.id) && (!from || t.date >= from) && (!to || t.date <= to) && inStore(t, viewState.reports.store)).sort((x, y) => x.date.localeCompare(y.date));
     let run = 0;
     const lines = rows.map(t => { const deb = t.accountId === a.id ? t.amount : -t.amount; const v = C.natural(a, deb); run += v; return { t, v, run: r2(run), other: acc(t.accountId === a.id ? t.categoryId : t.accountId) }; });
     lastReportCSV = [['Account Detail', a.name, label], ['Date', 'Payee', 'Memo', 'Split', 'Amount', 'Running total']].concat(lines.map(l => [l.t.date, l.t.payee, l.t.memo || '', (l.other || {}).name || '', l.v.toFixed(2), l.run.toFixed(2)]));
@@ -997,7 +1085,11 @@
         <label class="field">Company name<input type="text" id="sCo" value="${esc(S.company)}"></label>
         <label class="field">Appearance<select id="sTheme" data-change="sTheme"><option value="system"${S.theme === 'system' ? ' selected' : ''}>Match Windows</option><option value="light"${S.theme === 'light' ? ' selected' : ''}>Light</option><option value="dark"${S.theme === 'dark' ? ' selected' : ''}>Dark</option></select></label>
         <label class="small" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" class="check" id="sSmart" data-change="sSmart"${S.smartCats !== false ? ' checked' : ''}> Categorize known merchants automatically (${M.size} businesses built in)</label>
-        <div><button class="btn primary" data-act="saveCo">Save</button></div></div></div>
+        <div><button class="btn primary" data-act="saveCo">Save</button></div></div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+        <h2>Stores</h2><p class="muted small" style="margin-top:0">For one company with several stores (like QuickBooks Locations). Each store gets its own Profit &amp; Loss and Balance Sheet column, and the books stay one company. Set each store's bank and card accounts under Chart of Accounts › Rename.</p>
+        ${stores().length ? `<div class="table-wrap"><table><tbody>${stores().map(x => `<tr data-store="${x.id}"><td>${esc(x.name)}</td><td class="small muted">${S.accounts.filter(a => a.store === x.id).length} account${S.accounts.filter(a => a.store === x.id).length === 1 ? '' : 's'}</td><td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="renStore">Rename</button> <button class="btn sm danger" data-act="delStore">Remove</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="toolbar" style="margin-top:8px"><input type="text" id="newStore" placeholder="Store name, e.g. Store 1 – Main St" maxlength="60" style="flex:1;min-width:180px"><button class="btn" data-act="addStore">Add store</button></div></div>
       <div class="panel"><h2>Backup &amp; restore</h2>
         <p class="muted small" style="margin-top:0">${S.txns.length} transactions · ${S.accounts.length} accounts · ${S.rules.length} rules</p>
         ${FILE ? `<p class="small" style="margin-top:0">Saved automatically to <code style="font-family:var(--f-num);font-size:12px;word-break:break-all">${esc(FILE.path())}</code>${SERVER ? '' : ' <button class="link" data-act="revealBooks">Open folder</button>'}</p>` : ''}
@@ -1076,6 +1168,36 @@
     sel: b => { const id = b.closest('tr').dataset.id, s = viewState.register.sel; b.checked ? s.add(id) : s.delete(id); render(); },
     selAll: b => { const s = viewState.register.sel; const rows = registerRows().reverse().slice(0, viewState.register.limit); if (b.checked) rows.forEach(t => s.add(t.id)); else s.clear(); render(); },
     clearSel: () => { viewState.register.sel.clear(); render(); },
+    bulkStore: () => {
+      const v = $('#bulkStore').value; let n = 0;
+      S.txns.forEach(t => { if (!viewState.register.sel.has(t.id)) return; if (v) t.store = v; else delete t.store; n++; });
+      viewState.register.sel.clear(); save(); render(); toast(n + ' transaction' + (n === 1 ? '' : 's') + ' set to ' + (v ? storeName(v) : "the account's store"));
+    },
+    addStore: () => {
+      const inp = $('#newStore'), name = (inp.value || '').trim().slice(0, 60);
+      if (!name) { toast('Type the store name'); inp.focus(); return; }
+      if (stores().some(x => x.name.toLowerCase() === name.toLowerCase())) { toast(name + ' is already a store'); return; }
+      S.stores = stores().concat([{ id: 'st' + uid(), name }]); save(); render(); toast(name + ' added. Now set its bank and card accounts under Chart of Accounts › Rename.');
+    },
+    renStore: b => {
+      const x = storeById(b.closest('tr').dataset.store); if (!x) return;
+      modal(`<h2>Rename store</h2><label class="field">Store name<input type="text" id="sName" value="${esc(x.name)}" maxlength="60"></label><div class="actions"><button class="btn" id="sCancel">Cancel</button><button class="btn primary" id="sSave">Save</button></div>`, card => {
+        card.querySelector('#sCancel').onclick = closeModal;
+        card.querySelector('#sSave').onclick = () => { const n = card.querySelector('#sName').value.trim(); if (!n) return; if (stores().some(y => y !== x && y.name.toLowerCase() === n.toLowerCase())) { toast(n + ' is already a store'); return; } x.name = n; save(); closeModal(); render(); toast('Store renamed'); };
+      });
+    },
+    delStore: async b => {
+      const x = storeById(b.closest('tr').dataset.store); if (!x) return;
+      const nA = S.accounts.filter(a => a.store === x.id).length, nT = S.txns.filter(t => t.store === x.id).length;
+      if (!(await confirmBox('Remove ' + x.name + '?', 'Nothing is deleted from the books. ' + (nA ? nA + ' account' + (nA === 1 ? '' : 's') + ' will no longer belong to a store' : 'No accounts use it') + (nT ? ', and ' + nT + ' transaction' + (nT === 1 ? '' : 's') + ' set to it go back to their account\'s store' : '') + '.', 'Remove store', true))) return;
+      S.accounts.forEach(a => { if (a.store === x.id) delete a.store; });
+      S.txns.forEach(t => { if (t.store === x.id) delete t.store; });
+      S.rules.forEach(r => { if (r.store === x.id) delete r.store; });
+      S.stores = stores().filter(y => y !== x);
+      if (viewState.reports.store === x.id) viewState.reports.store = 'all';
+      if (viewState.register.store === x.id) viewState.register.store = 'all';
+      save(); render(); toast(x.name + ' removed');
+    },
     bulkCat: () => {
       const c = $('#bulkCat').value; let n = 0;
       let skipped = 0;
@@ -1266,6 +1388,15 @@
       case 'fFrom': st.from = el.value; break;
       case 'fTo': st.to = el.value; break;
       case 'fUncat': st.uncat = el.checked; break;
+      case 'fStore': st.store = el.value; st.sel.clear(); st.limit = 300; break;
+      case 'rStore': rp.store = el.value; break;
+      case 'store': {
+        const t = S.txns.find(x => x.id === el.closest('tr').dataset.id); if (!t) return;
+        if (el.value) t.store = el.value; else delete t.store;
+        save(); toast('Store set to ' + (el.value ? storeName(el.value) : storeName(storeOf(t)) ? storeName(storeOf(t)) + " (the account's store)" : 'no store'));
+        if (st.store !== 'all') setTimeout(render, 250);
+        return;
+      }
       case 'fIgn': st.showIgn = el.checked; st.sel.clear(); break;
       case 'cat': {
         const t = S.txns.find(x => x.id === el.closest('tr').dataset.id);
@@ -1342,7 +1473,7 @@
   window.ledgerDeskApp = {
     get S() { return S; }, C, M, views, acts, afterRender, viewState, go, render, save, toast, modal, closeModal, confirmBox,
     acc, sysAcc, isUncat, live, allowedCat, defaultCat, isBankDeposit, catOptions, sortAccs, registers, memorized, suggestMatch,
-    esc, money, usDate, uid, today, ranges, TYPE_LABEL, updateBadge, txnModal, doImport, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
+    esc, money, usDate, uid, today, ranges, TYPE_LABEL, stores, storeOf, storeName, updateBadge, txnModal, doImport, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
   };
   if (FILE) FILE.onExternalChange(applyExternal);
   setInterval(() => { if (pendingExternal && $('#modal').hidden) { const t = pendingExternal; pendingExternal = null; applyExternal(t); } }, 1000);
