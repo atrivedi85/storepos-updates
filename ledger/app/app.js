@@ -485,7 +485,7 @@
   // A bare "CHECK 1234" or "DEPOSIT" says nothing about what it was, so those are never grouped.
   const GENERIC = /^(CHECK|CHK|CHECK PAID|DEPOSIT|MOBILE DEPOSIT|ATM|ATM WITHDRAWAL|WITHDRAWAL|DEBIT|CREDIT|POS|POS PURCHASE|PURCHASE|PAYMENT|TRANSFER|ONLINE TRANSFER|FEE|SERVICE CHARGE|INTEREST|CASH|BRANCH DEPOSIT|ACH|WIRE|MISC|OTHER|UNKNOWN)$/;
   function similarKey(t) {
-    const words = String(t.origPayee || t.payee || '').toUpperCase().replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' ').replace(/#\s*\d+/g, ' ')
+    const words = String(t.payee || t.origPayee || '').toUpperCase().replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' ').replace(/#\s*\d+/g, ' ')
       .split(/[\s,]+/).map(w => w.replace(/^[^A-Z0-9*&]+|[^A-Z0-9*&]+$/g, '')).filter(w => w && !/^\d+$/.test(w) && !(/\d/.test(w) && w.length >= 7));
     const k = words.slice(0, 6).join(' ');
     if (!k || GENERIC.test(k)) return 'one:' + t.id;
