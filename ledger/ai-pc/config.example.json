@@ -1,0 +1,7 @@
+{
+  "url": "wss://trivedipos.com/api/ai-pc",
+  "key": "PASTE THE AI PC KEY HERE (64 hex characters)",
+  "ollama": "http://127.0.0.1:11434",
+  "textModel": "qwen2.5:7b",
+  "visionModel": "qwen2.5vl:7b"
+}
