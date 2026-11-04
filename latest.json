@@ -1,7 +1,7 @@
 {
- "version": "1.16.2",
- "notes": "Deals: leave End date blank and the deal keeps running with no end until you turn it off (uncheck Active). Leave Start date blank and it starts right away. The date labels now say this.",
- "url": "updates/StorePOS-Update-1.16.2.posupdate",
- "sha256": "7b55ca6cd93bd742d369d60d91a44f20faa972d58a3975f7c541991de4005821",
+ "version": "1.17.0",
+ "notes": "Category colors: Settings - Categories can make every category one color (any color), go back to mixed colors, and show category buttons as a color stripe or fully colored.",
+ "url": "updates/StorePOS-Update-1.17.0.posupdate",
+ "sha256": "e5b3bd44c8da0cefdd26588fda85530fcadfdb57a20e871f7e47fc1c68cdae5d",
  "cloudUrl": "https://trivedipos.com"
 }
