@@ -181,6 +181,41 @@ handle('ordersQuery', (e, { a, b, q, sku, status, limit = 400 }) => {
   const rows = db.prepare(`SELECT data FROM orders WHERE ${where} ORDER BY time DESC LIMIT ?`).all(...params, limit);
   return { count: agg.n, total: agg.s, rows: parseRows(rows), item };
 });
+/* ---------- owner: find and permanently delete transactions (store PC only; stock is NOT changed) ---------- */
+function findWhere(f) {
+  let where = 'time BETWEEN ? AND ?'; const params = [Number(f.a) || 0, Number(f.b) || 9e15];
+  const st = { sales: ['paid', 'refunded'], refunds: ['refund'], voids: ['void'] }[f.kind];
+  if (st) { where += ` AND status IN (${st.map(() => '?').join(',')})`; params.push(...st); }
+  const pay = String(f.pay || '');
+  if (pay) { where += ' AND data LIKE ?'; params.push('%"type":"' + pay.replace(/[%_"]/g, '') + '%'); }
+  const x = Number(f.amt), y = Number(f.amt2);
+  if (f.amtOp === 'gt' && !isNaN(x)) { where += ' AND total > ?'; params.push(x); }
+  else if (f.amtOp === 'lt' && !isNaN(x)) { where += ' AND total < ?'; params.push(x); }
+  else if (f.amtOp === 'eq' && !isNaN(x)) { where += ' AND ABS(total - ?) < 0.005'; params.push(x); }
+  else if (f.amtOp === 'between' && !isNaN(x) && !isNaN(y)) { where += ' AND total BETWEEN ? AND ?'; params.push(Math.min(x, y), Math.max(x, y)); }
+  const q = String(f.q || '').trim();
+  if (/^\d{1,7}$/.test(q)) { where += ' AND (num = ? OR data LIKE ?)'; params.push(Number(q), `%"last4":"${q}"%`); }
+  else if (q) { where += ' AND data LIKE ?'; params.push('%' + q.replace(/[%_"]/g, '') + '%'); }
+  return { where, params };
+}
+const FIND_SORT = { new: 'time DESC', old: 'time ASC', high: 'total DESC, time DESC', low: 'total ASC, time DESC' };
+ipcMain.handle('ordersFind', (e, f) => {
+  if (linkCfg()) return { error: 'linked' };
+  f = f || {}; const { where, params } = findWhere(f);
+  const agg = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(total),0) s FROM orders WHERE ${where}`).get(...params);
+  const ids = db.prepare(`SELECT id FROM orders WHERE ${where}`).all(...params).map(r => r.id);
+  const rows = db.prepare(`SELECT id, total, data FROM orders WHERE ${where} ORDER BY ${FIND_SORT[f.sort] || FIND_SORT.new} LIMIT ?`).all(...params, Math.min(2000, Number(f.limit) || 1000))
+    .map(r => { const o = JSON.parse(r.data); return { id: o.id, num: o.num, time: o.time, total: o.total, status: o.status, user: o.user, label: o.label || '', pay: [...new Set((o.payments || []).map(p => p.type + (p.last4 ? ' ••' + p.last4 : '')))].join(', '), items: (o.lines || []).filter(l => !l.fee).length }; });
+  return { count: agg.n, total: agg.s, ids, rows };
+});
+ipcMain.handle('ordersDelete', (e, ids) => {
+  if (linkCfg()) throw new Error('Delete transactions on the store PC (this computer is linked to it).');
+  ids = (Array.isArray(ids) ? ids : []).map(String);
+  let n = 0;
+  tx(() => { for (const id of ids) { const r = Q.orders.del.run(id); L.del.run(id); if (r.changes) { n++; recordChange('orders', id); } } });
+  linkKick();
+  return { deleted: n };
+});
 handle('orderGet', (e, id) => { const r = db.prepare('SELECT data FROM orders WHERE id=?').get(String(id)); return r ? JSON.parse(r.data) : null; });
 handle('report', (e, a, b) => {
   const R = { n: 0, refN: 0, refunds: 0, gross: 0, disc: 0, tax: 0, total: 0, tend: {}, cats: {}, items: {}, taxes: {}, cost: 0 };

@@ -1,7 +1,7 @@
 {
- "version": "1.17.0",
- "notes": "Category colors: Settings - Categories can make every category one color (any color), go back to mixed colors, and show category buttons as a color stripe or fully colored.",
- "url": "updates/StorePOS-Update-1.17.0.posupdate",
- "sha256": "e5b3bd44c8da0cefdd26588fda85530fcadfdb57a20e871f7e47fc1c68cdae5d",
+ "version": "1.18.0",
+ "notes": "Owner only: Transactions - Delete. Search by dates, payment (cash, credit, check...), type, amount (greater than, less than, exactly, between), transaction # or card last 4, sorted by date or amount, with a total. Select some or all, then delete forever (type DELETE + owner PIN). Stock is not changed.",
+ "url": "updates/StorePOS-Update-1.18.0.posupdate",
+ "sha256": "2021e807c21201960a23788e7078cb8a3cb53f14a26d19aaabb540745d638fa8",
  "cloudUrl": "https://trivedipos.com"
 }

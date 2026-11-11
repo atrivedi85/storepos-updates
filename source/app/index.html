@@ -173,6 +173,10 @@ body.osk-on .mback{bottom:var(--oskh,330px)}body.osk-on #app{height:calc(100vh -
 .pqbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.pqbar input:not([type=checkbox]){flex:1;min-width:220px;font-size:17px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;min-height:46px}.pqbar select{font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);min-height:46px}.pqlist{max-height:58vh;overflow:auto;border:1px solid var(--line);border-radius:8px}.pqlist .tbl td{padding:9px 10px}
 .cats.fill .cat{background:var(--cc);color:#fff;border-left:0;opacity:.82}.cats.fill .cat.on{opacity:1;box-shadow:inset 0 0 0 3px rgba(255,255,255,.85),0 0 0 2px #14213d}
 .ccol .swb{width:44px;height:40px}
+.dxwrap{display:flex;flex-direction:column;height:100%;background:var(--panel2)}.dxbar{padding:10px 14px;border-bottom:1px solid var(--line);background:#fff}.dxwarn{background:#fdecea;border:1px solid #f5c2c0;color:#8a1c14;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:14px}
+.dxrow{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}.dxrow label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut)}.dxrow label>span{display:flex;gap:6px;align-items:center}.dxrow input,.dxrow select{font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;min-height:42px;color:var(--ink)}.dxrow .btn{min-height:44px}
+.dxres{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px}.dxsum{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 2px 10px;font-size:16px}.dxlist{flex:1;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px}.dxlist tr.dxon td{background:#fdecea}.dxlist td{padding:9px 10px}
+.dxwrap .ebar{background:#fff;border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:12px;align-items:center}
 /* 1.15: plain (not bold) text on the register, pay screen and bottom bar; Home screen */
 .reg *,.pay *,footer *{font-weight:400!important}
 .home{height:100%;overflow:auto;padding:28px 32px;background:var(--panel2)}
@@ -237,7 +241,7 @@ function applyRemote(ch){if(!ch||!S.settings)return;let any=false;
  if(ch.orders){bumpOrders();any=true}
  if(any)quietRender()}
 async function reloadAll(){const st=await DB.get('settings');if(st)S.settings={...defaultSettings(),...st};S.products=(await DB.all('products')).map(ensureItem);for(const k of KV_KEYS.slice(1))S[k]=(await DB.get(k))||[];reindex();bumpOrders();if(S.user)S.user=S.users.find(u=>u.id===S.user.id)||null;closeModal();render()}
-const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts','invoices','fixedcosts','timeclock','vendors','porders'];
+const KV_KEYS=['settings','discounts','mixmatch','users','held','invlog','payouts','invoices','fixedcosts','timeclock','vendors','porders','dellog'];
 const saveT={};
 function saveKV(k,delay=0){clearTimeout(saveT[k]);saveT[k]=setTimeout(async()=>{await DB.put('kv',clone(S[k]),k);if(['settings','users','discounts','mixmatch'].includes(k))savedMark()},delay);}
 function savedMark(){const el=document.getElementById('saveState');if(el){el.innerHTML='✓ Saved '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});el.classList.add('ok')}}
@@ -705,7 +709,8 @@ function poDetail(p){return `<div class="ehead"><div><div class="etitle">Cash Pa
  <div class="ebody"><table class="tbl"><tr><td>Type</td><td>${esc(p.type||'Pay out')}</td></tr>${p.payee?`<tr><td>Paid to</td><td>${esc(p.payee)}</td></tr>`:''}${p.invoice?`<tr><td>Invoice #</td><td>${esc(p.invoice)}</td></tr>`:''}${p.note||!p.type?`<tr><td>Note</td><td>${esc(p.note||p.reason||'')}</td></tr>`:''}${p.void?`<tr><td>Voided</td><td>${fmtDT(p.voidTime)} by ${esc(p.voidBy||'')}</td></tr>`:''}</table></div>
  <div class="ebar"><button class="btn blue" data-a="poReprint">Reprint Slip</button><span class="flex"></span>${!p.void&&can('payout')?'<button class="btn red" data-a="poVoid">Void Payout</button>':''}</div>`}
 const ORD_TABS=[['all','All'],['sales','Sales'],['refunds','Refunds'],['payouts','Cash Payouts']];
-function renderOrders(){const tabs=`<div class="seg otabs">${ORD_TABS.map(([k,t])=>`<button class="${S.ordTab===k?'on':''}" data-a="ordTab" data-v="${k}">${t}</button>`).join('')}</div>`;
+function renderOrders(){if(S.ordTab==='delete'&&!canDelTx())S.ordTab='all';const tabs=`<div class="seg otabs">${[...ORD_TABS,...(canDelTx()?[['delete','🗑 Delete']]:[])].map(([k,t])=>`<button class="${S.ordTab===k?'on':''}" data-a="ordTab" data-v="${k}">${t}</button>`).join('')}</div>`;
+ if(S.ordTab==='delete')return renderDelTx(tabs);
  if(S.ordTab==='payouts'){const l=poFiltered();const sel=S.payouts.find(p=>p.id===S.poSel);const live=l.filter(p=>!p.void);
   return `<div class="split"><section class="listp"><div class="lhead">${tabs}<input id="ordQ" data-in="ordQ" placeholder="Search vendor, employee, invoice #" value="${esc(S.ordQ)}" autocomplete="off"><select data-in="ordRange">${RANGES.filter(r=>r[0]!=='custom').map(([k,t])=>`<option value="${k}" ${S.ordRange===k?'selected':''}>${t}</option>`).join('')}</select>${can('payout')?'<button class="btn amber" data-a="payout">+ New Cash Payout</button>':''}</div><div class="ilist" id="ordList">${poListHtml(l)}</div><div class="lfoot" id="ordFoot">${live.length} payouts · $${money(sum(live,p=>p.amount))}</div></section>
   <section class="edp">${sel?poDetail(sel):'<div class="empty big">Select a payout to see details or reprint the slip</div>'}</section></div>`}
@@ -1400,6 +1405,60 @@ Object.assign(A,{
    rvSave();render();toast(`Received — ${t.units} units added to stock`)});
   if(inv.paid==='cash')needMgr('payout',by=>go(by));else go()}
 });
+/*dx*/
+/* ---------- owner only: find and permanently delete transactions (1.18) ---------- */
+const canDelTx=()=>isAdmin()&&!ANDROID&&!WEB;
+function dxF(){if(!S.dx){const t=localDay();S.dx={from:t,to:t,pay:'',kind:'all',amtOp:'any',amt:'',amt2:'',q:'',sort:'new',res:null,sel:{},all:false,busy:''}}return S.dx}
+const dxDay=(s,end)=>{const[y,m,d]=String(s||'').split('-').map(Number);if(!y)return end?9e15:0;const x=new Date(y,m-1,d);if(end)x.setHours(23,59,59,999);return x.getTime()};
+function dxFilters(){const f=dxF();return{a:dxDay(f.from),b:dxDay(f.to,1),pay:f.pay,kind:f.kind,amtOp:f.amtOp,amt:f.amt===''?NaN:+f.amt,amt2:f.amt2===''?NaN:+f.amt2,q:f.q,sort:f.sort,limit:1000}}
+function dxLocalFind(F){// browser / test mode: S.orders in memory
+ const st={sales:['paid','refunded'],refunds:['refund'],voids:['void']}[F.kind];let l=S.orders.filter(o=>o.time>=F.a&&o.time<=F.b&&(!st||st.includes(o.status)));
+ if(F.pay)l=l.filter(o=>(o.payments||[]).some(p=>String(p.type).startsWith(F.pay)));
+ const x=F.amt,y=F.amt2;if(F.amtOp==='gt'&&!isNaN(x))l=l.filter(o=>o.total>x);else if(F.amtOp==='lt'&&!isNaN(x))l=l.filter(o=>o.total<x);else if(F.amtOp==='eq'&&!isNaN(x))l=l.filter(o=>Math.abs(o.total-x)<0.005);else if(F.amtOp==='between'&&!isNaN(x)&&!isNaN(y))l=l.filter(o=>o.total>=Math.min(x,y)&&o.total<=Math.max(x,y));
+ const q=String(F.q||'').trim();if(/^\d{1,7}$/.test(q))l=l.filter(o=>String(o.num)===q||(o.payments||[]).some(p=>p.last4===q));else if(q){const Q=q.toUpperCase();l=l.filter(o=>JSON.stringify(o).toUpperCase().includes(Q))}
+ const srt={new:(a,b)=>b.time-a.time,old:(a,b)=>a.time-b.time,high:(a,b)=>b.total-a.total||b.time-a.time,low:(a,b)=>a.total-b.total||b.time-a.time}[F.sort]||((a,b)=>b.time-a.time);l.sort(srt);
+ return{count:l.length,total:sum(l,o=>o.total),ids:l.map(o=>o.id),rows:l.slice(0,1000).map(o=>({id:o.id,num:o.num,time:o.time,total:o.total,status:o.status,user:o.user,label:o.label||'',pay:[...new Set((o.payments||[]).map(p=>p.type+(p.last4?' ••'+p.last4:'')))].join(', '),items:(o.lines||[]).filter(l=>!l.fee).length}))}}
+async function dxSearch(){const f=dxF();f.busy='Searching…';f.res=null;f.sel={};f.all=false;render();
+ try{const F=dxFilters();const r=DESK&&posAPI.ordersFind?await posAPI.ordersFind(F):dxLocalFind(F);if(r&&r.error==='linked'){f.busy='';f.res=null;toast('This computer is linked to the store PC. Delete transactions on the store PC itself.',1);render();return}f.res=r;f.tot={};r.rows.forEach(x=>f.tot[x.id]=x.total)}catch(e){toast('Search failed: '+e.message,1)}f.busy='';render()}
+function dxSelInfo(){const f=dxF(),r=f.res;if(!r)return{n:0,total:0,ids:[]};if(f.all)return{n:r.count,total:r.total,ids:r.ids};const ids=Object.keys(f.sel).filter(k=>f.sel[k]);return{n:ids.length,total:r2(sum(ids,id=>f.tot[id]||0)),ids}}
+function renderDelTx(tabs){const f=dxF(),r=f.res,si=dxSelInfo();
+ const inp=(k,type,ph,w)=>`<input data-in="dxF" data-enter="dxF" data-k="${k}" type="${type}" value="${esc(f[k])}" placeholder="${ph||''}" style="width:${w||'auto'}" ${type==='number'?'step="0.01" inputmode="decimal"':''}>`;
+ const sel=(k,opts)=>`<select data-in="dxF" data-k="${k}">${opts.map(([v,t])=>`<option value="${v}" ${f[k]===v?'selected':''}>${t}</option>`).join('')}</select>`;
+ return `<div class="dxwrap"><div class="lhead" style="border-bottom:1px solid var(--line)">${tabs}</div>
+ <div class="dxbar"><div class="dxwarn">🔒 <b>Owner only.</b> Deleting removes transactions <b>forever</b>. They can't be brought back, and they disappear from reports, tax totals and history. Stock is <b>not</b> changed (items are not added back to inventory).</div>
+ <div class="dxrow"><label>From ${inp('from','date')}</label><label>To ${inp('to','date')}</label>
+ <label>Paid by ${sel('pay',[['','Any payment'],['Cash','Cash'],['Credit','Credit'],['Debit','Debit'],['Check','Check'],['EBT','EBT'],['Gift Card','Gift card'],['Other','Other']])}</label>
+ <label>Type ${sel('kind',[['all','All'],['sales','Sales'],['refunds','Refunds'],['voids','Voided']])}</label>
+ <label>Amount <span>${sel('amtOp',[['any','Any amount'],['gt','Greater than'],['lt','Less than'],['eq','Exactly'],['between','Between']])}${f.amtOp!=='any'?' $'+inp('amt','number','0.00','90px'):''}${f.amtOp==='between'?' and $'+inp('amt2','number','0.00','90px'):''}</span></label>
+ <label>Search ${inp('q','text','Transaction # · card last 4 · item','190px')}</label>
+ <label>Sort by ${sel('sort',[['new','Date: newest first'],['old','Date: oldest first'],['high','Amount: highest first'],['low','Amount: lowest first']])}</label>
+ <button class="btn blue" data-a="dxSearch">🔍 Search</button></div></div>
+ <div class="dxres">${f.busy?`<div class="empty"><span class="spin"></span> ${esc(f.busy)}</div>`:!r?'<div class="empty">Pick the dates and filters above, then tap <b>Search</b>.</div>':`
+ <div class="dxsum"><b>${r.count.toLocaleString()} transaction${r.count===1?'':'s'}</b> found · total <b>$${money(r.total)}</b>${r.count>r.rows.length?` <span class="hint">(showing the first ${r.rows.length.toLocaleString()}; “Select all” still selects all ${r.count.toLocaleString()})</span>`:''}
+ <span class="flex"></span>${r.count?`<label class="tog"><input type="checkbox" data-in="dxAll" ${f.all?'checked':''}><span>Select all ${r.count.toLocaleString()}</span></label>`:''}</div>
+ <div class="dxlist"><table class="tbl"><tr><th style="width:44px"></th><th>#</th><th>Date &amp; time</th><th>Type</th><th>Paid by</th><th>Cashier</th><th class="n">Items</th><th class="n">Amount</th></tr>
+ ${r.rows.map(o=>`<tr class="${f.all||f.sel[o.id]?'dxon':''}" data-a="dxPick" data-id="${o.id}" style="cursor:pointer"><td><input type="checkbox" ${f.all||f.sel[o.id]?'checked':''} ${f.all?'disabled':''} tabindex="-1" style="pointer-events:none;width:22px;height:22px"></td><td><b>${o.num??''}</b></td><td>${fmtDT(o.time)}</td><td>${o.status==='refund'?'<span class="badge r">Refund</span>':o.status==='void'?'<span class="badge r">Void</span>':o.status==='refunded'?'<span class="badge b">Sale (refunded)</span>':'Sale'}</td><td>${esc(o.pay)}</td><td>${esc(o.user||'')}</td><td class="n">${o.items}</td><td class="n"><b>$${money(o.total)}</b></td></tr>`).join('')||'<tr><td colspan="8"><div class="empty">No transactions match</div></td></tr>'}</table></div>`}</div>
+ <div class="ebar"><span><b>${si.n.toLocaleString()}</b> selected · <b>$${money(si.total)}</b></span>${!f.all&&si.n?'<button class="btn" data-a="dxClear">Clear selection</button>':''}<span class="flex"></span><button class="btn red" data-a="dxDelete" ${si.n?'':'disabled'}>🗑 Delete ${si.n?si.n.toLocaleString()+' ':''}forever</button></div></div>`}
+IN.dxF=t=>{const f=dxF();f[t.dataset.k]=t.value;if(t.dataset.k==='amtOp')render()};
+ENTER.dxF=()=>dxSearch();
+IN.dxAll=t=>{const f=dxF();f.all=t.checked;f.sel={};render()};
+Object.assign(A,{
+ dxSearch(){if(!canDelTx())return;dxSearch()},
+ dxPick(d){const f=dxF();if(f.all)return;f.sel[d.id]=!f.sel[d.id];render()},
+ dxClear(){const f=dxF();f.sel={};f.all=false;render()},
+ dxDelete(){if(!canDelTx()){toast('Only the owner can delete transactions',1);return}const f=dxF(),si=dxSelInfo();if(!si.n)return;
+  const go=()=>{openModal(`<div class="mtitle">Type DELETE to confirm</div><div class="msub">${si.n.toLocaleString()} transaction${si.n===1?'':'s'} · $${money(si.total)}</div><input id="dxConf" autocomplete="off" style="width:100%;font-size:22px;padding:10px;text-transform:uppercase" placeholder="DELETE"><div class="mbtns">${cancelBtn()}<button class="btn red" id="mok" data-a="cb" data-id="${cb(()=>{if(String(($('#dxConf')||{}).value||'').trim().toUpperCase()!=='DELETE'){toast('Type the word DELETE',1);return}closeModal();
+    keypad({title:'🔒 Owner PIN',mode:'pin',okLabel:'Delete forever',sub:`Enter an owner PIN to permanently delete ${si.n.toLocaleString()} transaction${si.n===1?'':'s'}.`,onOk:pin=>{const o=S.users.find(u=>pin&&String(u.pin)===String(pin)&&u.role==='admin');if(!o){beep(300,300);toast('That is not an owner PIN',1);return}closeModal();dxRun(si,o.name)}})})}">Continue</button></div>`,'sm');setTimeout(()=>{const i=$('#dxConf');i&&!ANDROID&&i.focus()},30)};
+  confirmBox(`<b>Permanently delete ${si.n.toLocaleString()} transaction${si.n===1?'':'s'} ($${money(si.total)})?</b><br><br>• They can <b>never</b> be brought back.<br>• They disappear from reports, sales tax totals, item history and the Transactions list, on every register and tablet linked to this store.<br>• Stock stays exactly as it is now: nothing is added back to inventory.<br>• Backups made <b>before</b> today still contain them.`,'Yes, continue',go,{danger:true})}
+});
+async function dxRun(si,by){const f=dxF();f.busy=`Deleting ${si.n.toLocaleString()} transactions…`;render();let n=0;
+ try{if(DESK&&posAPI.ordersDelete){for(let i=0;i<si.ids.length;i+=2000){const r=await posAPI.ordersDelete(si.ids.slice(i,i+2000));n+=r.deleted;f.busy=`Deleting… ${Math.min(i+2000,si.ids.length).toLocaleString()} of ${si.ids.length.toLocaleString()}`;render()}}
+  else{const set=new Set(si.ids);S.orders=S.orders.filter(o=>!set.has(o.id));for(const id of si.ids){await DB.del('orders',id);n++}}
+ }catch(e){toast('Delete stopped: '+e.message,1)}
+ si.ids.forEach(id=>{delete DC.det[id]});if(S.ordSel&&si.ids.includes(S.ordSel))S.ordSel=null;bumpOrders();
+ (S.dellog=S.dellog||[]).push({time:Date.now(),by,count:n,total:si.total,from:f.from,to:f.to});saveKV('dellog');
+ f.busy='';f.res=null;f.sel={};f.all=false;render();toast(`${n.toLocaleString()} transaction${n===1?'':'s'} permanently deleted`)}
+
 ENTER.rvScan=t=>{const v=t.value.trim();t.value='';if(v)rvAdd(v)};
 /* ---------- purchase orders (1.16): order from a vendor, save as PDF, then Receive turns it into a Receive Invoice ---------- */
 const canPO=()=>can('stock')&&can('approve'); // owner + managers

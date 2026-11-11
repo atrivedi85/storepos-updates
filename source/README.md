@@ -20,3 +20,10 @@
 ## Make an update file
 `python3 source/tools/build_update.py source/app updates "what changed"` → `updates/StorePOS-Update-x.y.z.posupdate`.
 Registers install it from Settings → Import / Backup (Check online, or open the file). Store data is never touched.
+
+## Deleting transactions (owner only, 1.18)
+Transactions → **🗑 Delete** tab (only for the Owner role, only on the Windows store PC, not on tablets, the web back office or a linked PC).
+`ordersFind` / `ordersDelete` in main.js search and remove rows from `orders` + `order_lines` in one database transaction and record each
+removal in the change log, so linked registers, tablets and the web copy remove them too. Stock is never touched. A summary
+(who, when, how many, total) is kept in kv `dellog`. Backups made before the delete still contain the transactions.
+
