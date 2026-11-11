@@ -38,6 +38,7 @@
     if (by.heic) say(`${esc(by.heic.map(f => f.name).join(', '))}: that's an iPhone HEIC photo, which browsers can't open. On the iPhone, go to Settings › Camera › Formats › <b>Most Compatible</b>, or send the photo as a screenshot, and drop it again.`);
     if (by.qb) say(`${esc(by.qb.map(f => f.name).join(', '))}: spreadsheets and QuickBooks files aren't bank statements. To bring over a whole QuickBooks company, use <b>Company &amp; Backup › Restore from QuickBooks</b>. For bank or card transactions, download the <b>QuickBooks Web Connect (.QBO)</b> file from the bank instead. See <b>Get statements</b> for where.`);
     if (by.other) say(`I can't read ${esc(by.other.map(f => f.name).join(', '))}. I can read bank and card statements (.QBO, .QFX, .OFX), PDF statements with check pictures, and pictures or PDFs of receipts, bills and invoices.`);
+    if (!ready() && by.pdf && !by.img && !by.stmt && L.readFiles) { BK.busy = ''; L.go('import'); await L.readFiles(by.pdf); return; } // no AI: PDF statements still import on their own
     if (!ready() && (by.pdf || by.img)) { say('The AI isn\'t ready right now, so I can\'t read PDFs or pictures. Check that Ledger Desk AI is running on your AI PC.', 'err'); delete by.pdf; delete by.img; }
     try {
       if (by.stmt) { const goOn = await statements(by.stmt); if (!goOn) { BK.later = { pdf: by.pdf || [], img: by.img || [] }; busy(''); next(); return; } }
@@ -491,5 +492,18 @@
     if (pdfs.length) { BK.forceAcct = a.id; ST.tab = 'chat'; L.go('ai'); await handleFiles(pdfs); BK.forceAcct = null; return; }
     if (added && ready() && H().candidates && H().candidates().length) { ST.tab = 'chat'; ST.bkAutoStart = true; L.go('ai'); } else L.render();
   });
+  // after Import › PDF statement: read the check pictures in the same PDF (needs the AI) and ask who each was paid to
+  window.LedgerAfterPdfImport = async f => {
+    if (!ready() || BK.busy) return false;
+    ST.tab = 'chat'; L.go('ai'); BK.started = true;
+    busy('Reading the check pictures in ' + f.name + '…');
+    try {
+      const P = {}; await H2().readPdf(f, P);
+      const inBooks = (P.items || []).filter(c => c.tid && !c.done);
+      if (inBooks.length) { say(`<b>${esc(f.name)}</b> is imported. I found ${plural(inBooks.length, 'check picture')} in it. I'll show you each one so you can confirm who it was paid to.`); inBooks.forEach(c => BK.q.unshift({ type: 'check', x: c, tid: c.tid })); }
+      else say(`<b>${esc(f.name)}</b> is imported. I didn't find check pictures I could match to its checks.`);
+    } catch (e) { say('I couldn\'t read the check pictures: ' + esc(e.message), 'err'); }
+    busy(''); next(); return true;
+  };
   ST.bkFiles = handleFiles; // for tests
 })();

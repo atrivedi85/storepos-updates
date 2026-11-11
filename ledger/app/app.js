@@ -686,17 +686,19 @@
   // ======================= IMPORT =======================
   views.import = () => {
     const p = viewState.import.pending;
-    return sampleBanner() + `<div class="page-head"><div><h1>Import .QBO</h1><p class="sub">${CO ? 'Importing into <b>' + esc(S.company) + '</b>. ' : ''}QuickBooks Web Connect (.qbo), Quicken (.qfx) and Money (.ofx) statement files.</p></div></div>
+    return sampleBanner() + `<div class="page-head"><div><h1>Import statements</h1><p class="sub">${CO ? 'Importing into <b>' + esc(S.company) + '</b>. ' : ''}QuickBooks Web Connect (.qbo), Quicken (.qfx) and Money (.ofx) statement files, or the <b>PDF statement</b> from your bank or card.</p></div></div>
     ${p ? importReview(p) : `
-    <div class="drop" id="drop"><strong>Drop your .QBO file here</strong><span class="muted">or</span>
-      <div style="margin-top:10px"><label class="btn primary" for="fileIn" style="display:inline-block">Choose file…</label><input type="file" id="fileIn" accept=".qbo,.qfx,.ofx,.QBO,.QFX,.OFX" multiple hidden></div>
+    <div class="drop" id="drop"><strong>Drop your .QBO or PDF statement here</strong><span class="muted">or</span>
+      <div style="margin-top:10px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><label class="btn primary" for="fileIn" style="display:inline-block">📄 Choose .QBO file…</label><input type="file" id="fileIn" accept=".qbo,.qfx,.ofx,.QBO,.QFX,.OFX" multiple hidden><label class="btn primary" for="pdfIn" style="display:inline-block">📑 Upload PDF statement…</label><input type="file" id="pdfIn" accept="application/pdf,.pdf,.PDF" multiple hidden></div>
+      ${viewState.import.busy ? `<p class="small" style="margin-top:12px"><span class="spin"></span>${esc(viewState.import.busy)}</p>` : ''}
       <p class="small muted" style="margin-top:12px">Duplicates are skipped automatically, so it is safe to import overlapping date ranges.</p></div>
     <div class="panel" style="margin-top:16px"><h2>Where to get the file</h2>
-      <ol class="steps"><li>Log in to your credit card or bank website.</li><li>Open the account, then look for <b>Download</b>, <b>Export</b> or the download icon above the transaction list.</li><li>Pick a date range and the format <b>QuickBooks Web Connect</b> or <b>QuickBooks (.QBO)</b>. Quicken (.QFX) works too.</li></ol></div>`}`;
+      <ol class="steps"><li>Log in to your credit card or bank website.</li><li>Open the account, then look for <b>Download</b>, <b>Export</b> or the download icon above the transaction list.</li><li>Pick a date range and the format <b>QuickBooks Web Connect</b> or <b>QuickBooks (.QBO)</b>. Quicken (.QFX) works too.</li><li>No .QBO download? Use the monthly <b>PDF statement</b> instead. Ledger Desk reads the transactions from it in this browser and checks them against the statement's own beginning and ending balance. It must be the PDF from the bank, not a scan or photo.</li></ol></div>`}`;
   };
   afterRender.import = () => {
     const drop = $('#drop'), inp = $('#fileIn');
     if (inp) inp.addEventListener('change', () => readFiles(inp.files));
+    const pin = $('#pdfIn'); if (pin) pin.addEventListener('change', () => readFiles(pin.files));
     if (drop) {
       ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
       ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
@@ -709,18 +711,25 @@
   async function readFiles(files) {
     const stmts = [], errors = [];
     for (const f of Array.from(files)) {
+      if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
+        viewState.import.busy = 'Reading ' + f.name + '…'; if (view === 'import') render();
+        try { stmts.push(await pdfToStmt(f)); } catch (e) { errors.push(f.name + ': ' + e.message); }
+        viewState.import.busy = '';
+        continue;
+      }
       try {
         const text = await f.text();
         C.parseOFX(text).forEach(s => { s.fileName = f.name; stmts.push(s); });
       } catch (e) { errors.push(f.name + ': ' + e.message); }
     }
     if (errors.length) toast(errors.join(' · '));
-    if (!stmts.length) return;
+    if (!stmts.length) { if (view === 'import') render(); return; }
     stmts.forEach((s, i) => {
       s.key = 'st' + i;
       const last4 = (s.acctId || '').replace(/\D/g, '').slice(-4);
-      const existing = S.accounts.find(a => a.ofxId && a.ofxId === s.acctId);
+      const existing = S.accounts.find(a => a.ofxId && a.ofxId === s.acctId) || (s.source === 'pdf' && s.last4 ? S.accounts.find(a => !a.archived && a.detail === (s.kind === 'credit' ? 'credit' : 'bank') && (String(a.ofxId || '').replace(/\D/g, '').endsWith(s.last4) || a.name.includes(s.last4))) : null);
       s.target = existing ? existing.id : 'new';
+      if (s.source === 'pdf') { s.setOpening = !existing && s.ledgerBalance != null; s.otherCo = null; return; }
       s.newName = (s.kind === 'credit' ? 'Credit Card' : (s.acctType === 'SAVINGS' ? 'Savings' : 'Checking')) + (last4 ? ' •' + last4 : '');
       if (s.org && s.org.length > 2) s.newName = s.org.replace(/\b\w/g, c => c.toUpperCase()).slice(0, 24) + ' ' + s.newName;
       s.setOpening = !existing && s.ledgerBalance != null;
@@ -730,6 +739,26 @@
     render();
   }
 
+  // a bank or card PDF statement → the same shape as a .QBO statement (read in this browser, no AI needed)
+  let PDFJS = null;
+  async function pdfToStmt(f) {
+    if (!window.LedgerPdfStatement) throw new Error('the PDF reader did not load. Refresh the page and try again.');
+    if (!PDFJS) { PDFJS = await import('/vendor/pdf.min.js'); PDFJS.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js'; }
+    let r; try { r = await window.LedgerPdfStatement.readStatement(f, PDFJS); } catch (e) { throw new Error('could not open this PDF (' + e.message + ')'); }
+    if (!r.text || r.text < 200) throw new Error('this PDF is a scan or picture, so there is no text to read. Download the statement PDF from the bank\'s website instead.');
+    if (!r.txns.length) throw new Error('no transactions found in this PDF. Is it a bank or credit card statement?');
+    const txns = r.txns.map((t, i) => ({ date: t.date, payee: t.payee, memo: t.memo || '', amount: t.amount, fitid: 'pdf:' + t.date + ':' + t.amount.toFixed(2) + ':' + (t.checkNum || t.payee).slice(0, 24) + ':' + i, checkNum: t.checkNum || '' }));
+    const bank = r.bankName ? r.bankName.replace(/\b\w/g, c => c.toUpperCase()) : '';
+    return { source: 'pdf', kind: r.kind, last4: r.last4, acctId: 'pdf-' + (r.bankName || 'bank').toLowerCase().replace(/\W+/g, '') + '-' + (r.last4 || 'x'), org: bank, txns, fileName: f.name, file: f,
+      newName: (bank ? bank + ' ' : '') + (r.kind === 'credit' ? 'Credit Card' : 'Checking') + (r.last4 ? ' •' + r.last4 : ''),
+      ledgerBalance: r.end, ledgerDate: r.periodEnd || r.to, pdf: { ok: r.ok, diff: r.diff, begin: r.begin, end: r.end, warn: r.warn || [], pages: r.pages } };
+  }
+  function pdfNotice(s) {
+    const p = s.pdf; if (!p) return '';
+    if (p.ok) return `<div class="notice" style="border-color:var(--pos,#177245);color:var(--pos,#177245)"><b>✓ Checked against the statement.</b> Beginning balance ${money(p.begin)} plus these ${s.txns.length} transactions equals the ending balance ${money(p.end)}.</div>`;
+    if (p.diff != null) return `<div class="notice" style="border-color:var(--neg,#b42318);color:var(--neg,#b42318)"><b>These don't add up to the statement yet: off by ${money(Math.abs(p.diff))}.</b> The statement goes from ${money(p.begin)} to ${money(p.end)}. A transaction may be missing, read twice, or have the wrong sign. Look through the list below before importing, and fix or add anything afterwards in the account.</div>`;
+    return `<div class="notice"><b>Couldn't check the total.</b> This PDF doesn't show a beginning and ending balance I can read, so look through the list below before importing.</div>`;
+  }
   function dupCheck(s, targetId) {
     const existing = new Set(S.txns.filter(t => t.accountId === targetId).map(tkey).concat(S.deleted.filter(k => k.indexOf(targetId + '|') === 0)));
     let dup = 0;
@@ -748,8 +777,8 @@
       const dates = s.txns.map(t => t.date).sort();
       const owed = s.ledgerBalance == null ? '' : (s.kind === 'credit' ? Math.abs(s.ledgerBalance) : s.ledgerBalance).toFixed(2);
       return `<div class="stmt" data-key="${s.key}">
-        <div class="stmt-head"><div><h2 style="margin:0">${s.kind === 'credit' ? 'Credit card' : 'Bank'} statement${s.org ? ' · ' + esc(s.org) : ''}</h2>
-          <div class="muted small">${esc(s.fileName)} · account ending ${esc((s.acctId || '').slice(-4) || '—')} · ${dates.length ? usDate(dates[0]) + ' – ' + usDate(dates[dates.length - 1]) : 'no transactions'}</div></div>
+        <div class="stmt-head"><div><h2 style="margin:0">${s.kind === 'credit' ? 'Credit card' : 'Bank'} statement${s.source === 'pdf' ? ' (PDF)' : ''}${s.org ? ' · ' + esc(s.org) : ''}</h2>
+          <div class="muted small">${esc(s.fileName)} · account ending ${esc(s.source === 'pdf' ? (s.last4 || '—') : ((s.acctId || '').slice(-4) || '—'))} · ${dates.length ? usDate(dates[0]) + ' – ' + usDate(dates[dates.length - 1]) : 'no transactions'}</div></div>
           <div class="num"><div>${s.txns.length} transactions</div><div class="small muted">${money(charges)} out · ${money(credits)} in</div></div></div>
         <div class="form-row" style="margin-top:12px">
           <label class="field">Import into<select data-change="impTarget"><option value="new"${s.target === 'new' ? ' selected' : ''}>New account…</option>${sortAccs(registers()).map(a => `<option value="${a.id}"${s.target === a.id ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select></label>
@@ -759,6 +788,7 @@
           <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="check" data-change="impOpen"${s.setOpening ? ' checked' : ''}> Match the statement balance of</label>
           <input type="number" step="0.01" data-input="impBal" value="${owed}" style="width:130px" aria-label="Statement balance"><span class="small muted">${s.kind === 'credit' ? 'owed' : ''} on ${usDate(s.ledgerDate)} (adds an opening balance entry)</span></div>` : ''}
         ${s.otherCo ? `<div class="notice" style="border-color:var(--neg,#b42318);color:var(--neg,#b42318)"><b>This account belongs to ${esc(s.otherCo)}.</b> It can't be imported into ${esc(S.company)}. Switch to ${esc(s.otherCo)} (top left) and import the file there.</div>` : ''}
+        ${pdfNotice(s)}
         ${dup ? `<div class="notice">${dup} transaction${dup === 1 ? ' was' : 's were'} imported or deleted before and will be skipped.</div>` : ''}
         <div class="table-wrap" style="max-height:260px;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:6px"><table><thead><tr><th>Date</th><th>Payee</th><th class="num">Amount</th><th></th></tr></thead><tbody>
           ${s.txns.slice(0, 200).map(t => `<tr${t._dup ? ' style="opacity:.45"' : ''}><td class="num small">${usDate(t.date)}</td><td>${esc(t.payee)}${t.memo ? `<div class="memo">${esc(t.memo)}</div>` : ''}</td><td class="num ${t.amount >= 0 ? 'pos' : ''}">${money(t.amount)}</td><td class="small muted">${t._dup ? 'already imported or deleted' : ''}</td></tr>`).join('')}
@@ -1328,6 +1358,10 @@
       viewState.import.pending = viewState.import.pending.filter(x => x !== s);
       if (!viewState.import.pending.length) viewState.import.pending = null;
       toast('Imported ' + n + ' into ' + target.name + (auto ? ' · ' + auto + ' categorized automatically' : '') + (matched ? ' · ' + matched + ' transfer' + (matched === 1 ? '' : 's') + ' matched' : ''));
+      const hasChecks = s.source === 'pdf' && s.file && s.txns.some(x => x.checkNum && !x._dup);
+      if (hasChecks && !viewState.import.pending && window.LedgerAfterPdfImport) {
+        window.LedgerAfterPdfImport(s.file).then(ok => { if (!ok) toast('The checks are in as "CHECK 1234". To read who each was paid to from the check pictures, turn on your AI PC and upload this PDF again: nothing will be doubled.'); });
+      }
       if (!viewState.import.pending) { Object.assign(viewState.register, { acct: target.id, uncat: false, q: '', range: 'all', from: '', to: '' }); go('register'); }
       else render();
     },
@@ -1585,7 +1619,7 @@
   window.ledgerDeskApp = {
     get S() { return S; }, C, M, views, acts, afterRender, viewState, go, render, save, toast, modal, closeModal, confirmBox,
     acc, sysAcc, isUncat, live, allowedCat, defaultCat, isBankDeposit, catOptions, sortAccs, registers, memorized, suggestMatch,
-    esc, money, usDate, uid, today, ranges, TYPE_LABEL, similarKey, similarGroups, stores, storeOf, storeName, updateBadge, txnModal, doImport, deleteTxns, ignoreTxns, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
+    esc, money, usDate, uid, today, ranges, TYPE_LABEL, similarKey, similarGroups, stores, storeOf, storeName, updateBadge, txnModal, doImport, readFiles, deleteTxns, ignoreTxns, matchTransfers, smartCategorizeExisting, applyRulesToUncat, get view() { return view; }
   };
   if (FILE) FILE.onExternalChange(applyExternal);
   setInterval(() => { if (pendingExternal && $('#modal').hidden) { const t = pendingExternal; pendingExternal = null; applyExternal(t); } }, 1000);

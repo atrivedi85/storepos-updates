@@ -52,3 +52,9 @@ The AI runs on the owner's own AI PC ("Ledger Desk AI", still to be built), whic
   **qwen3.5:9b 72% (high-confidence 78%)**, qwen3:8b 58%. qwen3.5:9b is ~3× slower (81% on the 8 GB GPU) but now the text model.
   Qwen 3.x is called with `think: false`. Vision stays qwen2.5vl:7b. The AI PC connector restarts itself when its file or config changes
   (`run-ai.vbs` loops), so later updates need no one at the PC.
+
+## PDF statements (Nov 11, 2026)
+Import › **Upload PDF statement** (next to the .QBO button) reads a bank or card PDF in the browser with `pdfstmt.js` (no AI needed),
+shows the same review card as a .QBO file, and checks the transactions against the statement's beginning and ending balance.
+After the import, if the PDF has checks and the AI PC is on, `window.LedgerAfterPdfImport` (aichat.js) reads the check pictures and asks who each check was paid to.
+Scanned PDFs (pictures only, no text) can't be read.
