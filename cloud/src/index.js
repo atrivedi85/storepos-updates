@@ -74,13 +74,22 @@ export default {
       if (r.status >= 300 && r.status < 400) { const r2 = await env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/books/login.html', req.url), { method: 'GET' })); return new Response(r2.body, { status: 200, headers: r2.headers }); }
       return r;
     }
-    // Hotel Desk (trivedipos.com/hotel): its server. Only the website owner (signed in to Ledger Desk as the owner) may set it up.
+    // Hotel Desk (trivedipos.com/hotel). Sign-in, logins and the master account go to the "directory" object; everything else
+    // goes to the signed-in person's own hotel. Only the website owner (signed in to Ledger Desk as the owner) may make the master account.
     if (path.startsWith('/hotel/api/')) {
-      const h = new Headers(req.headers); h.delete('x-hotel-owner');
-      if (path === '/hotel/api/setup' || path === '/hotel/api/setup-needed') {
-        try { const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/me', req.url), { headers: { cookie: req.headers.get('cookie') || '' } })); if (r.ok && (await r.json()).admin === true) h.set('x-hotel-owner', '1'); } catch (e) { /* not the owner */ }
+      const sub = path.slice(10), h = new Headers(req.headers); for (const k of [...h.keys()]) if (k.toLowerCase().startsWith('x-hd-')) h.delete(k);
+      const dir = env.HOTEL.get(env.HOTEL.idFromName('directory'));
+      if (/^\/(auth|master|account)\//.test(sub)) {
+        if (sub === '/master/setup' || sub === '/auth/setup-needed') {
+          try { const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/me', req.url), { headers: { cookie: req.headers.get('cookie') || '' } })); if (r.ok && (await r.json()).admin === true) h.set('x-hd-owner', '1'); } catch (e) { /* not the owner */ }
+        }
+        h.set('x-hd-kind', 'dir'); return dir.fetch(new Request(req, { headers: h }));
       }
-      return env.HOTEL.get(env.HOTEL.idFromName('main')).fetch(new Request(req, { headers: h }));
+      const w = await dir.fetch(new Request(new URL('/hotel/api/auth/whoami', req.url), { headers: { cookie: req.headers.get('cookie') || '', 'x-hd-kind': 'dir' } }));
+      if (!w.ok) return w;
+      const who = await w.json(); if (!who.hotel) return J({ error: 'Open a hotel first.' }, 400);
+      h.set('x-hd-who', encodeURIComponent(JSON.stringify(who)));
+      return env.HOTEL.get(env.HOTEL.idFromName('h:' + who.hotel.id)).fetch(new Request(req, { headers: h }));
     }
     if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });

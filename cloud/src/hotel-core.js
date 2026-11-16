@@ -2,10 +2,9 @@
 // This file has no Cloudflare-specific code, so it can be tested on a plain computer (see hotel/README.md).
 // `sql` is the Durable Object's SQLite: sql.exec(query, ...params).toArray().
 // Card numbers are never stored: only the card type and the last 4 digits.
+// One of these runs per hotel. Logins live in hotel-dir.js (the directory); every request arrives with `me` already checked.
 import * as nc from 'node:crypto';
-import { Buffer } from 'node:buffer';
 
-const SESSION_DAYS = 14;
 const now = () => Date.now();
 const sha = s => nc.createHash('sha256').update(s).digest('hex');
 const clip = (s, n) => String(s == null ? '' : s).trim().slice(0, n);
@@ -14,18 +13,20 @@ export const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864
 export const nightsBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 const cents = v => { const n = Math.round(Number(v)); if (!Number.isFinite(n)) throw err(400, 'That amount is not a number.'); return n; };
 function err(code, msg) { const e = new Error(msg); e.code = code; return e; }
-const ROLES = ['manager', 'desk', 'hk'];
 const PAY_TYPES = ['CASH', 'CRED', 'AREC', 'GFTCRD'];
 const ACTIVE = ['reserved', 'inhouse'];
 
 /* The starter setup: rooms, room types, taxes and posting codes. Everything can be changed in Setup. */
-function starterConfig() {
-  const types = [['NK', 'King', 8000], ['NK1', 'King (1st floor)', 8000], ['NQ', 'Queen', 8000], ['NQQ', 'Two Queens', 8500], ['HNK', 'Accessible King', 8000], ['HNQ', 'Accessible Queen', 8000],
+function starterConfig(template) {
+  const blank = template !== 'ky55';
+  let types = [['NK', 'King', 8000], ['NK1', 'King (1st floor)', 8000], ['NQ', 'Queen', 8000], ['NQQ', 'Two Queens', 8500], ['HNK', 'Accessible King', 8000], ['HNQ', 'Accessible Queen', 8000],
     ['SNK', 'King Suite', 10500], ['SNK1', 'King Suite (1st floor)', 10500], ['SNQQ', 'Two Queens Suite', 10500]].map(([code, name, rate]) => ({ code, name, rate }));
   const R = 'SNK1 101,NK 102,NQQ 103,SNQQ 104,NQQ 105,SNQQ 106,NK 107,HNK 109,NQQ 111,NK 128,NK1 129,HNK 130,NK 131,NQQ 132,NQQ 133,NK 134,HNQ 135,SNK 136,NQQ 137,SNK 138,SNK1 139,NK 140,' +
     'SNK1 201,NK 202,NK 203,SNK 204,NK 205,SNQQ 206,NQQ 207,NQQ 208,NQQ 209,NQ 210,NK 211,NQQ 212,NK 213,NK 214,NK 218,NQQ 219,NQQ 220,NQQ 221,NQQ 222,NK 223,NQQ 224,NK1 225,NQQ 226,NQQ 227,NK 228,NQQ 229,NK 230,NK 231,SNK 232,NK 233,SNK 234,SNK1 235,NK 236';
-  const rooms = R.split(',').map(x => { const [type, no] = x.split(' '); return { no, type, floor: no[0] }; });
-  const taxes = [{ code: 'T1', name: 'State Tax', pct: 6.24 }, { code: 'T2', name: 'City / County Tax', pct: 3 }, { code: 'T3', name: 'Occupancy Tax', pct: 1 }];
+  let rooms = R.split(',').map(x => { const [type, no] = x.split(' '); return { no, type, floor: no[0] }; });
+  let taxes = [{ code: 'T1', name: 'State Tax', pct: 6.24 }, { code: 'T2', name: 'City / County Tax', pct: 3 }, { code: 'T3', name: 'Occupancy Tax', pct: 1 }];
+  // A new hotel starts blank: three sample room types, no rooms, and taxes at 0% for the owner to fill in.
+  if (blank) { types = [['K', 'King', 9000], ['QQ', 'Two Queens', 9500], ['STE', 'Suite', 12000]].map(([code, name, rate]) => ({ code, name, rate })); rooms = []; taxes = taxes.map(t => ({ ...t, pct: 0 })); }
   const all = ['T1', 'T2', 'T3'];
   const C = (code, name, type, tax) => ({ code, name, type, tax: tax || [] });
   const codes = [C('RM', 'Room Charge', 'ROOM', all), C('NS', 'No Show Charge', 'ROOM', all), C('CXL', 'Cancellation / Early Check-out', 'ROOM', all), C('RL', 'Rollaway Charge', 'ROOM', all),
@@ -37,12 +38,9 @@ function starterConfig() {
 }
 
 export class HotelCore {
-  // opts.scrypt(password, saltHex) → hex: the website passes Ledger Desk's password hasher (same settings), tests use node's.
-  constructor(sql, opts) {
-    this.sql = sql; this.fails = {}; this.scrypt = opts && opts.scrypt;
+  constructor(sql) {
+    this.sql = sql;
     for (const q of ['CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT)',
-      'CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, data TEXT NOT NULL)',
-      'CREATE TABLE IF NOT EXISTS sessions(h TEXT PRIMARY KEY, user TEXT NOT NULL, exp INTEGER NOT NULL)',
       'CREATE TABLE IF NOT EXISTS res(id INTEGER PRIMARY KEY, status TEXT, arrive TEXT, depart TEXT, room TEXT, name TEXT, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS lines(id INTEGER PRIMARY KEY AUTOINCREMENT, res INTEGER NOT NULL, bdate TEXT, at INTEGER, code TEXT, descr TEXT, comment TEXT, amount INTEGER NOT NULL, user TEXT)',
       'CREATE INDEX IF NOT EXISTS lines_res ON lines(res)', 'CREATE INDEX IF NOT EXISTS lines_bdate ON lines(bdate)',
@@ -56,35 +54,6 @@ export class HotelCore {
   setKv(k, v) { this.sql.exec('INSERT OR REPLACE INTO kv(k,v) VALUES(?,?)', k, JSON.stringify(v)); }
   cfg() { return this.kv('config', null) || starterConfig(); }
   log(user, line) { this.sql.exec('INSERT INTO log(at,user,line) VALUES(?,?,?)', now(), user || '', String(line).slice(0, 300)); this.sql.exec('DELETE FROM log WHERE id < (SELECT MAX(id) - 20000 FROM log)'); }
-
-  /* ---------- logins ---------- */
-  hashPw(pw, salt) { if (this.scrypt) return this.scrypt(String(pw), salt); return nc.scryptSync(String(pw), Buffer.from(salt, 'hex'), 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex'); }
-  findUser(u) { const r = this.one('SELECT data FROM users WHERE username=?', String(u || '').trim().toLowerCase()); return r ? JSON.parse(r.data) : null; }
-  saveUser(u) { this.sql.exec('INSERT OR REPLACE INTO users(username,data) VALUES(?,?)', u.username, JSON.stringify(u)); }
-  setPw(u, pw) { if (String(pw || '').length < 8) throw err(400, 'The password needs at least 8 characters.'); u.salt = nc.randomBytes(16).toString('hex'); u.hash = this.hashPw(pw, u.salt); }
-  pub(u) { return { username: u.username, name: u.name || u.username, role: u.role, disabled: !!u.disabled }; }
-  sessionUser(cookie) {
-    const m = /(?:^|;\s*)ht_s=([a-f0-9]{64})/.exec(cookie || ''); if (!m) return null;
-    const k = sha(m[1]), s = this.one('SELECT user, exp FROM sessions WHERE h=?', k);
-    if (!s || s.exp < now()) { if (s) this.sql.exec('DELETE FROM sessions WHERE h=?', k); return null; }
-    const u = this.findUser(s.user); if (!u || u.disabled) return null;
-    return { user: u, key: k };
-  }
-  cookie(token, age) { return 'ht_s=' + token + '; Path=/hotel; HttpOnly; Secure; SameSite=Strict; Max-Age=' + age; }
-  login(b) {
-    const name = String(b.username || '').trim().toLowerCase(), f = this.fails[name] || (this.fails[name] = { n: 0, until: 0 });
-    if (f.until > now()) throw err(429, 'Too many wrong tries. Wait 10 minutes and try again.');
-    const u = this.findUser(name);
-    const ok = u && !u.disabled && nc.timingSafeEqual(Buffer.from(this.hashPw(b.password || '', u.salt), 'hex'), Buffer.from(u.hash, 'hex'));
-    if (!u) this.hashPw(b.password || '', '00'.repeat(16));
-    if (!ok) { f.n++; if (f.n >= 8) { f.n = 0; f.until = now() + 6e5; } throw err(401, 'The user name or password is wrong.'); }
-    delete this.fails[name];
-    const token = nc.randomBytes(32).toString('hex');
-    this.sql.exec('INSERT INTO sessions(h,user,exp) VALUES(?,?,?)', sha(token), u.username, now() + SESSION_DAYS * 864e5);
-    this.sql.exec('DELETE FROM sessions WHERE exp<?', now());
-    this.log(u.username, 'signed in');
-    return { status: 200, json: { ok: true, me: this.pub(u) }, cookie: this.cookie(token, SESSION_DAYS * 86400) };
-  }
 
   /* ---------- reservations ---------- */
   getRes(id) { const r = this.one('SELECT data FROM res WHERE id=?', Number(id) || 0); if (!r) throw err(404, 'That reservation was not found.'); return JSON.parse(r.data); }
@@ -173,10 +142,10 @@ export class HotelCore {
   post(a, me, c) {
     const r = this.getRes(a.res); const k = c.codes.find(x => x.code === a.code); if (!k) throw err(400, 'Pick what to post.');
     const amt = cents(a.amount); if (!(amt > 0)) throw err(400, 'Type an amount above zero.'); if (amt > 5000000) throw err(400, 'That amount is too large.');
-    const pay = PAY_TYPES.includes(k.type) || k.type === 'ADMIN';
+    const pay = PAY_TYPES.includes(k.type) || k.type === 'ADMIN', boss = ['owner', 'manager'].includes(me.role);
     if (r.status === 'cancelled' || r.status === 'noshow') { if (!pay && !['NS', 'CXL'].includes(k.code)) throw err(400, 'Only a no-show or cancellation charge, or a payment, can be posted here.'); }
     if (a.kind === 'payment') { if (!pay) throw err(400, 'That is not a payment type.'); const refund = !!a.refund || k.code === 'GR' || k.code === 'PO'; this.addLine(r.id, c, k.code, refund ? amt : -amt, (a.last4 ? '…' + String(a.last4).replace(/\D/g, '').slice(-4) + ' ' : '') + clip(a.comment, 150), me.username, refund && k.code !== 'GR' && k.code !== 'PO' ? k.name + ' refund' : ''); }
-    else if (a.kind === 'adjust') { if (pay) throw err(400, 'Pick the charge to adjust.'); if (me.role !== 'manager' && amt > 20000) throw err(403, 'An adjustment above $200 needs a manager.'); if (!clip(a.comment, 150)) throw err(400, 'Type the reason for the adjustment.'); this.postCharge(r, c, k.code, -amt, 'ADJ: ' + clip(a.comment, 150), me.username); }
+    else if (a.kind === 'adjust') { if (pay) throw err(400, 'Pick the charge to adjust.'); if (!boss && amt > 20000) throw err(403, 'An adjustment above $200 needs a manager.'); if (!clip(a.comment, 150)) throw err(400, 'Type the reason for the adjustment.'); this.postCharge(r, c, k.code, -amt, 'ADJ: ' + clip(a.comment, 150), me.username); }
     else { if (pay) throw err(400, 'Use Post Payment for payments.'); this.postCharge(r, c, k.code, amt, a.comment, me.username); }
     this.log(me.username, 'post ' + a.kind + ' ' + k.code + ' ' + amt + ' on ' + r.conf);
     return { balance: this.balance(r.id) };
@@ -197,7 +166,7 @@ export class HotelCore {
     const recent = this.rows("SELECT data FROM res WHERE status NOT IN ('reserved','inhouse') AND depart>=? ORDER BY id DESC LIMIT 400", addDays(c.bdate || '2000-01-01', -3)).map(x => JSON.parse(x.data));
     const bal = {}; for (const x of this.rows("SELECT res, SUM(amount) n FROM lines WHERE res IN (SELECT id FROM res WHERE status IN ('reserved','inhouse') OR depart>=?) GROUP BY res", addDays(c.bdate || '2000-01-01', -3))) bal[x.res] = x.n;
     const slim = r => { const { history, ...x } = r; return x; };
-    return { me: this.pub(me), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
+    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
   }
   nightAudit(me, c) {
     const d = c.bdate, act = this.activeRes(), out = { date: d, posted: 0, noShows: [], extended: [], revenue: 0 };
@@ -231,21 +200,15 @@ export class HotelCore {
   }
   route(req) {
     const p = req.path, b = req.body || {}, POST = req.method === 'POST';
-    const any = !!this.one('SELECT 1 x FROM users LIMIT 1');
-    if (p === '/setup-needed') return { status: 200, json: { needed: !any, owner: !!req.ledgerAdmin } };
-    if (p === '/setup' && POST) {
-      if (any) throw err(400, 'The hotel is already set up. Sign in instead.');
-      if (!req.ledgerAdmin) throw err(403, 'Only the website owner can set up the hotel. Sign in to Ledger Desk (trivedipos.com/books) as the owner first, then come back to this page.');
-      const name = String(b.username || '').trim().toLowerCase(); if (!/^[a-z0-9][a-z0-9._-]{1,31}$/.test(name)) throw err(400, 'The user name needs 2 to 32 letters or numbers.');
-      const u = { username: name, name: clip(b.name, 80) || name, role: 'manager' }; this.setPw(u, b.password); this.saveUser(u);
-      const c = starterConfig(); c.name = clip(b.hotel, 80) || 'My Hotel'; c.bdate = isDate(b.today) ? b.today : new Date().toISOString().slice(0, 10); this.setKv('config', c);
-      return this.login({ username: name, password: b.password });
+    const me = req.me; if (!me || !me.role) throw err(401, 'Please sign in.');
+    me.username = clip(me.name || me.email, 60);
+    if (!this.kv('config', null)) {   // first visit: make the hotel from its starter setup
+      const h = req.hotel || {}, c0 = starterConfig(h.template); c0.name = clip(h.name, 80) || 'My Hotel';
+      try { c0.bdate = new Intl.DateTimeFormat('en-CA', { timeZone: h.tz || 'America/New_York' }).format(new Date()); } catch (e) { c0.bdate = new Date().toISOString().slice(0, 10); }
+      this.setKv('config', c0);
     }
-    if (p === '/login' && POST) return this.login(b);
-    const s = this.sessionUser(req.cookie); if (!s) throw err(401, 'Please sign in.');
-    const me = s.user, c = this.cfg(), mgr = () => { if (me.role !== 'manager') throw err(403, 'Only a manager can do that.'); };
+    const c = this.cfg(), boss = ['owner', 'manager'].includes(me.role), mgr = () => { if (!boss) throw err(403, 'Only the owner or a manager can do that.'); };
     const desk = () => { if (me.role === 'hk') throw err(403, 'Housekeeping logins can only use the housekeeping screen.'); };
-    if (p === '/logout' && POST) { this.sql.exec('DELETE FROM sessions WHERE h=?', s.key); return { status: 200, json: { ok: true }, cookie: this.cookie('', 0) }; }
     if (p === '/state') return { status: 200, json: this.state(me) };
     if (p === '/folio') { desk(); const r = this.getRes(req.query.id); return { status: 200, json: { res: r, lines: this.rows('SELECT * FROM lines WHERE res=? ORDER BY id', r.id), balance: this.balance(r.id) } }; }
     if (p === '/find') {
@@ -256,13 +219,11 @@ export class HotelCore {
       return { status: 200, json: { list } };
     }
     if (p === '/report') { desk(); return { status: 200, json: this.report(req.query, c) }; }
-    if (p === '/users') { mgr(); return { status: 200, json: { users: this.rows('SELECT data FROM users').map(x => this.pub(JSON.parse(x.data))) } }; }
     if (p !== '/op' || !POST) throw err(404, 'Not found.');
     const a = b.a || {}, ok = x => ({ status: 200, json: { ok: true, ...(x || {}) } });
     switch (b.op) {
       case 'roomCond': { const rooms = (a.rooms || []).filter(no => c.rooms.some(r => r.no === no)); if (!['R', 'C', 'D'].includes(a.cond)) throw err(400, 'Pick Ready, Clean or Dirty.'); this.setCond(rooms, { cond: a.cond }); this.log(me.username, 'rooms ' + rooms.join(',') + ' → ' + a.cond); return ok(); }
       case 'hkSet': { if (!c.rooms.some(r => r.no === a.room)) throw err(400, 'Room not found.'); const patch = {}; if ('dnd' in a) patch.dnd = !!a.dnd; if ('hk' in a) patch.hk = clip(a.hk, 40); if ('note' in a) patch.note = clip(a.note, 200); this.setCond([a.room], patch); return ok(); }
-      case 'password': { const u = this.findUser(me.username); if (!nc.timingSafeEqual(Buffer.from(this.hashPw(a.old || '', u.salt), 'hex'), Buffer.from(u.hash, 'hex'))) throw err(400, 'The current password is wrong.'); this.setPw(u, a.new); this.saveUser(u); this.sql.exec('DELETE FROM sessions WHERE user=? AND h<>?', u.username, s.key); return ok(); }
     }
     desk();
     switch (b.op) {
@@ -272,7 +233,7 @@ export class HotelCore {
       case 'undoCheckIn': { const r = this.getRes(a.id); if (r.status !== 'inhouse') throw err(400, 'This guest is not checked in.'); if (this.one('SELECT 1 x FROM lines WHERE res=? AND code=?', r.id, 'RM')) throw err(400, 'Room charges were already posted, so the check-in cannot be undone. Check the guest out instead.'); r.status = 'reserved'; r.history.push({ at: now(), by: me.username, what: 'Check-in undone' }); this.putRes(r); return ok(); }
       case 'checkOut': {
         const r = this.getRes(a.id); if (r.status !== 'inhouse') throw err(400, 'This guest is not checked in.'); const bal = this.balance(r.id);
-        if (bal !== 0 && !(a.force && me.role === 'manager')) throw err(412, 'The folio balance is ' + (bal / 100).toFixed(2) + '. Post a payment (or a refund) to bring it to zero before checking out.' + (me.role === 'manager' ? ' A manager can check out anyway.' : ''));
+        if (bal !== 0 && !(a.force && boss)) throw err(412, 'The folio balance is ' + (bal / 100).toFixed(2) + '. Post a payment (or a refund) to bring it to zero before checking out.' + (boss ? ' A manager can check out anyway.' : ''));
         r.status = 'out'; r.coAt = now(); r.coBy = me.username; if (r.depart > c.bdate) { r.origDepart = r.depart; r.depart = c.bdate > r.arrive ? c.bdate : addDays(r.arrive, 1); }
         r.history.push({ at: now(), by: me.username, what: 'Checked out, balance ' + (bal / 100).toFixed(2) }); this.putRes(r); this.setCond([r.room], { cond: 'D', dnd: false }); this.log(me.username, 'check out ' + r.conf); return ok();
       }
@@ -294,14 +255,6 @@ export class HotelCore {
         if (Array.isArray(n.codes)) { c.codes = n.codes.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), type: clip(k.type, 8).toUpperCase(), tax: (k.tax || []).filter(x => c.taxes.some(t => t.code === x)) })).filter(k => k.code); if (!c.codes.some(k => k.code === 'RM')) throw err(400, 'Keep the RM (Room Charge) code. The night audit needs it.'); }
         if (Array.isArray(n.housekeepers)) c.housekeepers = n.housekeepers.map(x => clip(x, 40)).filter(Boolean).slice(0, 40);
         this.setKv('config', c); this.log(me.username, 'changed setup'); return ok();
-      }
-      case 'userSave': {
-        mgr(); const name = String(a.username || '').trim().toLowerCase(); if (!/^[a-z0-9][a-z0-9._-]{1,31}$/.test(name)) throw err(400, 'The user name needs 2 to 32 letters or numbers.');
-        if (!ROLES.includes(a.role)) throw err(400, 'Pick a role.'); let u = this.findUser(name);
-        if (!u) { u = { username: name }; if (!a.password) throw err(400, 'Type a password for the new login.'); }
-        if (u.username === me.username && (a.role !== 'manager' || a.disabled)) throw err(400, 'You cannot remove your own manager access.');
-        u.name = clip(a.name, 80) || name; u.role = a.role; u.disabled = !!a.disabled; if (a.password) { this.setPw(u, a.password); this.sql.exec('DELETE FROM sessions WHERE user=? AND h<>?', name, s.key); }
-        if (u.disabled) this.sql.exec('DELETE FROM sessions WHERE user=?', name); this.saveUser(u); this.log(me.username, 'saved login ' + name); return ok();
       }
     }
     throw err(400, 'Unknown action.');

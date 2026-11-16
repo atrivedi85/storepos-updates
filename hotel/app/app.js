@@ -22,11 +22,16 @@ async function api(path, body) {
 }
 const op = (name, a) => api('/op', { op: name, a });
 function toast(msg, bad) { const t = $('#toast'); t.textContent = msg; t.className = bad ? 'bad' : ''; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', bad ? 6000 : 2600); }
-async function run(fn) { try { return await fn(); } catch (e) { if (e.status === 401) { S = null; return showLogin(); } toast(e.message, true); } }
-async function refresh() { S = await api('/state'); if (!view.tapeStart) view.tapeStart = S.config.bdate; render(); }
+async function run(fn) { try { return await fn(); } catch (e) { if (e.status === 401 || (e.status === 403 && /turned off/.test(e.message))) { S = null; M = null; return showLogin(e.status === 403 ? e.message : ''); } toast(e.message, true); } }
+let M = null;                       // the master account's list of hotels (only for the seller)
+async function refresh() {
+  if (!S) { const w = await api('/auth/whoami'); if (w.user.role === 'master' && !w.hotel) { S = null; return masterLoad(w.user); } M = null; }
+  S = await api('/state'); if (!view.tapeStart) view.tapeStart = S.config.bdate; render();
+}
 
 /* ---------- helpers on the data ---------- */
 const B = () => S.config.bdate;
+const boss = () => ['owner', 'manager'].includes(S.me.role);
 const active = () => S.res.filter(r => r.status === 'reserved' || r.status === 'inhouse');
 const cond = no => (S.roomstate[no] || {}).cond || 'R';
 const isOOO = (no, d) => S.blocks.some(b => b.room === no && b.start <= d && d <= b.end);
@@ -43,25 +48,59 @@ function availOfType(type, from, to, exceptId) {
 const statusBadge = r => ({ reserved: '<span class="badge b">Reserved</span>', inhouse: r.depart <= B() ? '<span class="badge a">Due out</span>' : '<span class="badge g">In House</span>', out: '<span class="badge s">Checked out</span>', cancelled: '<span class="badge r">Cancelled</span>', noshow: '<span class="badge r">No show</span>' }[r.status] || '');
 const condBtns = no => `<span class="cond">${['R', 'C', 'D'].map(k => `<button class="${k} ${cond(no) === k ? 'on' : ''}" data-act="cond" data-room="${esc(no)}" data-cond="${k}" title="${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[k]}">${k}</button>`).join('')}</span>`;
 
-/* ---------- sign in and first setup ---------- */
-async function showLogin() {
-  let need = { needed: false }; try { need = await api('/setup-needed'); } catch (e) { /* show sign in */ }
-  const setup = need.needed;
-  $('#modal').innerHTML = '';
-  $('#app').innerHTML = `<form class="login" id="lf"><h1>Hotel Desk</h1>
-    ${setup ? (need.owner ? '<p class="hint">Welcome. Create the first manager login for your hotel.</p><label>Hotel name<input id="lh" maxlength="80" required></label><label>Your name<input id="ln" maxlength="80"></label>'
-      : '<p class="hint">The hotel is not set up yet. The website owner sets it up: sign in to <a href="/books/">Ledger Desk</a> as the owner, then come back to this page.</p>') : '<p class="hint">Sign in to the front desk.</p>'}
-    <label>User name<input id="lu" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" required></label>
-    <label>Password${setup ? ' (at least 8 characters)' : ''}<input id="lp" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required></label>
-    <div class="err" id="le"></div><button class="btn blue" type="submit">${setup ? 'Set up the hotel' : 'Sign in'}</button></form>`;
+/* ---------- sign in, forgot password, choose a password from an e-mailed link ---------- */
+const urlToken = () => { const t = new URLSearchParams(location.search).get('t'); return t && /^[a-f0-9]{64}$/.test(t) ? t : ''; };
+async function showLogin(msg, mode) {
+  $('#modal').innerHTML = ''; const token = urlToken(); let h = '', tk = null, need = { needed: false };
+  if (token && !mode) { try { tk = await api('/auth/token-check', { token }); mode = 'token'; } catch (e) { msg = e.message; history.replaceState(null, '', location.pathname); } }
+  if (!mode) { try { need = await api('/auth/setup-needed'); } catch (e) { /* show sign in */ } if (need.needed) mode = 'setup'; }
+  const pw = (label, auto) => `<label>${label}<input id="lp" type="password" autocomplete="${auto}" required></label>`;
+  if (mode === 'setup') h = need.owner ? `<p class="hint">Welcome. Make your <b>master account</b>. You'll use it to add hotels, give each owner their login, and turn a hotel off or on.</p><label>Your name<input id="ln" maxlength="80" required></label><label>Your e-mail address<input id="lu" type="email" autocomplete="username" required></label>${pw('Password (at least 8 characters)', 'new-password')}<button class="btn blue" type="submit">Make the master account</button>`
+    : '<p class="hint">Hotel Desk is not set up yet. The website owner sets it up: sign in to <a href="/books/">Ledger Desk</a> as the owner, then come back to this page.</p>';
+  else if (mode === 'forgot') h = `<p class="hint">Type your e-mail address. We'll send you a link to choose a new password.</p><label>E-mail address<input id="lu" type="email" autocomplete="username" required></label><button class="btn blue" type="submit">Send the link</button><p class="hint" style="margin-top:14px"><a href="#" data-act="loginBack">Back to sign in</a></p>`;
+  else if (mode === 'sent') h = `<p>If <b>${esc(msg)}</b> has a Hotel Desk login, a link is on its way. It works for 60 minutes. Check the spam folder too.</p><p class="hint">No e-mail after a few minutes? Ask your manager (or the hotel's owner) to send you a new link from Setup › Logins.</p><p class="hint" style="margin-top:14px"><a href="#" data-act="loginBack">Back to sign in</a></p>`;
+  else if (mode === 'token') h = `<p class="hint">${tk.kind === 'invite' ? 'Welcome, ' + esc(tk.name) + '. Choose a password for your Hotel Desk login.' : 'Choose a new password.'}</p><label>E-mail address<input value="${esc(tk.email)}" autocomplete="username" disabled></label>${pw('New password (at least 8 characters)', 'new-password')}<label>Type it again<input id="lp2" type="password" autocomplete="new-password" required></label><button class="btn blue" type="submit">Save password and sign in</button>`;
+  else h = `<p class="hint">Sign in to the front desk.</p><label>E-mail address<input id="lu" type="email" autocomplete="username" required></label>${pw('Password', 'current-password')}<button class="btn blue" type="submit">Sign in</button><p class="hint" style="margin-top:14px"><a href="#" data-act="forgot">Forgot your password?</a></p>`;
+  $('#app').innerHTML = `<form class="login" id="lf"><h1>Hotel Desk</h1>${h}<div class="err" id="le">${mode === 'sent' ? '' : esc(msg || '')}</div></form>`;
   $('#lf').onsubmit = async e => {
     e.preventDefault(); $('#le').textContent = '';
     try {
-      if (setup) await api('/setup', { username: $('#lu').value, password: $('#lp').value, name: $('#ln') ? $('#ln').value : '', hotel: $('#lh') ? $('#lh').value : '', today: localToday() });
-      else await api('/login', { username: $('#lu').value, password: $('#lp').value });
+      if (mode === 'setup') await api('/master/setup', { email: $('#lu').value, password: $('#lp').value, name: $('#ln').value });
+      else if (mode === 'forgot') { const em = $('#lu').value.trim(); await api('/auth/forgot', { email: em }); return showLogin(em, 'sent'); }
+      else if (mode === 'token') { if ($('#lp').value !== $('#lp2').value) throw new Error('The two passwords are not the same.'); await api('/auth/reset', { token, password: $('#lp').value }); history.replaceState(null, '', location.pathname); }
+      else await api('/auth/login', { email: $('#lu').value, password: $('#lp').value });
       await refresh();
-    } catch (x) { $('#le').textContent = x.message; }
+    } catch (x) { if (x.status === 403 && /turned off/.test(x.message)) history.replaceState(null, '', location.pathname); $('#le').textContent = x.message; }
   };
+}
+function linkBox(title, r, email) {   // shows the "choose your password" link after a login is made
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox"><div class="mtitle">${esc(title)}</div><p>${r.sent ? 'We e-mailed the link to <b>' + esc(email) + '</b>.' : '<b>The e-mail could not be sent</b> (e-mail is not set up yet, or the address refused it).'} ${r.sent ? 'You can also copy it and send it yourself:' : 'Copy this link and send it to ' + esc(email) + ' yourself:'}</p><textarea id="linkTxt" rows="3" readonly style="font-family:Consolas,monospace;font-size:13px">${esc(r.link)}</textarea><p class="hint">The link lets that person choose their password. It works for 7 days, one time. Send it only to them.</p><div class="mfoot"><button class="btn blue" data-act="copyLink">Copy link</button><button class="btn" data-act="closeModal">Done</button></div></div></div>`;
+}
+function pwBox() { $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle">My password</div><div class="grid"><label class="c12">Current password<input type="password" id="pw_old" autocomplete="current-password"></label><label class="c12">New password (8 or more)<input type="password" id="pw_new" autocomplete="new-password"></label></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="pwSave">Change password</button></div></div></div>`; }
+
+/* ---------- master account: the hotels you sell to ---------- */
+async function masterLoad(user) { const r = await api('/master/hotels'); M = { user: user || (M && M.user), hotels: r.hotels, mail: r.mail }; masterDraw(); }
+function masterDraw() {
+  const today = localToday(), on = M.hotels.filter(h => h.status === 'active').length;
+  $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">Hotel Desk · Master account</div><nav></nav><div class="who"><b>${esc(M.user.name)}</b><a href="#" data-act="myPw" style="color:#8fb4ff">My password</a> · <a href="#" data-act="logout" style="color:#8fb4ff">Sign out</a></div></header>
+  <main><h1>Hotels</h1><div class="bar"><button class="btn green" data-act="mHotelNew">+ Add a hotel</button><button class="btn" data-act="mMail">E-mail settings${M.mail.user && M.mail.hasPass ? '' : ' (not set up)'}</button><span class="hint">${M.hotels.length} hotels · ${on} on · ${M.hotels.length - on} off</span></div>
+  ${M.mail.user && M.mail.hasPass ? '' : '<div class="card" style="margin-bottom:12px;border-color:var(--amber)"><b>E-mail is not set up yet.</b> Until it is, "Forgot password" and new-login e-mails cannot be sent. You can still copy each new login\'s link and send it yourself. Click E-mail settings to set it up.</div>'}
+  ${M.hotels.length ? `<div class="wrap"><table><tr><th>Hotel</th><th>Owner</th><th>Status</th><th>Paid through</th><th class="num">Logins</th><th>Note</th><th></th></tr>${M.hotels.map(h => `<tr><td><b>${esc(h.name)}</b><br><span class="hint">since ${new Date(h.created).toLocaleDateString()}</span></td><td>${esc(h.ownerName)}<br><span class="hint">${esc(h.ownerEmail)}${h.ownerSignedIn ? '' : ' · has not signed in yet'}</span></td>
+    <td>${h.status === 'active' ? '<span class="badge g">ON</span>' : '<span class="badge r">OFF</span>'}</td><td>${h.paidThrough ? dshort(h.paidThrough) + (h.paidThrough < today ? ' <span class="badge r">past due</span>' : '') : ''}</td><td class="num">${h.users}</td><td>${esc(h.note || '')}</td>
+    <td><div class="acts">${h.status === 'active' ? `<button class="btn sm red" data-act="mStatus" data-id="${h.id}" data-to="off">Turn off</button>` : `<button class="btn sm green" data-act="mStatus" data-id="${h.id}" data-to="active">Turn on</button>`}<button class="btn sm" data-act="mHotelEdit" data-id="${h.id}">Edit</button><button class="btn sm" data-act="mOpen" data-id="${h.id}">Open</button><button class="btn sm" data-act="mInvite" data-id="${h.id}">Owner link</button></div></td></tr>`).join('')}</table></div>` : '<div class="empty">No hotels yet. Click "Add a hotel" to make the first one.</div>'}
+  <p class="hint" style="margin-top:14px"><b>Turn off</b> is the kill switch: everyone at that hotel is signed out at once and nobody there can sign in until you turn it on again. Their data is kept. <b>Open</b> lets you go into a hotel as its owner (to help them or set it up). <b>Owner link</b> makes a fresh link for the owner to choose a password.</p></main>`;
+}
+function mHotelBox(h) {
+  const n = !h; h = h || { name: '', paidThrough: '', note: '' };
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox"><div class="mtitle">${n ? 'Add a hotel' : 'Edit ' + esc(h.name)}</div><div class="grid"><label class="c12">Hotel name<input id="mh_name" maxlength="80" value="${esc(h.name)}"></label>
+    ${n ? `<label class="c6">Owner's name<input id="mh_ownerName" maxlength="80"></label><label class="c6">Owner's e-mail address<input id="mh_ownerEmail" type="email" maxlength="120"></label><label class="c6">Start with<select id="mh_template"><option value="blank">A blank hotel (owner adds rooms)</option><option value="ky55">My hotel's 55 rooms, rates and taxes</option></select></label><label class="c6">Time zone<select id="mh_tz">${[['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']].map(z => `<option value="${z[0]}">${z[1]}</option>`).join('')}</select></label>` : ''}
+    <label class="c6">Paid through (for your records)<input type="date" id="mh_paid" value="${esc(h.paidThrough || '')}"></label><label class="c12">Note (only you see it)<input id="mh_note" maxlength="500" value="${esc(h.note || '')}"></label></div>
+    ${n ? '<p class="hint" style="margin:10px 0 0">The owner gets a link to choose their password. Then they sign in and make logins for their general manager and employees.</p>' : ''}
+    <div class="err" id="mh_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="mHotelSave" data-id="${esc(h.id || '')}">${n ? 'Add hotel' : 'Save'}</button></div></div></div>`;
+}
+function mMailBox() {
+  const m = M.mail;
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox"><div class="mtitle">E-mail settings</div><p class="hint">Hotel Desk sends "choose your password" and "forgot password" e-mails from this address. For Gmail: use an <b>app password</b> (myaccount.google.com/apppasswords), not your normal password.</p><div class="grid"><label class="c6">Send from (e-mail address)<input id="mm_user" type="email" value="${esc(m.user)}" maxlength="120"></label><label class="c6">App password ${m.hasPass ? '(saved; blank = keep)' : ''}<input id="mm_pass" type="password" autocomplete="new-password"></label><label class="c6">Sender name<input id="mm_fromName" value="${esc(m.fromName)}" maxlength="60"></label><label class="c3">Mail server<input id="mm_host" value="${esc(m.host)}"></label><label class="c3">Port<input id="mm_port" value="${esc(m.port)}"></label></div><div class="err" id="mm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Close</button><button class="btn" data-act="mMailTest">Save and send me a test</button><button class="btn green" data-act="mMailSave">Save</button></div></div></div>`;
 }
 
 /* ---------- the frame ---------- */
@@ -69,7 +108,8 @@ const NAV = [['home', 'Home'], ['tape', 'Tape Chart'], ['arrivals', 'Arrivals'],
 function render() {
   if (!S || drawing) return;
   const hk = S.me.role === 'hk'; if (hk) view.name = 'hk';
-  const nav = NAV.filter(n => hk ? n[0] === 'hk' : n[0] !== 'setup' || S.me.role === 'manager');
+  const nav = NAV.filter(n => hk ? n[0] === 'hk' : n[0] !== 'setup' || boss());
+  if (!boss() && view.name === 'setup') view.name = 'home';
   const keep = $('main') ? $('main').scrollTop : 0, keepX = $('main') ? $('main').scrollLeft : 0, focusId = document.activeElement && document.activeElement.id;
   drawing = true; try { paint(hk, nav); } finally { drawing = false; }
   $('main').scrollTop = keep; $('main').scrollLeft = keepX;
@@ -80,7 +120,7 @@ function paint(hk, nav) {
   $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div>
     <nav>${nav.map(n => `<button data-nav="${n[0]}" class="${view.name === n[0] ? 'on' : ''}">${n[1]}</button>`).join('')}</nav>
     ${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #"><button class="btn sm green" data-act="newRes">+ Reservation</button><button class="btn sm teal" data-act="walkIn">Walk-In</button>'}
-    <div class="who"><b>${esc(dshort(B()))}</b>${esc(S.me.name)} · <a href="#" data-act="logout" style="color:#8fb4ff">Sign out</a></div></header>
+    ${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}<div class="who"><b>${esc(dshort(B()))}</b>${esc(S.me.name)} · <a href="#" data-act="myPw" style="color:#8fb4ff">My password</a> · <a href="#" data-act="logout" style="color:#8fb4ff">Sign out</a></div></header>
     <main>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind }[view.name] || vHome)()}</main>`;
 }
 
@@ -241,7 +281,7 @@ async function resAction(act) {
   const r = ED.r, done = async msg => { await refresh(); toast(msg); const fresh = S.res.find(x => x.id === r.id); if (fresh) { ED.r = JSON.parse(JSON.stringify(fresh)); drawRes(); } else { $('#modal').innerHTML = ''; ED = null; } };
   try {
     if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); await op('resSave', (({ status, history, ...a }) => a)(r)); try { await op('checkIn', { id: r.id }); } catch (e) { if (e.status === 412 && confirm(e.message)) await op('checkIn', { id: r.id, dirtyOk: true }); else throw e; } await done('Checked in to room ' + r.room + '.'); }
-    else if (act === 'checkOut') { try { await op('checkOut', { id: r.id }); } catch (e) { if (e.status === 412 && S.me.role === 'manager' && confirm(e.message + '\n\nCheck out anyway and leave the balance on the folio?')) await op('checkOut', { id: r.id, force: true }); else if (e.status === 412) { toast(e.message, true); return openFolio(r.id); } else throw e; } await done('Checked out.'); }
+    else if (act === 'checkOut') { try { await op('checkOut', { id: r.id }); } catch (e) { if (e.status === 412 && boss() && confirm(e.message + '\n\nCheck out anyway and leave the balance on the folio?')) await op('checkOut', { id: r.id, force: true }); else if (e.status === 412) { toast(e.message, true); return openFolio(r.id); } else throw e; } await done('Checked out.'); }
     else if (act === 'undoCheckIn') { if (confirm('Undo the check-in for ' + gname(r) + '?')) { await op('undoCheckIn', { id: r.id }); await done('Check-in undone.'); } }
     else if (act === 'undoCheckOut') { await op('undoCheckOut', { id: r.id }); await done('Guest is back in house.'); }
     else if (act === 'cancelRes') { const why = prompt('Cancel the reservation for ' + gname(r) + '?\nReason (optional):', ''); if (why !== null) { const x = await op('cancel', { id: r.id, reason: why }); await done('Cancelled. Cancellation # ' + x.cxlNo); } }
@@ -293,7 +333,7 @@ const REPORTS = [['arrivals', 'Arrival List'], ['departures', 'Departure List'],
 function vReports() {
   if (!view.from) view.from = view.to = B();
   const needDates = (REPORTS.find(r => r[0] === view.rep) || [])[2];
-  return `<h1>Reports</h1><div class="bar">${S.me.role === 'manager' ? '<button class="btn red" data-act="nightAudit">Run Night Audit…</button>' : ''}<span class="hint">Business date ${dlong(B())}</span></div>
+  return `<h1>Reports</h1><div class="bar">${boss() ? '<button class="btn red" data-act="nightAudit">Run Night Audit…</button>' : ''}<span class="hint">Business date ${dlong(B())}</span></div>
   <div class="acts" style="margin-bottom:12px">${REPORTS.map(r => `<button class="btn sm ${view.rep === r[0] ? 'blue' : ''}" data-act="rep" data-rep="${r[0]}">${r[1]}</button>`).join('')}</div>
   ${view.rep ? `<div class="bar">${needDates ? `<span class="hint">From</span><input type="date" id="repFrom" value="${view.from}"><span class="hint">to</span><input type="date" id="repTo" value="${view.to}">` : ''}<button class="btn sm" data-act="printRep">Print</button></div><div class="wrap" id="repOut" style="padding:12px"><div class="hint">Loading…</div></div>` : '<div class="empty">Pick a report.</div>'}`;
 }
@@ -332,16 +372,16 @@ const SETUP = [['property', 'Property'], ['types', 'Room types and rates'], ['ro
 function vSetup() {
   const c = S.config; let body = '';
   const save = '<div class="mfoot" style="justify-content:flex-start"><button class="btn green" data-act="setupSave">Save</button></div>';
-  if (view.setup === 'property') body = `<div class="grid card"><label class="c6">Hotel name<input id="s_name" value="${esc(c.name)}" maxlength="80"></label><label class="c6">Phone<input id="s_phone" value="${esc(c.phone)}" maxlength="40"></label><label class="c12">Address<input id="s_address" value="${esc(c.address)}" maxlength="200"></label><label class="c3">Check-in time<input id="s_checkinTime" value="${esc(c.checkinTime)}"></label><label class="c3">Check-out time<input id="s_checkoutTime" value="${esc(c.checkoutTime)}"></label><label class="c12">Words on the registration card<textarea id="s_regText" rows="3" maxlength="1500">${esc(c.regText)}</textarea></label></div>${save}
-    <h2>My password</h2><div class="grid card"><label>Current password<input type="password" id="pw_old" autocomplete="current-password"></label><label>New password (8 or more)<input type="password" id="pw_new" autocomplete="new-password"></label><label style="justify-content:flex-end"><button class="btn" data-act="pwSave">Change password</button></label></div>`;
+  if (view.setup === 'property') body = `<div class="grid card"><label class="c6">Hotel name<input id="s_name" value="${esc(c.name)}" maxlength="80"></label><label class="c6">Phone<input id="s_phone" value="${esc(c.phone)}" maxlength="40"></label><label class="c12">Address<input id="s_address" value="${esc(c.address)}" maxlength="200"></label><label class="c3">Check-in time<input id="s_checkinTime" value="${esc(c.checkinTime)}"></label><label class="c3">Check-out time<input id="s_checkoutTime" value="${esc(c.checkoutTime)}"></label><label class="c12">Words on the registration card<textarea id="s_regText" rows="3" maxlength="1500">${esc(c.regText)}</textarea></label></div>${save}`;
   else if (view.setup === 'types') body = `<p class="hint">One line per room type: code, name, nightly rate. Example: NK, King, 80.00</p><textarea id="s_types" rows="12" class="card" style="font-family:Consolas,monospace">${esc(c.types.map(t => `${t.code}, ${t.name}, ${(t.rate / 100).toFixed(2)}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'rooms') body = `<p class="hint">One line per room: room number, room type code, floor. Example: 101, NK, 1 &nbsp;(${c.rooms.length} rooms now)</p><textarea id="s_rooms" rows="18" class="card" style="font-family:Consolas,monospace">${esc(c.rooms.map(r => `${r.no}, ${r.type}, ${r.floor}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'taxes') body = `<p class="hint">One line per tax: code, name, percent. Example: T1, State Tax, 6.24</p><textarea id="s_taxes" rows="6" class="card" style="font-family:Consolas,monospace">${esc(c.taxes.map(t => `${t.code}, ${t.name}, ${t.pct}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'codes') body = `<p class="hint">One line per code: code, name, type, taxes that apply (separated by spaces). Types: ROOM and MISC are charges; CASH, CRED, AREC and GFTCRD are payments; ADMIN is for write-offs. Keep RM (the night audit posts it).</p><textarea id="s_codes" rows="20" class="card" style="font-family:Consolas,monospace">${esc(c.codes.map(k => `${k.code}, ${k.name}, ${k.type}, ${(k.tax || []).join(' ')}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'hks') body = `<p class="hint">One housekeeper's name per line.</p><textarea id="s_hks" rows="8" class="card">${esc(c.housekeepers.join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'users') body = `<div id="usersBox" class="hint">Loading…</div><h2>Add or change a login</h2><div class="grid card"><label class="c3">User name<input id="u_username" autocapitalize="off" maxlength="32"></label><label class="c3">Name<input id="u_name" maxlength="80"></label><label class="c3">Role<select id="u_role"><option value="desk">Front desk</option><option value="manager">Manager</option><option value="hk">Housekeeping only</option></select></label><label class="c3">Password (blank = keep)<input id="u_password" type="password" autocomplete="new-password"></label><label class="chk c3"><input type="checkbox" id="u_disabled">Turned off</label><label class="c3"><button class="btn green" data-act="userSave">Save login</button></label></div>`;
+  else if (view.setup === 'users') body = `<p class="hint">Everyone signs in with their own e-mail address. A new person gets a link to choose their password, and can reset it later with "Forgot your password?" on the sign-in page.</p><div id="usersBox" class="hint">Loading…</div><h2>Add or change a login</h2><div class="grid card"><label>E-mail address<input id="u_email" type="email" autocapitalize="off" maxlength="120"></label><label class="c3">Name<input id="u_name" maxlength="80"></label><label class="c3">Role<select id="u_role"></select></label><label class="chk c2"><input type="checkbox" id="u_disabled">Turned off</label><label class="c12" style="flex-direction:row;gap:8px"><button class="btn green" data-act="userSave">Save login</button><button class="btn" data-act="userInvite">Send a new password link</button></label></div>`;
   else if (view.setup === 'ooo') body = `<div class="bar"><button class="btn red" data-act="blockNew">Take a room out of order…</button></div><div class="wrap"><table><tr><th>Room</th><th>From</th><th>Through</th><th>Reason</th><th></th></tr>${S.blocks.map(b => `<tr><td><b>${esc(b.room)}</b></td><td>${dshort(b.start)}</td><td>${dshort(b.end)}</td><td>${esc(b.reason)}</td><td><button class="btn sm" data-act="blockRemove" data-id="${b.id}">Put back in order</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No rooms are out of order.</td></tr>'}</table></div>`;
-  if (view.setup === 'users') setTimeout(async () => { const box = $('#usersBox'); if (!box) return; try { const u = (await api('/users')).users; box.innerHTML = `<div class="wrap"><table><tr><th>User name</th><th>Name</th><th>Role</th><th>Status</th></tr>${u.map(x => `<tr class="click" data-act="userPick" data-u="${esc(JSON.stringify(x))}"><td><b>${esc(x.username)}</b></td><td>${esc(x.name)}</td><td>${{ manager: 'Manager', desk: 'Front desk', hk: 'Housekeeping only' }[x.role]}</td><td>${x.disabled ? '<span class="badge r">Off</span>' : '<span class="badge g">On</span>'}</td></tr>`).join('')}</table></div>`; } catch (e) { box.textContent = e.message; } }, 0);
+  if (view.setup === 'users') setTimeout(async () => { const box = $('#usersBox'); if (!box) return; try { const R = await api('/account/users'), names = { owner: 'Owner', manager: 'Manager (GM)', desk: 'Front desk', hk: 'Housekeeping only' }; $('#u_role').innerHTML = R.may.map(r => `<option value="${r}">${names[r]}</option>`).join(''); if (R.may.includes('desk')) $('#u_role').value = 'desk';
+    box.innerHTML = `<div class="wrap"><table><tr><th>Name</th><th>E-mail address</th><th>Role</th><th>Status</th><th>Last sign-in</th></tr>${R.users.map(x => `<tr class="click" data-act="userPick" data-u="${esc(JSON.stringify(x))}"><td><b>${esc(x.name)}</b></td><td>${esc(x.email)}</td><td>${names[x.role]}</td><td>${x.disabled ? '<span class="badge r">Off</span>' : x.hasPassword ? '<span class="badge g">On</span>' : '<span class="badge a">Has not chosen a password yet</span>'}</td><td>${x.lastLogin ? stamp(x.lastLogin) : ''}</td></tr>`).join('')}</table></div>${R.mailOn ? '' : '<p class="hint">E-mail sending is not set up yet, so copy each new login\'s link and send it yourself.</p>'}`; } catch (e) { box.textContent = e.message; } }, 0);
   return `<h1>Setup</h1><div class="acts" style="margin-bottom:12px">${SETUP.map(s => `<button class="btn sm ${view.setup === s[0] ? 'blue' : ''}" data-act="setupTab" data-tab="${s[0]}">${s[1]}</button>`).join('')}</div>${body}`;
 }
 async function setupSave() {
@@ -364,7 +404,20 @@ document.addEventListener('click', async e => {
   const nav = e.target.closest('[data-nav]'); if (nav) { view.name = nav.dataset.nav; view.q = ''; render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
   if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
-  if (a === 'logout') return run(async () => { await api('/logout', {}); S = null; showLogin(); });
+  if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
+  if (a === 'forgot') return showLogin('', 'forgot');
+  if (a === 'loginBack') return showLogin('', 'signin');
+  if (a === 'myPw') return pwBox();
+  if (a === 'copyLink') { const t = $('#linkTxt'); t.select(); try { await navigator.clipboard.writeText(t.value); toast('Link copied.'); } catch (x) { document.execCommand('copy'); toast('Link copied.'); } return; }
+  if (a === 'mHotelNew') return mHotelBox();
+  if (a === 'mHotelEdit') return mHotelBox(M.hotels.find(h => h.id === el.dataset.id));
+  if (a === 'mHotelSave') { try { const id = el.dataset.id, email = id ? '' : $('#mh_ownerEmail').value.trim(); const r = await api('/master/hotelSave', id ? { id, name: $('#mh_name').value, paidThrough: $('#mh_paid').value, note: $('#mh_note').value } : { name: $('#mh_name').value, ownerName: $('#mh_ownerName').value, ownerEmail: email, template: $('#mh_template').value, tz: $('#mh_tz').value, paidThrough: $('#mh_paid').value, note: $('#mh_note').value }); $('#modal').innerHTML = ''; await masterLoad(); if (r.link) linkBox('Hotel added. Send the owner their link', r, email); else toast('Saved.'); } catch (x) { $('#mh_err').textContent = x.message; } return; }
+  if (a === 'mStatus') return run(async () => { const h = M.hotels.find(x => x.id === el.dataset.id), off = el.dataset.to === 'off'; if (off && !confirm('Turn OFF ' + h.name + '?\n\nEveryone there is signed out right now and nobody at that hotel can sign in until you turn it back on. Their data is kept.')) return; await api('/master/status', { id: h.id, status: el.dataset.to }); await masterLoad(); toast(h.name + (off ? ' is OFF.' : ' is ON.'), off); });
+  if (a === 'mInvite') return run(async () => { const h = M.hotels.find(x => x.id === el.dataset.id); if (!confirm('Make a new "choose your password" link for ' + h.ownerEmail + '?')) return; linkBox('Owner link for ' + h.name, await api('/master/ownerInvite', { id: h.id }), h.ownerEmail); });
+  if (a === 'mOpen') return run(async () => { await api('/master/open', { id: el.dataset.id }); M = null; S = null; view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: 'property' }; await refresh(); });
+  if (a === 'mClose') return run(async () => { await api('/master/close', {}); S = null; $('#modal').innerHTML = ''; await refresh(); });
+  if (a === 'mMail') return mMailBox();
+  if (a === 'mMailSave' || a === 'mMailTest') { try { await api('/master/mail', { user: $('#mm_user').value, pass: $('#mm_pass').value, fromName: $('#mm_fromName').value, host: $('#mm_host').value, port: $('#mm_port').value }); if (a === 'mMailTest') { $('#mm_err').textContent = 'Sending…'; const r = await api('/master/mailTest', {}); $('#mm_err').textContent = ''; toast('Test e-mail sent to ' + r.to + '.'); } else toast('Saved.'); const keep = a === 'mMailTest'; await masterLoad(); if (keep) mMailBox(); else $('#modal').innerHTML = ''; } catch (x) { $('#mm_err').textContent = x.message; } return; }
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
   if (a === 'openRes') return run(() => openRes(el.dataset.id));
@@ -387,9 +440,10 @@ document.addEventListener('click', async e => {
   if (a === 'nightAudit') return nightAudit();
   if (a === 'setupTab') { view.setup = el.dataset.tab; return render(); }
   if (a === 'setupSave') return setupSave();
-  if (a === 'pwSave') return run(async () => { await op('password', { old: $('#pw_old').value, new: $('#pw_new').value }); $('#pw_old').value = $('#pw_new').value = ''; toast('Password changed.'); });
-  if (a === 'userPick') { const u = JSON.parse(el.dataset.u); $('#u_username').value = u.username; $('#u_name').value = u.name; $('#u_role').value = u.role; $('#u_disabled').checked = u.disabled; $('#u_password').value = ''; return; }
-  if (a === 'userSave') return run(async () => { await op('userSave', { username: $('#u_username').value, name: $('#u_name').value, role: $('#u_role').value, password: $('#u_password').value, disabled: $('#u_disabled').checked }); toast('Login saved.'); render(); });
+  if (a === 'pwSave') return run(async () => { await api('/account/password', { old: $('#pw_old').value, new: $('#pw_new').value }); $('#modal').innerHTML = ''; toast('Password changed.'); });
+  if (a === 'userPick') { const u = JSON.parse(el.dataset.u); $('#u_email').value = u.email; $('#u_name').value = u.name; if ([...$('#u_role').options].some(o => o.value === u.role)) $('#u_role').value = u.role; $('#u_disabled').checked = u.disabled; return; }
+  if (a === 'userSave') return run(async () => { const email = $('#u_email').value.trim(); const r = await api('/account/userSave', { email, name: $('#u_name').value, role: $('#u_role').value, disabled: $('#u_disabled').checked }); render(); if (r.link) linkBox('Login made. Send them their link', r, email); else toast('Login saved.'); });
+  if (a === 'userInvite') return run(async () => { const email = $('#u_email').value.trim(); if (!email) throw new Error('Click a login in the list first.'); linkBox('New password link', await api('/account/userInvite', { email }), email); });
   if (a === 'blockNew') return blockNew();
   if (a === 'blockSave') return run(async () => { await op('blockAdd', { room: $('#b_room').value, start: $('#b_start').value, end: $('#b_end').value, reason: $('#b_reason').value }); $('#modal').innerHTML = ''; await refresh(); toast('Room is out of order.'); });
   if (a === 'blockRemove') return run(async () => { await op('blockRemove', { id: +el.dataset.id }); await refresh(); });
@@ -405,8 +459,8 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => { if (e.target.id === 'q') { view.q = e.target.value; render(); } });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'find') return run(async () => { view.findQ = e.target.value.trim(); view.found = (await api('/find?q=' + encodeURIComponent(view.findQ))).list; view.name = 'find'; render(); });
-  if (e.key === 'Escape' && $('#modal').innerHTML) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
+  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.
-setInterval(() => { if (S && !$('#modal').innerHTML && document.visibilityState === 'visible' && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) refresh().catch(() => { }); }, 20000);
-refresh().catch(() => showLogin());
+setInterval(() => { if (S && !M && !$('#modal').innerHTML && document.visibilityState === 'visible' && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) refresh().catch(e => { if (e.status === 401 || e.status === 403) { S = null; showLogin(e.status === 403 ? e.message : ''); } }); }, 20000);
+refresh().catch(e => showLogin(e.status === 403 ? e.message : ''));

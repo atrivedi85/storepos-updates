@@ -23,14 +23,26 @@ the hotel's old system did, in the Store POS look.
   were due out but not checked out, sets occupied rooms Dirty, saves the day's statistics and moves the business date forward.
 - **Setup** (manager): property, room types and rates, rooms, taxes, posting codes, housekeepers, logins, out-of-order rooms.
 
+## Selling it to many hotels: master account, logins, kill switch
+
+- `cloud/src/hotel-dir.js` is the **directory**: every hotel, every login, and the **master account** (the seller).
+  Each hotel's data is in its own Durable Object (`h:<hotel id>`), so hotels never see each other.
+- **Master account**: made once at `/hotel` by the website owner while signed in to Ledger Desk as the owner.
+  Its screen lists the hotels: Add a hotel (name, owner's name and e-mail, blank or "my hotel's 55 rooms", time zone),
+  **Turn off / Turn on** (the kill switch: signs everyone at that hotel out at once and blocks sign-in and password reset;
+  data is kept), Edit (paid-through date and a note, for the seller's records), Open (go in as the owner), Owner link, E-mail settings.
+- **Roles**: master → owner → manager (GM) → desk, hk. The owner makes manager, desk and hk logins; a manager makes desk and hk.
+- **Sign-in is by e-mail address.** A new login gets a "choose your password" link (7 days, one use), e-mailed and also shown to copy.
+  "Forgot your password?" e-mails a link (60 minutes, one use, at most 3 an hour). One e-mail address = one login, in one hotel.
+- **E-mail** goes out through the SMTP account the master types into E-mail settings (Gmail + app password), using Ledger Desk's `sendMail`.
+- Session cookie `hd_s`, Path=/hotel, 14 days. `index.js` strips every `x-hd-*` header from browsers and adds its own.
+
 ## Rules worth knowing
 
 - Money is kept in cents. Each tax is `round(amount × percent)`, per line.
-- Roles: `manager` (everything), `desk` (no setup, no night audit, adjustments up to $200), `hk` (housekeeping screen only).
+- Inside a hotel: owner and manager can do everything; `desk` has no setup, no night audit, adjustments up to $200; `hk` only housekeeping.
 - **Card numbers are never stored**: only the card type and last 4 digits. Cards are run on the card terminal.
-- The first manager login is made at `/hotel` by the website owner while signed in to Ledger Desk as the owner. Managers make all other logins.
-- A new hotel starts with the starter rooms, types, taxes and codes in `starterConfig()` (hotel-core.js); change them in Setup.
-- Not built yet: company profiles and direct-bill accounts, group blocks, packages, rate plans by date, online booking, card terminal link.
+- A new hotel starts from `starterConfig()` (hotel-core.js): blank (3 sample room types, no rooms, taxes at 0%) or the 55-room template.
 
 ## Test before pushing
 

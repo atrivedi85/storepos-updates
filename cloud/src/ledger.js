@@ -77,7 +77,7 @@ const totpOk = (secret, code) => { const st = Math.floor(Date.now() / 30000); co
 const maskEmail = e => String(e || '').replace(/^(.)(.*)(.@.*)$/, (m, a, b, c) => a + '•'.repeat(Math.min(6, b.length)) + c);
 
 /* ---------- email (SMTP over Cloudflare's TCP sockets: Gmail with an app password, port 465) ---------- */
-async function sendMail(cfg, msg) {
+export async function sendMail(cfg, msg) {
   const host = cfg.host, port = Number(cfg.port) || 465;
   const sock = connect({ hostname: host, port }, { secureTransport: port === 465 ? 'on' : 'starttls', allowHalfOpen: false });
   let s = sock;
