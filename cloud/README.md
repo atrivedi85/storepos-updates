@@ -9,3 +9,10 @@ A tiny relay on Cloudflare Workers (free plan). One Durable Object per store.
 
 Deployed by `.github/workflows/cloud.yml` when `cloud/**` changes (needs repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`).
 The registers learn the server address from `cloudUrl` in `latest.json`.
+
+## Hotel Desk (`/hotel`)
+
+`src/hotel.js` is the `Hotel` Durable Object (one object, "main") and `src/hotel-core.js` holds all the rules and storage
+(rooms, reservations, folios, housekeeping, night audit, reports, logins). `/hotel/api/*` goes to it; the screens are `hotel/app/`.
+The first manager login can only be made by the website owner: `index.js` asks Ledger Desk (`/api/me`) whether the browser is
+signed in there as the owner and only then lets `/hotel/api/setup` through. See `hotel/README.md`.

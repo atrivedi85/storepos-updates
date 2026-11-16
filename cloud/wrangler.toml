@@ -16,6 +16,10 @@ class_name = "Hub"
 name = "LEDGER"
 class_name = "Ledger"
 
+[[durable_objects.bindings]]
+name = "HOTEL"
+class_name = "Hotel"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Hub"]
@@ -23,6 +27,10 @@ new_sqlite_classes = ["Hub"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Ledger"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Hotel"]
 
 # The web back office (the POS screens + web-shim.js), copied in by the deploy workflow.
 [assets]

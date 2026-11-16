@@ -4,6 +4,7 @@
 // never sees — the server only passes sealed messages along, and keeps them for the store PC while it is off.
 import { DurableObject } from 'cloudflare:workers';
 export { Ledger } from './ledger.js';
+export { Hotel } from './hotel.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json', ...CORS } });
@@ -72,6 +73,14 @@ export default {
       const r = await env.ASSETS.fetch(new Request(new URL('/books/login', req.url), { method: 'GET' }));
       if (r.status >= 300 && r.status < 400) { const r2 = await env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/books/login.html', req.url), { method: 'GET' })); return new Response(r2.body, { status: 200, headers: r2.headers }); }
       return r;
+    }
+    // Hotel Desk (trivedipos.com/hotel): its server. Only the website owner (signed in to Ledger Desk as the owner) may set it up.
+    if (path.startsWith('/hotel/api/')) {
+      const h = new Headers(req.headers); h.delete('x-hotel-owner');
+      if (path === '/hotel/api/setup' || path === '/hotel/api/setup-needed') {
+        try { const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/me', req.url), { headers: { cookie: req.headers.get('cookie') || '' } })); if (r.ok && (await r.json()).admin === true) h.set('x-hotel-owner', '1'); } catch (e) { /* not the owner */ }
+      }
+      return env.HOTEL.get(env.HOTEL.idFromName('main')).fetch(new Request(req, { headers: h }));
     }
     if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });

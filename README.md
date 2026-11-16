@@ -18,6 +18,7 @@ after every change, so the NAS always has the complete, current set.
 | `android/` | Android tablet app (Google Play: "Store POS - Retail Register") | `android/README.md` |
 | `cloud/` | **trivedipos.com**: home page, download page, Cloud Sync server, Ledger Desk server | `cloud/README.md` |
 | `ledger/app/` | **Ledger Desk** screens (website version, served at trivedipos.com/books) | `ledger/README.md` |
+| `hotel/app/` | **Hotel Desk** screens (hotel front desk, served at trivedipos.com/hotel); the server is `cloud/src/hotel.js` + `hotel-core.js` | `hotel/README.md` |
 | `ledger/server-pc/` | the old Ledger Desk Server from the golf sim PC (kept for reference) | `ledger/README.md` |
 | `updates/` + `latest.json` | every released Store POS update; registers check `latest.json` automatically | `updates/README.md` |
 | `docs/` | Google Play pictures and the privacy policy page (GitHub Pages) | |
@@ -29,11 +30,12 @@ after every change, so the NAS always has the complete, current set.
 - https://trivedipos.com/download — Store POS for Windows (needs an owner code = license key)
 - https://trivedipos.com/pos — Store POS back office (connect with the Cloud code from the store PC)
 - https://trivedipos.com/books — Ledger Desk (invite only)
+- https://trivedipos.com/hotel — Hotel Desk (logins made by the hotel's manager)
 - Updates for registers: `https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json`
 
 ## How to make a change (checklist)
 
-1. Change the files (Store POS in `source/app/`, Ledger Desk in `ledger/app/`, website/server in `cloud/`).
+1. Change the files (Store POS in `source/app/`, Ledger Desk in `ledger/app/`, Hotel Desk in `hotel/app/`, website/server in `cloud/`).
 2. Test it (see the test tools in the NAS backup, `4 - Test and build tools.zip`).
 3. Store POS change? Raise the version in `source/app/package.json`, then
    `python3 source/tools/build_update.py source/app updates "what changed"`,

@@ -12,5 +12,7 @@ cp ../source/app/lib/pdf.js ../source/app/lib/pdf.worker.js public/pos/lib/
 cp ../source/app/icon.png public/icon.png
 # Ledger Desk (trivedipos.com/books)
 mkdir -p public/books && cp -r ../ledger/app/. public/books/
-printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /books/\nDisallow: /api/\nDisallow: /v1/\n' > public/robots.txt
+# Hotel Desk (trivedipos.com/hotel)
+mkdir -p public/hotel && cp -r ../hotel/app/. public/hotel/
+printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /books/\nDisallow: /hotel/\nDisallow: /api/\nDisallow: /v1/\n' > public/robots.txt
 echo "website ready: $(find public -type f | wc -l) files"
