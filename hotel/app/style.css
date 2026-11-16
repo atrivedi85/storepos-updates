@@ -204,6 +204,22 @@ hr.dash{border:0;border-top:1px dashed #888;margin:20px 0}
 .band .seg .sb{height:46px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:300;font-variant-numeric:tabular-nums}
 .band .seg .sl{display:block;height:22px;line-height:22px;font-size:13px;color:#bdbdbd;white-space:nowrap}
 
+/* ===== Lists: Arrivals, In House, Departures ===== */
+.pgt-c{font-size:44px;font-weight:300;text-align:center;margin:8px 0 14px}
+.lst-empty{color:#e00000;font-size:19px;text-align:center;padding:4px 0 16px}
+.lst-date{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.lst-lbl{color:#7a7a7a;font-size:17px;margin-right:6px}
+.lst-date .btn.sm{min-height:38px;min-width:38px;padding:4px 10px}
+.lst-bar{background:#f3f3f3;padding:14px 18px;display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:12px;font-size:16px}
+.lst-bar b{font-weight:700}
+.lst-q{display:flex;align-items:center;gap:10px;margin:0;color:#555}
+.lst-q input{width:240px;min-height:36px}
+table.lst th{background:#fff;color:#555;border-bottom:1px dashed #333;font-weight:500;font-size:14.5px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:#0a59c9}
+.sarr{color:#c2c8d2;font-size:12px;margin-left:2px}
+.sarr.on{color:#0a59c9}
+
 @page{margin:.5in}
 @media print{
   #print{padding:0}

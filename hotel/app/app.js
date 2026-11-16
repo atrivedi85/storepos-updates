@@ -1,7 +1,7 @@
 // Hotel Desk: the screens. Talks to the server at /hotel/api (cloud/src/hotel-core.js).
 'use strict';
 let S = null;                       // everything the server sent: config, rooms, reservations, balances
-let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', opt: {}, setup: 'property' };
+let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', opt: {}, setup: 'property', listDate: '', listSort: null };
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = c => ((c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -198,20 +198,61 @@ function vTape() {
     <h3>Unassigned Reservations</h3>${un.length ? Object.keys(byDay).sort().map(d => `<div class="uday">Arrival Date: ${new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' })}</div>` + byDay[d].map(r => `<a href="#" class="un" data-act="openRes" data-id="${r.id}"><span>${esc(gname(r))}</span><span>${esc(r.type)}</span><span>${nights(r.arrive, r.depart)}</span></a>`).join('')).join('') : '<p class="hint">None.</p>'}</aside></div>`;
 }
 
-/* ---------- Lists ---------- */
-function listTable(list, cols, emptyMsg) {
-  const q = view.q.trim().toUpperCase(); if (q) list = list.filter(r => (gname(r) + ' ' + r.conf + ' ' + (r.room || '') + ' ' + (r.company || '')).toUpperCase().includes(q));
-  const C = { guest: ['Guest Name', r => `<b>${esc(gname(r))}</b>${r.vip ? ' <span class="badge a">VIP</span>' : ''}`], city: ['City', r => esc(r.city)], zip: ['Postal Code', r => esc(r.zip)], gtd: ['Guarantee', r => esc(r.guarantee || '')], nights: ['Nights', r => nights(r.arrive, r.depart), 1],
-    room: ['Room', r => r.room ? `<b>${esc(r.room)}</b>` : '<span class="badge r">None</span>'], type: ['Type', r => esc(r.type)], cond: ['Condition', r => r.room ? ({ R: '<span class="badge g">Ready</span>', C: '<span class="badge a">Clean</span>', D: '<span class="badge r">Dirty</span>' }[cond(r.room)]) : ''],
-    rate: ['Rate', r => money(r.rate), 1], arrive: ['Arrival', r => dshort(r.arrive)], depart: ['Departure', r => dshort(r.depart)], company: ['Company', r => esc(r.company)], pay: ['Payment', r => esc(r.payType || '')], bal: ['Balance', r => money(S.bal[r.id] || 0), 1], conf: ['Conf. #', r => esc(r.conf)], status: ['Status', statusBadge] };
-  return `<div class="bar"><input id="q" placeholder="Quick search" value="${esc(view.q)}" style="width:240px"><span class="hint">${list.length} ${list.length === 1 ? 'guest' : 'guests'}</span></div>` +
-    (list.length ? `<div class="wrap"><table><tr>${cols.map(c => `<th class="${C[c][2] ? 'num' : ''}">${C[c][0]}</th>`).join('')}</tr>${list.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}">${cols.map(c => `<td class="${C[c][2] ? 'num' : ''}">${C[c][1](r)}</td>`).join('')}</tr>`).join('')}</table></div>` : `<div class="empty">${emptyMsg}</div>`);
+/* ---------- Lists: Arrivals, In House and Departures share one builder ---------- */
+const byName = (a, b) => gname(a).localeCompare(gname(b));   // also used by the reports
+const dmdy = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
+const balTxt = c => c < 0 ? '(' + money(-c) + ')' : money(c);   // negative balances in parentheses
+const condWord = r => r.room ? ({ R: 'Ready', C: 'Clean', D: 'Dirty' })[cond(r.room)] || '' : '';
+const condBadge = r => r.room ? ({ R: '<span class="badge g">Ready</span>', C: '<span class="badge a">Clean</span>', D: '<span class="badge r">Dirty</span>' })[cond(r.room)] || '' : '';
+// Every column the three list screens can show: heading, sort value, kind (text | num | room) and cell HTML.
+const LC = {
+  guest: { head: 'Guest Name', val: gname, cell: r => `<b>${esc(gname(r))}</b>${r.vip ? ' <span class="badge a">VIP</span>' : ''}` },
+  city: { head: 'City', val: r => r.city || '', cell: r => esc(r.city) },
+  zip: { head: 'Postal Code', val: r => r.zip || '', cell: r => esc(r.zip) },
+  gtd: { head: 'Guarantee', val: r => r.guarantee || '', cell: r => esc(r.guarantee) },
+  nights: { head: '# Nights', kind: 'num', val: r => nights(r.arrive, r.depart), cell: r => nights(r.arrive, r.depart) },
+  room: { head: 'Room #', kind: 'room', val: r => r.room || '', cell: r => r.room ? `<b>${esc(r.room)}</b>` : '<span class="badge r">None</span>' },
+  type: { head: 'Type', val: r => r.type || '', cell: r => esc(r.type) },
+  cond: { head: 'Condition', val: condWord, cell: condBadge },
+  rate: { head: 'Rate Plan', val: r => r.pkg || 'BAR', cell: r => esc(r.pkg || 'BAR') },
+  company: { head: 'Company Profile Name', val: r => r.company || '', cell: r => esc(r.company) },
+  group: { head: 'Group Name', val: r => r.groupName || '', cell: r => esc(r.groupName) },
+  conf: { head: 'Conf. #', val: r => r.conf || '', cell: r => esc(r.conf) },
+  arrive: { head: 'Arrival', val: r => r.arrive || '', cell: r => dshort(r.arrive) },
+  depart: { head: 'Departure', val: r => r.depart || '', cell: r => dshort(r.depart) },
+  pay: { head: 'Payment Type', val: r => r.payType || '', cell: r => esc(r.payType) },
+  bal: { head: 'Balance', kind: 'num', val: r => S.bal[r.id] || 0, cell: r => balTxt(S.bal[r.id] || 0) },
+};
+// o: {title (escaped), empty, rows, cols (keys of LC), sort {col, dir} (the default), dateRow (optional HTML)}.
+// view.listSort (set by clicking a heading) wins over the default while its column is on this screen.
+function listScreen(o) {
+  const all = o.rows, q = view.q.trim().toUpperCase();
+  let list = q ? all.filter(r => (gname(r) + ' ' + r.conf + ' ' + (r.room || '') + ' ' + (r.company || '')).toUpperCase().includes(q)) : all;
+  const s = view.listSort && o.cols.includes(view.listSort.col) ? view.listSort : o.sort, L = LC[s.col];
+  const cmp = (x, y) => L.kind === 'num' ? x - y : String(x).localeCompare(String(y), 'en', L.kind === 'room' ? { numeric: true } : undefined);
+  list = list.slice().sort((a, b) => { const c = cmp(L.val(a), L.val(b)); return s.dir === 'desc' ? -c : c; });
+  const guests = list.reduce((n, r) => n + (r.adults || 0) + (r.children || 0), 0);
+  const th = k => { const c = LC[k], on = s.col === k; return `<th class="sortable${c.kind === 'num' ? ' num' : ''}" data-act="listSort" data-col="${k}">${c.head} <span class="sarr${on ? ' on' : ''}">${on ? (s.dir === 'desc' ? '▼' : '▲') : '⇅'}</span></th>`; };
+  const table = `<div class="wrap"><table class="lst"><tr>${o.cols.map(th).join('')}</tr>${list.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}">${o.cols.map(k => `<td class="${LC[k].kind === 'num' ? 'num' : ''}">${LC[k].cell(r)}</td>`).join('')}</tr>`).join('')}</table></div>`;
+  return `<h1 class="pgt-c">${o.title}</h1>` + (all.length ? '' : `<div class="lst-empty">${esc(o.empty)}</div>`) + (o.dateRow || '') +
+    `<div class="lst-bar"><span>Guest Count: <b>${guests}</b></span><span>Room Count: <b>${list.length}</b></span><span class="flex"></span><label class="lst-q">Quick Search: <input id="q" value="${esc(view.q)}"></label></div>` +
+    table;
 }
-const byName = (a, b) => gname(a).localeCompare(gname(b));
-const vArrivals = () => `<h1>Arrivals: ${esc(dlong(B()))}</h1>` + listTable(S.res.filter(r => r.status === 'reserved' && r.arrive <= B()).sort(byName), ['guest', 'city', 'zip', 'gtd', 'nights', 'room', 'type', 'cond', 'rate', 'company', 'conf'], 'No arrivals are waiting to check in.');
-const vInHouse = () => '<h1>In House</h1>' + listTable(S.res.filter(r => r.status === 'inhouse').sort((a, b) => a.room.localeCompare(b.room, 'en', { numeric: true })), ['room', 'guest', 'city', 'type', 'rate', 'arrive', 'depart', 'company', 'pay', 'bal', 'status'], 'Nobody is checked in.');
-const vDepartures = () => `<h1>Departures: ${esc(dlong(B()))}</h1>` + listTable(S.res.filter(r => r.status === 'inhouse' && r.depart <= B()).sort((a, b) => a.room.localeCompare(b.room, 'en', { numeric: true })), ['room', 'guest', 'type', 'arrive', 'depart', 'pay', 'bal', 'status'], 'No departures are left today.') +
-  '<h2>Checked out today</h2>' + (() => { const l = S.res.filter(r => r.status === 'out' && r.coAt && new Date(r.coAt).getTime() > Date.now() - 36 * 36e5 && r.depart >= addDays(B(), -1)); return l.length ? `<div class="wrap"><table><tr><th>Room</th><th>Guest</th><th>Checked out</th><th class="num">Balance</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(r.room)}</b></td><td>${esc(gname(r))}</td><td>${stamp(r.coAt)}</td><td class="num">${money(S.bal[r.id] || 0)}</td></tr>`).join('')}</table></div>` : '<div class="hint">Nobody yet.</div>'; })();
+// The date row above Arrivals and Departures: ◀ [date] ▶ UPDATE. Enter in the date box also applies it.
+const listDateRow = (label, day) => `<div class="lst-date"><span class="lst-lbl">${label}</span><button class="btn sm" data-act="listDateStep" data-n="-1" title="Previous day">◀</button><input type="date" id="listDate" value="${esc(day)}" style="width:180px"><button class="btn sm" data-act="listDateStep" data-n="1" title="Next day">▶</button><button class="btn sm blue" data-act="listDateGo">UPDATE</button></div>`;
+// The business date shows what is due now; any other date shows the bookings for that date.
+const vArrivals = () => {
+  const day = view.listDate || B(), today = day === B();
+  const rows = S.res.filter(r => today ? r.status === 'reserved' && r.arrive <= B() : r.arrive === day && ['reserved', 'inhouse', 'out'].includes(r.status));
+  return listScreen({ title: 'Arrivals: ' + esc(dmdy(day)), empty: 'No scheduled arrivals found.', rows, cols: ['guest', 'city', 'zip', 'gtd', 'nights', 'room', 'type', 'cond', 'rate', 'company', 'group', 'conf'], sort: { col: 'guest', dir: 'asc' }, dateRow: listDateRow('Arrival Date:', day) });
+};
+const vInHouse = () => listScreen({ title: 'In House List', empty: 'Nobody is checked in.', rows: S.res.filter(r => r.status === 'inhouse'), cols: ['room', 'guest', 'city', 'zip', 'type', 'cond', 'rate', 'arrive', 'depart', 'company', 'group', 'pay', 'bal'], sort: { col: 'room', dir: 'asc' } });
+const vDepartures = () => {
+  const day = view.listDate || B(), today = day === B();
+  const rows = S.res.filter(r => today ? r.status === 'inhouse' && r.depart <= B() : r.depart === day && ['reserved', 'inhouse', 'out'].includes(r.status));
+  return listScreen({ title: 'Departures: ' + esc(dmdy(day)), empty: 'No scheduled departures found.', rows, cols: ['room', 'guest', 'city', 'type', 'arrive', 'depart', 'pay', 'bal', 'company', 'group', 'conf'], sort: { col: 'room', dir: 'asc' }, dateRow: listDateRow('Departure Date:', day) }) +
+    (today ? '<h2>Checked out today</h2>' + (() => { const l = S.res.filter(r => r.status === 'out' && r.coAt && new Date(r.coAt).getTime() > Date.now() - 36 * 36e5 && r.depart >= addDays(B(), -1)); return l.length ? `<div class="wrap"><table><tr><th>Room</th><th>Guest</th><th>Checked out</th><th class="num">Balance</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(r.room)}</b></td><td>${esc(gname(r))}</td><td>${stamp(r.coAt)}</td><td class="num">${balTxt(S.bal[r.id] || 0)}</td></tr>`).join('')}</table></div>` : '<div class="hint">Nobody yet.</div>'; })() : '');
+};
 function vFind() {
   const l = view.found || [];
   return `<h1 class="pgt">Find Reservation / Guest</h1><div class="bar"><input id="find2" placeholder="Last name, phone or confirmation #" value="${esc(view.findQ || '')}" style="width:320px"><button class="btn sm blue" data-act="findGo">SEARCH</button></div>` + (view.findQ ? '' : '<div class="empty">Type a last name, a phone number or a confirmation number.</div>') + (!view.findQ ? '' : (l.length ? `<div class="wrap"><table><tr><th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th><th>Room</th><th>Type</th><th>Phone</th><th>Conf. #</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(gname(r))}</b></td><td>${statusBadge(r)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td>${esc(r.room)}</td><td>${esc(r.type)}</td><td>${esc(r.phone)}</td><td>${esc(r.conf)}</td></tr>`).join('')}</table></div>` : '<div class="empty">Nothing found. Search by last name, phone number or confirmation number.</div>'));
@@ -649,7 +690,7 @@ function blockNew() {
 document.addEventListener('click', async e => {
   const mb = e.target.closest('.menu>button'); if (mb) { mb.focus(); return; }
   if (e.target.closest('.drop')) setTimeout(() => { const h = $('header'); if (h) h.classList.add('nohover'); }, 0);
-  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); view.name = nav.dataset.nav; view.q = ''; if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
+  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); if (view.name !== nav.dataset.nav) { view.listDate = ''; view.listSort = null; } view.name = nav.dataset.nav; view.q = ''; if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
   if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
   if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
@@ -707,6 +748,9 @@ document.addEventListener('click', async e => {
   if (a === 'folioCheckOut') { ED = { mode: 'edit', r: FO.res }; await resAction('checkOut'); if (ED && FO) { const st = (S.res.find(x => x.id === FO.res.id) || {}).status; if (st === 'out') { $('#modal').innerHTML = ''; ED = null; FO = null; } } return; }
   if (a === 'tapeMove') { view.tapeStart = addDays(view.tapeStart, +el.dataset.n); return render(); }
   if (a === 'tapeToday') { view.tapeStart = B(); return render(); }
+  if (a === 'listSort') { const c = el.dataset.col, s = view.listSort; view.listSort = s && s.col === c && s.dir === 'asc' ? { col: c, dir: 'desc' } : { col: c, dir: 'asc' }; return render(); }
+  if (a === 'listDateStep') { view.listDate = addDays(view.listDate || B(), +el.dataset.n); return render(); }
+  if (a === 'listDateGo') { const v = $('#listDate').value; if (!v) return toast('Pick a date.', true); view.listDate = v; return render(); }
   if (a === 'hkRange') return run(async () => { const f = $('#hkFrom').value.trim(), t = $('#hkTo').value.trim() || f; if (!f) throw new Error('Type the first room number.'); const nums = S.config.rooms.map(r => r.no).filter(no => no.localeCompare(f, 'en', { numeric: true }) >= 0 && no.localeCompare(t, 'en', { numeric: true }) <= 0); if (!nums.length) throw new Error('No rooms in that range.'); await op('roomCond', { rooms: nums, cond: el.dataset.cond }); await refresh(); toast(nums.length + ' rooms updated.'); });
   if (a === 'printHk') return printHtml(sheet('Housekeeping Check-off List', hkCheckHtml()));
   if (a === 'rep') { view.rep = el.dataset.rep; view.repLabel = el.dataset.label || ''; view.repStage = 'options'; view.opt = {}; view.from = view.to = B(); return render(); }
@@ -742,6 +786,7 @@ document.addEventListener('mousemove', () => { const h = $('header'); if (h && h
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
+  if (e.key === 'Enter' && e.target.id === 'listDate' && e.target.value) { view.listDate = e.target.value; return render(); }
   if (e.key === 'Enter' && e.target.id === 'roomJump') { const no = e.target.value.trim(); if (!no) return; const g = S.res.find(r => r.status === 'inhouse' && String(r.room).toLowerCase() === no.toLowerCase()); if (!g) return toast('Nobody is checked in to room ' + no, true); e.target.value = ''; return run(() => openRes(g.id)); }
   if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
