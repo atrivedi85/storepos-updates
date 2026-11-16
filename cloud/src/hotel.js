@@ -23,13 +23,17 @@ export class Hotel extends DurableObject {
     const base = { method: req.method, path: u.pathname.replace(/^\/hotel\/api/, ''), query: Object.fromEntries(u.searchParams), body };
     if (req.headers.get('x-hd-kind') === 'dir') {
       this.dir = this.dir || new DirectoryCore(this.ctx.storage.sql, { scrypt: ledgerCrypto.scrypt64, sendMail });
-      const r = await this.dir.handle({ ...base, cookie: req.headers.get('cookie') || '', origin: u.origin, ledgerAdmin: req.headers.get('x-hd-owner') === '1' });
+      const r = await this.dir.handle({ ...base, cookie: req.headers.get('cookie') || '', origin: u.origin, ledgerAdmin: req.headers.get('x-hd-owner') === '1', internal: req.headers.get('x-hd-internal') === '1' });
       return out(r.status, r.json, r.cookie);
     }
     let who = null; try { who = JSON.parse(decodeURIComponent(req.headers.get('x-hd-who') || '')); } catch (e) { /* not signed in */ }
     if (!who || !who.user || !who.hotel) return out(401, { error: 'Please sign in.' });
     this.core = this.core || new HotelCore(this.ctx.storage.sql);
     const r = this.core.handle({ ...base, me: who.user, hotel: who.hotel });
+    if (r.mail && r.status === 200) {   // guest e-mails (confirmation, folio) go out through the directory's e-mail account
+      try { const m = await this.env.HOTEL.get(this.env.HOTEL.idFromName('directory')).fetch(new Request(u.origin + '/hotel/api/internal/mail', { method: 'POST', headers: { 'x-hd-kind': 'dir', 'x-hd-internal': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ hotel: who.hotel.id, ...r.mail }) })); const j = await m.json(); if (!m.ok) return out(m.status, j); }
+      catch (e) { return out(502, { error: 'The e-mail could not be sent. Try again.' }); }
+    }
     return out(r.status, r.json);
   }
 }

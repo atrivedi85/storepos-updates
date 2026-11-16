@@ -46,14 +46,37 @@ export class HotelCore {
       'CREATE INDEX IF NOT EXISTS lines_res ON lines(res)', 'CREATE INDEX IF NOT EXISTS lines_bdate ON lines(bdate)',
       'CREATE TABLE IF NOT EXISTS blocks(id INTEGER PRIMARY KEY AUTOINCREMENT, room TEXT, start TEXT, end TEXT, reason TEXT)',
       'CREATE TABLE IF NOT EXISTS audits(bdate TEXT PRIMARY KEY, data TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS companies(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS ar(id INTEGER PRIMARY KEY AUTOINCREMENT, company INTEGER NOT NULL, res INTEGER, bdate TEXT, at INTEGER, kind TEXT, descr TEXT, amount INTEGER NOT NULL, user TEXT)',
+      'CREATE TABLE IF NOT EXISTS grps(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, open_at INTEGER, close_at INTEGER, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, user TEXT, line TEXT)']) this.sql.exec(q);
   }
   rows(q, ...p) { return this.sql.exec(q, ...p).toArray(); }
   one(q, ...p) { const r = this.rows(q, ...p); return r.length ? r[0] : null; }
   kv(k, d) { const r = this.one('SELECT v FROM kv WHERE k=?', k); return r ? JSON.parse(r.v) : d; }
   setKv(k, v) { this.sql.exec('INSERT OR REPLACE INTO kv(k,v) VALUES(?,?)', k, JSON.stringify(v)); }
-  cfg() { return this.kv('config', null) || starterConfig(); }
+  cfg() { const c = this.kv('config', null) || starterConfig(); c.packages = c.packages || []; c.rateRules = c.rateRules || []; return c; }
   log(user, line) { this.sql.exec('INSERT INTO log(at,user,line) VALUES(?,?,?)', now(), user || '', String(line).slice(0, 300)); this.sql.exec('DELETE FROM log WHERE id < (SELECT MAX(id) - 20000 FROM log)'); }
+
+  /* ---------- companies, groups, rates ---------- */
+  company(id) { const r = this.one('SELECT id, data FROM companies WHERE id=?', Number(id) || 0); return r ? { ...JSON.parse(r.data), id: r.id } : null; }
+  companies() { return this.rows('SELECT id, data FROM companies').map(r => ({ ...JSON.parse(r.data), id: r.id })); }
+  group(id) { const r = this.one('SELECT id, data FROM grps WHERE id=?', Number(id) || 0); return r ? { ...JSON.parse(r.data), id: r.id } : null; }
+  groups() { return this.rows('SELECT id, data FROM grps').map(r => ({ ...JSON.parse(r.data), id: r.id })); }
+  arBalance(id) { return this.one('SELECT COALESCE(SUM(amount),0) n FROM ar WHERE company=?', id).n; }
+  // The standard rate for a room type on a date: the type's rate, unless a "rates by date" line covers that day (the last matching line wins).
+  rateFor(c, type, d) {
+    const t = c.types.find(x => x.code === type); let v = t ? t.rate : 0; const dow = new Date(d + 'T00:00:00Z').getUTCDay();
+    for (const r of c.rateRules) if (r.from <= d && d <= r.to && (r.type === '*' || r.type === type) && (!r.days || !r.days.length || r.days.includes(dow))) v = r.rate;
+    return v;
+  }
+  // Rooms of a type that groups are still holding on a night (blocks not picked up yet, until the cut-off date passes).
+  groupHold(c, type, d, exceptGroup, act, grps) {
+    let n = 0;
+    for (const g of grps) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || (g.cutoff && g.cutoff < c.bdate)) continue; const blk = (g.blocks || {})[type] || 0; if (!blk) continue; n += Math.max(0, blk - act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); }
+    return n;
+  }
 
   /* ---------- reservations ---------- */
   getRes(id) { const r = this.one('SELECT data FROM res WHERE id=?', Number(id) || 0); if (!r) throw err(404, 'That reservation was not found.'); return JSON.parse(r.data); }
@@ -61,13 +84,13 @@ export class HotelCore {
   activeRes() { return this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse')").map(x => JSON.parse(x.data)); }
   blocks() { return this.rows('SELECT * FROM blocks'); }
   // Rooms of a type left to sell for every night of a stay (the lowest night counts).
-  availOfType(c, type, from, to, exceptId, act, blks) {
-    act = act || this.activeRes(); blks = blks || this.blocks();
+  availOfType(c, type, from, to, exceptId, act, blks, forGroup) {
+    act = act || this.activeRes(); blks = blks || this.blocks(); const grps = this.groups();
     const roomsOfType = c.rooms.filter(r => r.type === type).map(r => r.no); let min = roomsOfType.length;
     for (let d = from; d < to; d = addDays(d, 1)) {
       const sold = act.filter(r => r.id !== exceptId && r.type === type && r.arrive <= d && d < r.depart).length;
       const ooo = roomsOfType.filter(no => blks.some(b => b.room === no && b.start <= d && d <= b.end)).length;
-      min = Math.min(min, roomsOfType.length - sold - ooo);
+      min = Math.min(min, roomsOfType.length - sold - ooo - this.groupHold(c, type, d, forGroup || 0, act, grps));
     }
     return min;
   }
@@ -79,11 +102,12 @@ export class HotelCore {
     if (b) return 'Room ' + room + ' is out of order ' + b.start + ' to ' + b.end + (b.reason ? ' (' + b.reason + ')' : '') + '.';
     return '';
   }
+  nightRate(r, d) { return r.rates && r.rates[d] != null ? r.rates[d] : (r.rate || 0); }
   balance(id) { return this.one('SELECT COALESCE(SUM(amount),0) n FROM lines WHERE res=?', id).n; }
   resSave(a, me, c) {
     const isNew = !a.id; const r = isNew ? { id: 0, status: 'reserved', created: now(), createdBy: me.username, history: [] } : this.getRes(a.id);
     if (!isNew && !ACTIVE.includes(r.status)) throw err(400, 'This reservation is ' + r.status + ' and cannot be changed. Reinstate it first.');
-    const before = JSON.stringify([r.arrive, r.depart, r.type, r.room, r.rate]);
+    const before = JSON.stringify([r.arrive, r.depart, r.type, r.room, r.rate]), was = { arrive: r.arrive, depart: r.depart, type: r.type, groupId: r.groupId || 0, companyId: r.companyId || 0 };
     for (const [k, n] of [['first', 60], ['last', 60], ['addr1', 100], ['addr2', 100], ['city', 60], ['state', 30], ['zip', 15], ['country', 40], ['phone', 30], ['email', 100], ['guestId', 40], ['vehicle', 40],
       ['company', 80], ['notes', 1000], ['requests', 300], ['market', 30], ['source', 30], ['guarantee', 20], ['payType', 10], ['cardType', 10]]) if (k in a) r[k] = clip(a[k], n);
     if ('cardLast4' in a) r.cardLast4 = String(a.cardLast4 || '').replace(/\D/g, '').slice(-4);
@@ -97,15 +121,25 @@ export class HotelCore {
     if ('type' in a) r.type = a.type; const t = c.types.find(t => t.code === r.type); if (!t) throw err(400, 'Pick a room type.');
     if ('adults' in a) r.adults = Math.max(1, Math.min(20, Number(a.adults) || 1)); if ('children' in a) r.children = Math.max(0, Math.min(20, Number(a.children) || 0));
     r.adults = r.adults || 1; r.children = r.children || 0;
-    if ('rate' in a && a.rate !== '' && a.rate != null) r.rate = cents(a.rate); if (r.rate == null) r.rate = t.rate; if (r.rate < 0) throw err(400, 'The rate cannot be negative.');
+    if ('groupId' in a) { r.groupId = Number(a.groupId) || 0; if (r.groupId) { const g = this.group(r.groupId); if (!g || g.status === 'cancelled') throw err(400, 'That group was not found.'); if (r.arrive < g.arrive || r.depart > g.depart) throw err(400, 'The stay must be inside the group\'s dates (' + g.arrive + ' to ' + g.depart + ').'); r.groupName = g.name; if (g.companyId && !('companyId' in a)) a.companyId = g.companyId; } else r.groupName = ''; }
+    if ('companyId' in a) { r.companyId = Number(a.companyId) || 0; if (r.companyId) { const co = this.company(r.companyId); if (!co) throw err(400, 'That company was not found.'); r.company = co.name; } else if (was.companyId) r.company = ''; }
+    if ('pkg' in a) { r.pkg = clip(a.pkg, 8).toUpperCase(); if (r.pkg && !c.packages.some(x => x.code === r.pkg)) throw err(400, 'That package was not found.'); }
     if ('room' in a) r.room = clip(a.room, 10);
     if (r.room) {
       const rm = c.rooms.find(x => x.no === r.room); if (!rm) throw err(400, 'Room ' + r.room + ' does not exist.');
       const from = r.status === 'inhouse' ? (c.bdate > r.arrive ? c.bdate : r.arrive) : r.arrive;
       const p = from < r.depart ? this.roomProblem(c, r.room, from, r.depart, r.id) : ''; if (p) throw err(409, p);
       if (rm.type !== r.type) r.type = rm.type;   // the room decides the type
-    } else if (!a.oversell && this.availOfType(c, r.type, r.arrive > c.bdate ? r.arrive : c.bdate, r.depart, r.id) < 1) throw err(409, 'No ' + r.type + ' rooms are left for those dates. Pick another room type or dates.');
+    } else if (!a.oversell && this.availOfType(c, r.type, r.arrive > c.bdate ? r.arrive : c.bdate, r.depart, r.id, null, null, r.groupId) < 1) throw err(409, 'No ' + r.type + ' rooms are left for those dates. Pick another room type or dates.');
     if (r.status === 'inhouse' && !r.room) throw err(400, 'A checked-in guest needs a room.');
+    // The rate: typed by hand (one rate for every night), or worked out night by night from the group, the company or the rates by date.
+    if (a.rateManual !== false && a.rate !== '' && a.rate != null) { r.rate = cents(a.rate); r.rateManual = true; r.rates = null; }
+    else if (a.rateManual === false || isNew || !r.rateManual && (r.rate == null || was.arrive !== r.arrive || was.depart !== r.depart || was.type !== r.type || was.groupId !== (r.groupId || 0) || was.companyId !== (r.companyId || 0))) {
+      const g = r.groupId ? this.group(r.groupId) : null, co = r.companyId ? this.company(r.companyId) : null, old = r.rates || {}, rates = {};
+      for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) rates[d] = r.status === 'inhouse' && d < c.bdate && old[d] != null ? old[d] : g && g.rates && g.rates[r.type] > 0 ? g.rates[r.type] : co && co.rate > 0 ? co.rate : this.rateFor(c, r.type, d);
+      r.rates = rates; r.rateManual = false; r.rate = rates[r.arrive > c.bdate || rates[c.bdate] == null ? r.arrive : c.bdate];
+    }
+    if (r.rate == null) r.rate = t.rate; if (r.rate < 0) throw err(400, 'The rate cannot be negative.');
     if (isNew) { r.id = (this.one('SELECT COALESCE(MAX(id),0) n FROM res').n) + 1; r.conf = String(c.nextConf++); this.setKv('config', c); }
     const after = JSON.stringify([r.arrive, r.depart, r.type, r.room, r.rate]);
     if (isNew) r.history.push({ at: now(), by: me.username, what: 'Created' }); else if (before !== after) r.history.push({ at: now(), by: me.username, what: 'Changed stay: ' + before + ' → ' + after });
@@ -129,6 +163,16 @@ export class HotelCore {
     this.putRes(r); this.log(me.username, 'check in ' + r.conf + ' room ' + r.room); return r;
   }
 
+  /* ---------- cashier shifts ---------- */
+  openShift(me) { const r = this.one('SELECT * FROM shifts WHERE user=? AND close_at IS NULL ORDER BY id DESC LIMIT 1', me.username); return r ? { id: r.id, user: r.user, openAt: r.open_at, ...JSON.parse(r.data) } : null; }
+  shiftTotals(c, sh, until) {   // what this person took in since the shift opened, by payment type
+    const pay = c.codes.filter(k => PAY_TYPES.includes(k.type)), rows = this.rows('SELECT code, COUNT(*) cnt, SUM(amount) total FROM lines WHERE user=? AND at>=? AND at<=? GROUP BY code', sh.user, sh.openAt, until || now())
+      .concat(this.rows("SELECT descr code, COUNT(*) cnt, SUM(amount) total FROM ar WHERE user=? AND at>=? AND at<=? AND kind='payment' GROUP BY descr", sh.user, sh.openAt, until || now()).map(x => ({ ...x, ar: true })));
+    const by = []; let cash = 0;
+    for (const x of rows) { const code = x.ar ? String(x.code).split(' ')[0] : x.code, k = pay.find(p => p.code === code); if (!k) continue; by.push({ code, name: k.name + (x.ar ? ' (company payment)' : ''), cnt: x.cnt, total: -x.total }); if (k.type === 'CASH') cash += -x.total; }
+    return { by, cashIn: cash, expected: (sh.openCash || 0) + cash };
+  }
+
   /* ---------- folio ---------- */
   addLine(resId, c, code, amount, comment, user, descr) {
     const k = c.codes.find(x => x.code === code) || c.taxes.find(x => x.code === code);
@@ -144,6 +188,12 @@ export class HotelCore {
     const amt = cents(a.amount); if (!(amt > 0)) throw err(400, 'Type an amount above zero.'); if (amt > 5000000) throw err(400, 'That amount is too large.');
     const pay = PAY_TYPES.includes(k.type) || k.type === 'ADMIN', boss = ['owner', 'manager'].includes(me.role);
     if (r.status === 'cancelled' || r.status === 'noshow') { if (!pay && !['NS', 'CXL'].includes(k.code)) throw err(400, 'Only a no-show or cancellation charge, or a payment, can be posted here.'); }
+    if (a.kind === 'payment' && c.requireShift && !boss && !this.openShift(me)) throw err(400, 'Open your cashier shift first (the Shift button at the top).');
+    if (a.kind === 'payment' && k.type === 'AREC') {   // direct bill: the amount moves from the guest's folio to the company's account
+      const co = r.companyId ? this.company(r.companyId) : null; if (!co || !co.directBill || co.inactive) throw err(400, 'Direct bill needs a company with a direct-bill account on this reservation. Pick the company in the reservation first.');
+      if (co.limit > 0 && this.arBalance(co.id) + amt > co.limit && !boss) throw err(409, co.name + ' would go over its credit limit of ' + (co.limit / 100).toFixed(2) + '. A manager can post it.');
+      this.sql.exec('INSERT INTO ar(company,res,bdate,at,kind,descr,amount,user) VALUES(?,?,?,?,?,?,?,?)', co.id, r.id, c.bdate, now(), 'invoice', (r.last + ', ' + r.first).toUpperCase() + ' · conf ' + r.conf + ' · ' + r.arrive + ' to ' + r.depart, amt, me.username);
+    }
     if (a.kind === 'payment') { if (!pay) throw err(400, 'That is not a payment type.'); const refund = !!a.refund || k.code === 'GR' || k.code === 'PO'; this.addLine(r.id, c, k.code, refund ? amt : -amt, (a.last4 ? '…' + String(a.last4).replace(/\D/g, '').slice(-4) + ' ' : '') + clip(a.comment, 150), me.username, refund && k.code !== 'GR' && k.code !== 'PO' ? k.name + ' refund' : ''); }
     else if (a.kind === 'adjust') { if (pay) throw err(400, 'Pick the charge to adjust.'); if (!boss && amt > 20000) throw err(403, 'An adjustment above $200 needs a manager.'); if (!clip(a.comment, 150)) throw err(400, 'Type the reason for the adjustment.'); this.postCharge(r, c, k.code, -amt, 'ADJ: ' + clip(a.comment, 150), me.username); }
     else { if (pay) throw err(400, 'Use Post Payment for payments.'); this.postCharge(r, c, k.code, amt, a.comment, me.username); }
@@ -156,7 +206,7 @@ export class HotelCore {
     act = act || this.activeRes(); blks = blks || this.blocks(); const d = c.bdate;
     const inh = act.filter(r => r.status === 'inhouse'), ooo = c.rooms.filter(rm => blks.some(b => b.room === rm.no && b.start <= d && d <= b.end)).length;
     const arrivals = act.filter(r => r.status === 'reserved' && r.arrive <= d), total = c.rooms.length;
-    const rev = inh.reduce((s, r) => s + (r.rate || 0), 0), sold = inh.length, sellable = total - ooo;
+    const rev = inh.reduce((s, r) => s + this.nightRate(r, d), 0), sold = inh.length, sellable = total - ooo;
     return { total, ooo, sold, vacant: total - sold - ooo, arrivalsLeft: arrivals.length, checkedIn: inh.filter(r => r.arrive === d).length, dueOut: inh.filter(r => r.depart <= d).length,
       stayovers: inh.filter(r => r.depart > d).length, adults: inh.reduce((s, r) => s + (r.adults || 0), 0), children: inh.reduce((s, r) => s + (r.children || 0), 0),
       occ: sellable ? Math.round(sold / sellable * 10000) / 100 : 0, occAll: total ? Math.round(sold / total * 10000) / 100 : 0, roomRev: rev, adr: sold ? Math.round(rev / sold) : 0, revpar: total ? Math.round(rev / total) : 0 };
@@ -166,14 +216,17 @@ export class HotelCore {
     const recent = this.rows("SELECT data FROM res WHERE status NOT IN ('reserved','inhouse') AND depart>=? ORDER BY id DESC LIMIT 400", addDays(c.bdate || '2000-01-01', -3)).map(x => JSON.parse(x.data));
     const bal = {}; for (const x of this.rows("SELECT res, SUM(amount) n FROM lines WHERE res IN (SELECT id FROM res WHERE status IN ('reserved','inhouse') OR depart>=?) GROUP BY res", addDays(c.bdate || '2000-01-01', -3))) bal[x.res] = x.n;
     const slim = r => { const { history, ...x } = r; return x; };
-    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
+    const arBal = {}; for (const x of this.rows('SELECT company, SUM(amount) n FROM ar GROUP BY company')) arBal[x.company] = x.n;
+    const hk = me.role === 'hk';
+    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
   }
   nightAudit(me, c) {
     const d = c.bdate, act = this.activeRes(), out = { date: d, posted: 0, noShows: [], extended: [], revenue: 0 };
     const snap = this.stats(c, act);
     for (const r of act.filter(r => r.status === 'inhouse')) {
       if (r.depart <= d) { r.depart = addDays(d, 1); r.history.push({ at: now(), by: 'night audit', what: 'Not checked out: stay extended to ' + r.depart }); out.extended.push(r.room + ' ' + r.last); this.putRes(r); }
-      if (!r.noPost) { this.postCharge(r, c, 'RM', r.rate || 0, '#' + r.room + ' ' + (r.last + ', ' + r.first).toUpperCase(), 'night audit'); out.posted++; out.revenue += r.rate || 0; }
+      if (!r.noPost) { const amt = this.nightRate(r, d); this.postCharge(r, c, 'RM', amt, '#' + r.room + ' ' + (r.last + ', ' + r.first).toUpperCase(), 'night audit'); out.posted++; out.revenue += amt; }
+      const pk = r.pkg && c.packages.find(x => x.code === r.pkg); if (pk && pk.price > 0) { this.postCharge(r, c, c.codes.some(k => k.code === pk.charge) ? pk.charge : 'MS', pk.price, 'Package: ' + pk.name, 'night audit'); out.packages = (out.packages || 0) + 1; }
     }
     for (const r of act.filter(r => r.status === 'reserved' && r.arrive <= d)) { r.status = 'noshow'; r.history.push({ at: now(), by: 'night audit', what: 'No show' }); this.putRes(r); out.noShows.push(r.last + ', ' + r.first + ' (' + r.conf + ')'); }
     this.setCond(this.activeRes().filter(r => r.status === 'inhouse').map(r => r.room), { cond: 'D' });
@@ -189,6 +242,15 @@ export class HotelCore {
     if (q.name === 'stats') { const rows = this.rows('SELECT bdate, data FROM audits WHERE bdate>=? AND bdate<=? ORDER BY bdate', from, to).map(x => ({ date: x.bdate, ...JSON.parse(x.data), totals: undefined })); if (to >= c.bdate && from <= c.bdate) rows.push({ date: c.bdate, live: true, ...this.stats(c) }); return { from, to, rows }; }
     if (q.name === 'journal') return { from, to, rows: this.rows('SELECT l.id, l.bdate, l.at, l.code, l.descr, l.comment, l.amount, l.user, r.name, r.room FROM lines l LEFT JOIN res r ON r.id=l.res WHERE l.bdate>=? AND l.bdate<=? ORDER BY l.id LIMIT 5000', from, to) };
     if (q.name === 'history') { const list = st => this.rows('SELECT data FROM res WHERE status=? AND arrive>=? AND arrive<=? ORDER BY arrive LIMIT 2000', st, from, to).map(x => { const r = JSON.parse(x.data); return { conf: r.conf, name: r.last + ', ' + r.first, arrive: r.arrive, depart: r.depart, type: r.type, room: r.room, rate: r.rate, bal: this.balance(r.id) }; }); return { from, to, noshow: list('noshow'), cancelled: list('cancelled'), out: list('out') }; }
+    if (q.name === 'araging') {   // payments pay off the oldest invoices first; what is left is aged from the invoice's date
+      const out = [];
+      for (const co of this.companies()) { const rows = this.rows('SELECT bdate, amount FROM ar WHERE company=? ORDER BY id', co.id); let credit = -rows.filter(x => x.amount < 0).reduce((s, x) => s + x.amount, 0); const b = [0, 0, 0, 0];
+        for (const x of rows.filter(x => x.amount > 0)) { const pay = Math.min(credit, x.amount); credit -= pay; const open = x.amount - pay; if (!open) continue; const age = nightsBetween(x.bdate, c.bdate); b[age <= 30 ? 0 : age <= 60 ? 1 : age <= 90 ? 2 : 3] += open; }
+        const bal = b[0] + b[1] + b[2] + b[3] - credit; if (bal || rows.length) out.push({ id: co.id, name: co.name, cur: b[0], d30: b[1], d60: b[2], d90: b[3], credit, balance: bal }); }
+      return { rows: out };
+    }
+    if (q.name === 'shifts') return { from, to, rows: this.rows('SELECT * FROM shifts WHERE open_at>=? AND open_at<? ORDER BY id DESC LIMIT 500', Date.parse(from + 'T00:00:00Z') - 864e5, Date.parse(to + 'T00:00:00Z') + 2 * 864e5).map(x => ({ id: x.id, user: x.user, openAt: x.open_at, closeAt: x.close_at, ...JSON.parse(x.data) })) };
+    if (q.name === 'grouppickup') { const act = this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse','out')").map(x => JSON.parse(x.data)); return { rows: this.groups().filter(g => g.depart >= from).map(g => { const blk = Object.values(g.blocks || {}).reduce((s, n) => s + (n || 0), 0), mem = act.filter(r => r.groupId === g.id); return { id: g.id, name: g.name, arrive: g.arrive, depart: g.depart, cutoff: g.cutoff || '', blocked: blk, picked: mem.length, left: Math.max(0, blk - mem.length), revenue: mem.reduce((s, r) => { let t = 0; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) t += this.nightRate(r, d); return s + t; }, 0), status: g.status || 'active' }; }) }; }
     throw err(404, 'That report was not found.');
   }
 
@@ -218,6 +280,8 @@ export class HotelCore {
       const list = rows.map(x => { const { history, ...r } = JSON.parse(x.data); return r; }).filter(r => digits.length >= 3 && !/[A-Z]/.test(q) ? r.conf.startsWith(digits) || (r.phone || '').replace(/\D/g, '').includes(digits) : true);
       return { status: 200, json: { list } };
     }
+    if (p === '/company') { desk(); const co = this.company(req.query.id); if (!co) throw err(404, 'That company was not found.'); return { status: 200, json: { company: co, ledger: this.rows('SELECT * FROM ar WHERE company=? ORDER BY id DESC LIMIT 1000', co.id), balance: this.arBalance(co.id) } }; }
+    if (p === '/group') { desk(); const g = this.group(req.query.id); if (!g) throw err(404, 'That group was not found.'); return { status: 200, json: { group: g, members: this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)).filter(r => r.groupId === g.id).map(({ history, ...r }) => ({ ...r, bal: this.balance(r.id) })) } }; }
     if (p === '/report') { desk(); return { status: 200, json: this.report(req.query, c) }; }
     if (p !== '/op' || !POST) throw err(404, 'Not found.');
     const a = b.a || {}, ok = x => ({ status: 200, json: { ok: true, ...(x || {}) } });
@@ -242,6 +306,47 @@ export class HotelCore {
       case 'reinstate': { const r = this.getRes(a.id); if (!['cancelled', 'noshow'].includes(r.status)) throw err(400, 'This reservation is not cancelled.'); if (r.depart <= c.bdate) throw err(400, 'The stay dates have passed.'); if (r.arrive < c.bdate) r.arrive = c.bdate; r.status = 'reserved'; if (r.room && this.roomProblem(c, r.room, r.arrive, r.depart, r.id)) r.room = ''; if (!r.room && this.availOfType(c, r.type, r.arrive, r.depart, r.id) < 1) throw err(409, 'No ' + r.type + ' rooms are left for those dates.'); r.history.push({ at: now(), by: me.username, what: 'Reinstated' }); this.putRes(r); return ok(); }
       case 'noShow': { const r = this.getRes(a.id); if (r.status !== 'reserved' || r.arrive > c.bdate) throw err(400, 'Only today\'s arrivals can be marked as a no show.'); r.status = 'noshow'; r.history.push({ at: now(), by: me.username, what: 'No show' }); this.putRes(r); return ok(); }
       case 'post': return ok(this.post(a, me, c));
+      case 'companySave': {
+        const co = a.id ? this.company(a.id) : {}; if (a.id && !co) throw err(404, 'That company was not found.');
+        for (const [k, n] of [['name', 80], ['contact', 80], ['phone', 30], ['email', 100], ['address', 200], ['corpId', 30], ['notes', 500]]) if (k in a) co[k] = clip(a[k], n);
+        if (!co.name) throw err(400, 'Type the company\'s name.');
+        if ('directBill' in a || 'limit' in a || 'rate' in a || 'inactive' in a) { if (('directBill' in a && !!a.directBill !== !!co.directBill || 'limit' in a && (Number(a.limit) || 0) !== (co.limit || 0)) && !boss) throw err(403, 'Only the owner or a manager can change a direct-bill account.'); co.directBill = !!a.directBill; co.limit = Math.max(0, cents(a.limit || 0)); co.rate = Math.max(0, cents(a.rate || 0)); co.inactive = !!a.inactive; }
+        const { id, ...data } = co; if (a.id) this.sql.exec('UPDATE companies SET data=? WHERE id=?', JSON.stringify(data), a.id); else this.sql.exec('INSERT INTO companies(data) VALUES(?)', JSON.stringify(data));
+        return ok({ id: a.id || this.one('SELECT MAX(id) n FROM companies').n });
+      }
+      case 'arPay': {   // a company pays its account
+        const co = this.company(a.company), k = c.codes.find(x => x.code === a.code); if (!co) throw err(404, 'That company was not found.'); if (!k || !['CASH', 'CRED'].includes(k.type) || ['GR', 'PO'].includes(k.code)) throw err(400, 'Pick how they paid.');
+        const amt = cents(a.amount); if (!(amt > 0)) throw err(400, 'Type an amount above zero.'); if (c.requireShift && !boss && !this.openShift(me)) throw err(400, 'Open your cashier shift first (the Shift button at the top).');
+        this.sql.exec('INSERT INTO ar(company,res,bdate,at,kind,descr,amount,user) VALUES(?,?,?,?,?,?,?,?)', co.id, 0, c.bdate, now(), 'payment', k.code + ' ' + k.name + (a.comment ? ' · ' + clip(a.comment, 120) : ''), -amt, me.username); this.log(me.username, 'company payment ' + co.name + ' ' + amt); return ok({ balance: this.arBalance(co.id) });
+      }
+      case 'groupSave': {
+        const g = a.id ? this.group(a.id) : { status: 'active', created: now() }; if (a.id && !g) throw err(404, 'That group was not found.');
+        for (const [k, n] of [['name', 80], ['contact', 80], ['phone', 30], ['email', 100], ['notes', 500]]) if (k in a) g[k] = clip(a[k], n);
+        if (!g.name) throw err(400, 'Type the group\'s name.'); if ('arrive' in a) g.arrive = a.arrive; if ('depart' in a) g.depart = a.depart; if (!isDate(g.arrive) || !isDate(g.depart) || g.depart <= g.arrive) throw err(400, 'Check the group\'s dates.');
+        if ('cutoff' in a) { if (a.cutoff && !isDate(a.cutoff)) throw err(400, 'Check the cut-off date.'); g.cutoff = a.cutoff || ''; }
+        if ('companyId' in a) g.companyId = this.company(a.companyId) ? Number(a.companyId) : 0; if ('status' in a) g.status = a.status === 'cancelled' ? 'cancelled' : 'active';
+        const num = (o, money) => { const out = {}; for (const t of c.types) { const v = o && o[t.code]; if (v !== '' && v != null && Number(v) > 0) out[t.code] = money ? cents(v) : Math.min(500, Math.round(Number(v))); } return out; };
+        if ('blocks' in a) g.blocks = num(a.blocks, false); if ('rates' in a) g.rates = num(a.rates, true);
+        if (g.status !== 'cancelled') { const act = this.activeRes(), blks = this.blocks(), others = this.groups().filter(x => x.id !== g.id);   // a block cannot hold more rooms than the hotel has free
+          for (const [type, n] of Object.entries(g.blocks || {})) { const rooms = c.rooms.filter(r => r.type === type).map(r => r.no); for (let d = g.arrive > c.bdate ? g.arrive : c.bdate; d < g.depart; d = addDays(d, 1)) { const mine = act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length, sold = act.filter(r => r.groupId !== g.id && r.type === type && r.arrive <= d && d < r.depart).length, ooo = rooms.filter(no => blks.some(b => b.room === no && b.start <= d && d <= b.end)).length; if (Math.max(n, mine) + sold + ooo + this.groupHold(c, type, d, g.id, act, others) > rooms.length && !a.oversell) throw err(409, 'There are not ' + n + ' ' + type + ' rooms free on ' + d + '. Lower the block.'); } } }
+        const { id, ...data } = g; if (a.id) this.sql.exec('UPDATE grps SET data=? WHERE id=?', JSON.stringify(data), a.id); else this.sql.exec('INSERT INTO grps(data) VALUES(?)', JSON.stringify(data));
+        return ok({ id: a.id || this.one('SELECT MAX(id) n FROM grps').n });
+      }
+      case 'shiftOpen': { if (this.openShift(me)) throw err(400, 'Your shift is already open.'); const cash = Math.max(0, cents(a.cash || 0)); this.sql.exec('INSERT INTO shifts(user,open_at,close_at,data) VALUES(?,?,NULL,?)', me.username, now(), JSON.stringify({ openCash: cash, bdate: c.bdate })); this.log(me.username, 'opened shift'); return ok(); }
+      case 'shiftPeek': { const sh = this.openShift(me); if (!sh) throw err(400, 'You have no open shift.'); return ok({ shift: sh, ...this.shiftTotals(c, sh) }); }
+      case 'shiftClose': { const sh = this.openShift(me); if (!sh) throw err(400, 'You have no open shift.'); const counted = cents(a.counted || 0), t = this.shiftTotals(c, sh), data = { openCash: sh.openCash, bdate: sh.bdate, counted, ...t, overShort: counted - t.expected }; this.sql.exec('UPDATE shifts SET close_at=?, data=? WHERE id=?', now(), JSON.stringify(data), sh.id); this.log(me.username, 'closed shift, over/short ' + data.overShort); return ok({ summary: { user: sh.user, openAt: sh.openAt, closeAt: now(), ...data } }); }
+      case 'emailConf': case 'emailFolio': {   // the website sends the e-mail (hotel.js); here we only write it
+        const r = this.getRes(a.id); const to = clip(a.to || r.email, 100).toLowerCase(); if (!/^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[a-z]{2,}$/.test(to)) throw err(400, 'Type the guest\'s e-mail address in the reservation first.');
+        const m = v => (v / 100).toFixed(2), tname = (c.types.find(t => t.code === r.type) || {}).name || r.type, foot = '\n' + c.name + (c.address ? '\n' + c.address : '') + (c.phone ? '\n' + c.phone : '') + '\n';
+        let subject, text;
+        if (b.op === 'emailConf') { const cx = r.status === 'cancelled'; subject = (cx ? 'Cancellation' : 'Reservation confirmation') + ' ' + (cx ? r.cxlNo : r.conf) + ' · ' + c.name;
+          text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\n' + (cx ? 'Your reservation at ' + c.name + ' has been cancelled.\n\nCancellation number: ' + r.cxlNo + '\nOriginal confirmation number: ' + r.conf + '\nDates: ' + r.arrive + ' to ' + r.depart + '\n'
+            : 'Thank you for choosing ' + c.name + '. Your reservation is confirmed.\n\nConfirmation number: ' + r.conf + '\nArrival: ' + r.arrive + ' (check-in from ' + c.checkinTime + ')\nDeparture: ' + r.depart + ' (check-out by ' + c.checkoutTime + ')\nRoom type: ' + tname + '\nGuests: ' + r.adults + ' adults, ' + (r.children || 0) + ' children\nRate: ' + m(this.nightRate(r, r.arrive)) + ' plus tax, per night' + (r.rates && new Set(Object.values(r.rates)).size > 1 ? ' (the rate changes by night)' : '') + '\nGuarantee: ' + (r.guarantee || '') + '\n\nWe look forward to your stay.\n') + foot; }
+        else { const lines = this.rows('SELECT * FROM lines WHERE res=? ORDER BY id', r.id), pad = (x, n) => String(x).padEnd(n).slice(0, n); subject = 'Your folio · ' + c.name + ' · ' + r.conf;
+          text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\nHere is your folio for room ' + (r.room || '') + ', ' + r.arrive + ' to ' + r.depart + ' (confirmation ' + r.conf + ').\n\n' + lines.map(l => pad(l.bdate, 12) + pad(l.descr, 28) + m(l.amount).padStart(10)).join('\n') + '\n' + pad('', 12) + pad('Balance', 28) + m(this.balance(r.id)).padStart(10) + '\n\nThank you for staying with us.\n' + foot; }
+        r.history.push({ at: now(), by: me.username, what: (b.op === 'emailConf' ? 'E-mailed confirmation to ' : 'E-mailed folio to ') + to }); r.history = r.history.slice(-60); this.putRes(r);
+        return { status: 200, json: { ok: true, to }, mail: { to, subject, text, fromName: c.name } };
+      }
       case 'history': return ok({ history: this.getRes(a.id).history || [] });
       case 'blockAdd': { if (!c.rooms.some(r => r.no === a.room)) throw err(400, 'Room not found.'); if (!isDate(a.start) || !isDate(a.end) || a.end < a.start) throw err(400, 'Check the dates.'); const clash = this.activeRes().find(r => r.room === a.room && r.arrive <= a.end && a.start < r.depart); if (clash) throw err(409, 'Room ' + a.room + ' has ' + clash.last + ', ' + clash.first + ' in it for those dates. Move the guest first.'); this.sql.exec('INSERT INTO blocks(room,start,end,reason) VALUES(?,?,?,?)', a.room, a.start, a.end, clip(a.reason, 120)); this.log(me.username, 'out of order ' + a.room); return ok(); }
       case 'blockRemove': { this.sql.exec('DELETE FROM blocks WHERE id=?', Number(a.id) || 0); return ok(); }
@@ -253,6 +358,9 @@ export class HotelCore {
         if (Array.isArray(n.rooms)) { const seen = new Set(); c.rooms = n.rooms.map(r => ({ no: clip(r.no, 8), type: clip(r.type, 8).toUpperCase(), floor: clip(r.floor, 4) })).filter(r => r.no && !seen.has(r.no) && seen.add(r.no)); for (const r of c.rooms) if (!c.types.some(t => t.code === r.type)) throw err(400, 'Room ' + r.no + ' has an unknown room type (' + r.type + ').'); for (const r of this.activeRes()) if (r.room && !seen.has(r.room)) throw err(409, 'Room ' + r.room + ' has a guest or reservation, so it cannot be removed.'); }
         if (Array.isArray(n.taxes)) c.taxes = n.taxes.map(t => ({ code: clip(t.code, 6).toUpperCase(), name: clip(t.name, 60), pct: Math.max(0, Math.min(50, Number(t.pct) || 0)) })).filter(t => t.code);
         if (Array.isArray(n.codes)) { c.codes = n.codes.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), type: clip(k.type, 8).toUpperCase(), tax: (k.tax || []).filter(x => c.taxes.some(t => t.code === x)) })).filter(k => k.code); if (!c.codes.some(k => k.code === 'RM')) throw err(400, 'Keep the RM (Room Charge) code. The night audit needs it.'); }
+        if (Array.isArray(n.packages)) c.packages = n.packages.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), price: Math.max(0, cents(k.price || 0)), charge: clip(k.charge, 8).toUpperCase() || 'MS' })).filter(k => k.code).slice(0, 50);
+        if (Array.isArray(n.rateRules)) { c.rateRules = n.rateRules.map(k => ({ name: clip(k.name, 40), from: k.from, to: k.to, days: (k.days || []).map(Number).filter(x => x >= 0 && x <= 6), type: clip(k.type, 8).toUpperCase() || '*', rate: cents(k.rate) })).slice(0, 300); for (const k of c.rateRules) { if (!isDate(k.from) || !isDate(k.to) || k.to < k.from) throw err(400, 'Check the dates on the rate line "' + k.name + '".'); if (k.type !== '*' && !c.types.some(t => t.code === k.type)) throw err(400, 'The rate line "' + k.name + '" has an unknown room type (' + k.type + ').'); if (!(k.rate >= 0)) throw err(400, 'Check the rate on the line "' + k.name + '".'); } }
+        if ('requireShift' in n) c.requireShift = !!n.requireShift;
         if (Array.isArray(n.housekeepers)) c.housekeepers = n.housekeepers.map(x => clip(x, 40)).filter(Boolean).slice(0, 40);
         this.setKv('config', c); this.log(me.username, 'changed setup'); return ok();
       }

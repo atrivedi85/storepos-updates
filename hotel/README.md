@@ -37,6 +37,25 @@ the hotel's old system did, in the Store POS look.
 - **E-mail** goes out through the SMTP account the master types into E-mail settings (Gmail + app password), using Ledger Desk's `sendMail`.
 - Session cookie `hd_s`, Path=/hotel, 14 days. `index.js` strips every `x-hd-*` header from browsers and adds its own.
 
+## Companies, groups, packages, rates by date, shifts, e-mail, ID scan (added Nov 16, 2026)
+
+- **Companies** (nav): profile, optional company rate, **direct-bill account** with credit limit (owner/manager only). To bill a stay:
+  pick the company in the reservation, then Folio › Post Payment › Direct Bill. That moves the amount to the company's account (`ar` table).
+  Receive payment and Print statement are in the company window. Report: Accounts Receivable Aging (payments pay the oldest stays first).
+- **Groups** (nav): dates, cut-off, rooms held per type, group rate per type. Held rooms are off sale to everyone else until the cut-off
+  date passes or the group is cancelled. A reservation with `groupId` picks up from the block. Rooming list, Group Pickup report.
+- **Rates by date** (Setup): lines of name, from, through, days, room type, rate; the last matching line wins. A reservation keeps a
+  rate for each night (`r.rates`), in this order: group rate, company rate, rates by date, room type rate. Typing a rate sets
+  `rateManual` and charges that one rate every night.
+- **Packages** (Setup): code, name, price per night, posting code. The night audit posts it with each room charge.
+- **Cashier shift** (Shift button): open with the drawer's cash, close with the counted cash; shows over/short. Setup › Property can
+  make the front desk open a shift before taking payments. Report: Cashier Shifts.
+- **Guest e-mails**: E-mail Confirmation (also for a cancellation) and E-mail Folio. `hotel-core.js` writes the message, `hotel.js`
+  hands it to the directory, which sends it from the master's e-mail account with the hotel's name (300 a day per hotel).
+- **Scan ID**: in the reservation window. Any 2D barcode scanner in keyboard mode reads the PDF417 on the back of a US/Canadian
+  license (AAMVA); `parseLicense` fills name, address and license number. The birth date is not kept.
+- **Not built: key encoder.** It needs the lock brand's own PMS interface, so it waits on knowing the lock system.
+
 ## Rules worth knowing
 
 - Money is kept in cents. Each tax is `round(amount × percent)`, per line.

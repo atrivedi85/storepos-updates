@@ -77,9 +77,9 @@ export class DirectoryCore {
     this.sql.exec('INSERT INTO d_tokens(h,email,kind,exp) VALUES(?,?,?,?)', sha(token), email, kind, now() + (kind === 'invite' ? INVITE_DAYS * 864e5 : RESET_MIN * 6e4));
     return token;
   }
-  async mail(to, subject, text) {
+  async mail(to, subject, text, fromName) {
     const cfg = this.kv('mail', null); if (!cfg || !cfg.user || !cfg.pass || !this.opts.sendMail) return false;
-    try { await this.opts.sendMail(cfg, { to, subject, text, fromName: cfg.fromName || 'Hotel Desk' }); return true; }
+    try { await this.opts.sendMail(cfg, { to, subject, text, fromName: fromName || cfg.fromName || 'Hotel Desk' }); return true; }
     catch (e) { this.log('mail', 'could not send to ' + to + ': ' + String(e && e.message || e)); this.lastMailError = String(e && e.message || e); return false; }
   }
   // Makes the "set your password" link for a new login and e-mails it. The link is also handed back so it can be copied.
@@ -95,6 +95,13 @@ export class DirectoryCore {
   }
   async route(req) {
     const p = req.path, b = req.body || {}, POST = req.method === 'POST', ok = x => ({ status: 200, json: { ok: true, ...(x || {}) } });
+    if (p === '/internal/mail') {   // only our own hotel objects can reach this (see hotel.js); at most 300 guest e-mails a day per hotel
+      if (!req.internal || !POST) throw err(404, 'Not found.');
+      const day = new Date().toISOString().slice(0, 10), k = b.hotel + ':' + day; this.sent = this.sent || {}; if ((this.sent[k] || 0) >= 300) throw err(429, 'This hotel has sent too many e-mails today. Try again tomorrow.');
+      const cfg = this.kv('mail', null); if (!cfg || !cfg.user || !cfg.pass) throw err(400, 'E-mail sending is not set up yet. Ask your Hotel Desk provider to turn it on.');
+      this.lastMailError = ''; const sent = await this.mail(clip(b.to, 120), clip(b.subject, 200), String(b.text || '').slice(0, 20000), clip(b.fromName, 60)); if (!sent) throw err(502, 'The e-mail could not be sent: ' + (this.lastMailError || 'unknown reason'));
+      this.sent[k] = (this.sent[k] || 0) + 1; return ok();
+    }
     const hasMaster = !!this.one("SELECT 1 x FROM d_users WHERE hotel=''");
     if (p === '/auth/setup-needed') return { status: 200, json: { needed: !hasMaster, owner: !!req.ledgerAdmin } };
     if (p === '/master/setup' && POST) {

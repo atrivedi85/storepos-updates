@@ -12,7 +12,9 @@ export async function makeSite(repo) {
     const w = await dir.handle({ method: 'GET', path: '/auth/whoami', query: {}, cookie: cookie || '', origin }); if (w.status !== 200) return w;
     if (!w.json.hotel) return { status: 400, json: { error: 'Open a hotel first.' } };
     const id = w.json.hotel.id; if (!hotels.has(id)) { const db = new DatabaseSync(':memory:'); hotels.set(id, { db, core: new HotelCore(sqlOf(db)) }); }
-    return hotels.get(id).core.handle({ method, path: p, query: query || {}, body, me: w.json.user, hotel: w.json.hotel });
+    const r = hotels.get(id).core.handle({ method, path: p, query: query || {}, body, me: w.json.user, hotel: w.json.hotel });
+    if (r.mail && r.status === 200) { const m = await dir.handle({ method: 'POST', path: '/internal/mail', query: {}, body: { hotel: id, ...r.mail }, internal: true, origin }); if (m.status !== 200) return m; }
+    return r;
   }
   return { handle, mails, dirDb, hotels, addDays };
 }
