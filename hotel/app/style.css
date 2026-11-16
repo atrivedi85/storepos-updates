@@ -108,7 +108,6 @@ th{background:#f4f6f9;color:#555;border-bottom:1px dashed #333;font-weight:500;f
 .band b{font-weight:200;font-variant-numeric:tabular-nums}.band span{color:#bdbdbd;font-size:16px}
 .band .bigs div{text-align:center;margin:6px 0}.band .bigs b{display:block;font-size:46px}
 .band .trio div{display:flex;align-items:center;gap:12px;margin:8px 0}.band .trio b{font-size:44px;min-width:56px;text-align:right}.band .trio span{max-width:150px;line-height:1.2}
-.band .quad{display:grid;grid-template-columns:auto auto;gap:6px 22px}.band .quad div{text-align:center}.band .quad b{display:block;font-size:30px}
 .availrow{background:#2f2f2f;color:#fff;display:flex;flex-wrap:wrap;gap:8px 30px;align-items:center;padding:0 30px 26px;border-top:1px solid #444}
 .availrow>div{display:flex;align-items:center;gap:12px;padding-top:18px}.availrow b{font-size:34px;font-weight:200}.availrow span{color:#bdbdbd;font-size:15px;line-height:1.25}
 .availrow .availtot b{font-size:52px}
@@ -146,7 +145,6 @@ h1.rtitle{font-weight:300;font-size:44px;text-align:center;margin:10px 0 12px}
 .rsearch{text-align:center;font-size:17px}.rsearch input{width:480px;max-width:90%;margin-top:6px}
 hr.dash{border:0;border-top:1px dashed #888;margin:20px 0}
 .rtop{margin-bottom:18px}
-.rform{display:flex;flex-direction:column;align-items:center;gap:12px;font-size:17px}.rform label{display:flex;align-items:center;gap:10px}.rform input{width:190px}
 .rbtns{display:flex;justify-content:center;gap:14px;margin:6px 0 18px}.rbtns.left{justify-content:flex-start}
 .rcols{column-count:3;column-gap:60px}
 .rcat{break-inside:avoid;margin-bottom:34px}
@@ -155,3 +153,65 @@ hr.dash{border:0;border-top:1px dashed #888;margin:20px 0}
 .rcat.off .rlink{display:none!important}
 .rlink{display:block;color:#4a6ee0;font-size:17px;line-height:34px;text-decoration:none}.rlink:hover{text-decoration:underline}
 @media (max-width:1000px){.rcols{column-count:2}}@media (max-width:640px){.rcols{column-count:1}h1.rtitle{font-size:34px}}
+
+/* ===== Report options pages: label right-aligned before each control, centered ===== */
+.rform{display:grid;grid-template-columns:max-content max-content;justify-content:center;align-items:center;gap:12px 14px;font-size:17px}
+.rform label.fl{text-align:right}
+.rform .fc input:not([type=checkbox]),.rform .fc select{width:250px}
+.rform .fc input[type=checkbox]{margin:0}
+.rfmt{font-weight:300;font-size:24px;text-align:center;margin:0 0 14px}
+
+/* ===== Report sheet: the white "paper" every report is drawn on (also what PRINT prints) ===== */
+#repOut{background:#e6e6e6;padding:24px 16px;border-radius:4px;min-height:200px}
+.sheet{background:#fff;color:#000;max-width:1000px;margin:0 auto;padding:28px;font:12.5px/1.35 Arial,Helvetica,sans-serif;min-height:620px;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.sheet .sh-title{font-weight:700;font-size:20px;text-align:left;margin-bottom:10px}
+.sheet .sh-head{display:flex;justify-content:space-between;gap:16px;padding-bottom:6px;border-bottom:2px solid #000;margin-bottom:12px}
+.sheet .sh-body{flex:1}
+.sheet .sh-foot{display:flex;justify-content:space-between;gap:16px;margin-top:26px;padding-bottom:6px;border-bottom:2px solid #000}
+.sheet .sh-sub{display:flex;gap:40px;margin:0 0 10px}
+.sheet .sh-h{font-weight:700;margin:18px 0 4px}
+.sheet .sh-total{font-weight:700;margin-top:10px}
+.sheet .sh-note{margin-top:10px;font-style:italic;color:#333}
+.sheet .empty{padding:14px;color:#333}
+.sheet .err{color:#a00}
+.sheet table.rt{width:100%;border-collapse:collapse;background:none;font-size:12.5px;margin:0 0 6px}
+.sheet table.rt th{background:none;color:#000;position:static;border:0;text-decoration:underline;font-size:11.5px;font-weight:400;text-align:left;vertical-align:bottom;padding:4px 6px;white-space:normal}
+.sheet table.rt th.num{text-align:right}
+.sheet table.rt td{border:0;background:none;padding:3px 6px;vertical-align:top}
+.sheet table.rt tr:nth-child(even) td{background:none}
+.sheet .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sheet td.lbl{text-align:right}
+.sheet tr.tot td.lbl{text-align:right;font-weight:700}
+.sheet tr.tot td.amt{border-top:1px solid #000}
+.sheet tr.grp td{font-weight:700;padding-top:14px}
+.sheet table.co th:first-child{text-align:right}
+.sheet table.kv{width:auto;margin-left:0}.sheet table.kv td.lbl{text-align:left;font-weight:700;padding-right:36px}.sheet table.kv tr.b td{font-weight:700}
+.sheet table.st td.ind{padding-left:20px}.sheet table.st tr.ssec td{font-weight:700;text-decoration:underline;padding-top:14px;padding-left:6px}.sheet table.st tr.b td{font-weight:700}
+.sheet table.inh,.sheet table.act{font-size:11px}
+.sheet table.det{table-layout:fixed}.sheet table.det td,.sheet table.det th{padding-left:4px;padding-right:4px;overflow-wrap:anywhere}
+.sheet .sub{font-size:11px;color:#222;white-space:normal}
+.sheet .note{max-width:150px;white-space:normal;overflow-wrap:anywhere}
+
+/* ===== header: room number box ===== */
+.rj{position:relative;align-self:center;margin-right:10px;display:inline-block}
+.rj input{width:90px;min-height:36px;padding:6px 26px 6px 10px;background:#3a3a3a;border-color:#555;color:#fff}
+.rj input::placeholder{color:#9a9a9a}
+.rj svg{position:absolute;right:8px;top:50%;margin-top:-8px;color:#bbb;pointer-events:none}
+
+/* ===== home: rooms bar ===== */
+.band .stack{flex:1 1 100%;display:flex;margin-top:4px}
+.band .seg{min-width:34px}
+.band .seg .sb{height:46px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:300;font-variant-numeric:tabular-nums}
+.band .seg .sl{display:block;height:22px;line-height:22px;font-size:13px;color:#bdbdbd;white-space:nowrap}
+
+@page{margin:.5in}
+@media print{
+  #print{padding:0}
+  #print .sheet{max-width:none;box-shadow:none;padding:0;min-height:9.3in;font-size:12.5px}
+  #print .sheet table.rt th{background:none;color:#000;border:0;text-decoration:underline;font-size:11.5px;padding:4px 6px}
+  #print .sheet table.rt td{border:0;padding:3px 6px}
+  #print .sheet table.inh td,#print .sheet table.act td{font-size:11px}
+  #print .sheet tr.tot td.amt{border-top:1px solid #000}
+  #print .sheet table.det td,#print .sheet table.det th{padding-left:4px;padding-right:4px}
+  #print .sheet .sh-title{font-size:20px}
+}

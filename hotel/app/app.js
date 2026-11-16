@@ -1,7 +1,7 @@
 // Hotel Desk: the screens. Talks to the server at /hotel/api (cloud/src/hotel-core.js).
 'use strict';
 let S = null;                       // everything the server sent: config, rooms, reservations, balances
-let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: 'property' };
+let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', opt: {}, setup: 'property' };
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = c => ((c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -120,6 +120,7 @@ function render() {
   if (focusId && $('#' + focusId)) { const el = $('#' + focusId); el.focus(); if (el.setSelectionRange && el.type === 'text') el.setSelectionRange(el.value.length, el.value.length); }
   if (view.name === 'reports' && view.rep && view.repStage === 'result') drawReport();
   if (view.name === 'reports' && view.repStage !== 'options' && view.repStage !== 'result') repFilter();
+  if (view.name === 'reports' && view.rep && view.repStage === 'options') fillShiftUsers();
 }
 const IC_PERSON = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
 const IC_BUILD = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4h9v17M14 9h5v12M3 21h18M8 8h3M8 12h3M8 16h3"/></svg>';
@@ -130,10 +131,10 @@ function paint(hk, nav) {
     menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest Profile'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
     menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), A('repGo', 'Night Audit', 'data-rep="stats"')]) +
     menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
-    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="history"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
   $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
-    <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #">'}
+    <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
     ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span></div></header>
     <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
@@ -151,7 +152,7 @@ function vHome() {
     <div class="bigs"><div><b>${s.occ}%</b><span>Today's Occupancy</span></div><div><b>${money(s.adr)}</b><span>Expected ADR</span></div></div>
     <div class="trio"><div><b>${arrToday}</b><span>Total Arrivals Today</span></div><div><b>${s.checkedIn}</b><span>Check Ins Completed</span></div><div><b>${s.arrivalsLeft}</b><span>Check Ins Remaining</span></div></div>
     <div class="trio"><div><b>${s.dueOut + outToday}</b><span>Total Departures Today</span></div><div><b>${dirtyVacant}</b><span>Vacant/Dirty Rooms Remaining</span></div><div><b>${s.vacant}</b><span>Total Rooms Available</span></div></div>
-    <div class="quad"><div><span>check ins</span><b>${s.arrivalsLeft}</b></div><div><span>vacant</span><b>${s.vacant}</b></div><div><span>stayovers</span><b>${s.stayovers}</b></div><div><span>OOO</span><b>${s.ooo}</b></div></div></div>
+    <div class="stack">${[[s.arrivalsLeft, '#1c1c1c', 'check ins', 't'], [s.stayovers, '#6b6b6b', 'stayovers', 'b'], [s.vacant, '#4a4a4a', 'vacant', 't'], [s.ooo, 'var(--red)', 'OOO', 'b']].map(x => `<div class="seg" style="flex:${x[0]} 1 0"><span class="sl">${x[3] === 't' ? x[2] : ''}</span><div class="sb" style="background:${x[1]}">${x[0]}</div><span class="sl">${x[3] === 'b' ? x[2] : ''}</span></div>`).join('')}</div></div>
   <div class="availrow"><div class="availtot"><b>${s.vacant}</b><span>Available</span></div>${types.map(x => `<div class="availtype"><span>${esc(x.t.code)}<br>${money(rateFor(x.t.code, d))}</span><b>${x.n}</b></div>`).join('')}</div>`;
 }
 function vStats() {
@@ -363,25 +364,63 @@ function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Fo
 
 /* ---------- Reports ---------- */
 const REPORTS = [['arrivals', 'Arrival List'], ['departures', 'Departure List'], ['inhouse', 'In House List'], ['vacant', 'Vacant Room List'], ['hkcheck', 'Housekeeping Check-off List'], ['ledger', 'Guest Ledger (balances)'], ['future', 'Future Availability (14 days)'],
-  ['stats', 'Hotel Statistics', 1], ['closeout', 'Final Transaction Closeout', 1], ['shift', 'Shift Reconciliation', 1], ['journal', 'Hotel Journal Detail', 1], ['history', 'No Show, Cancellation and Departed List', 1], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts', 1]];
+  ['activity', 'Reservation Activity Report'], ['stats', 'Hotel Statistics'], ['closeout', 'Final Transaction Closeout'], ['shift', 'Shift Reconciliation'], ['journal', 'Hotel Journal Detail'], ['cancel', 'Cancellation List'], ['noshow', 'No Show Report'], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts']];
 const REPORT_CATS = [
-  ['TOP 10 LIST', [['Shift Reconciliation', 'shift'], ['Vacant Room List', 'vacant'], ['Housekeeping Check-off List', 'hkcheck'], ['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['In House List', 'inhouse'], ['Reservation Activity Report', 'history']]],
+  ['TOP 10 LIST', [['Shift Reconciliation', 'shift'], ['Vacant Room List', 'vacant'], ['Housekeeping Check-off List', 'hkcheck'], ['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['In House List', 'inhouse'], ['Reservation Activity Report', 'activity']]],
   ['Emergency Reports', [['Account Balance Report', 'ledger'], ['Arrival List', 'arrivals'], ['Departure List', 'departures'], ['In House List', 'inhouse'], ['Vacant Room List', 'vacant']]],
   ['Accounting Reports', [['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['Guest Ledger', 'ledger'], ['Hotel Journal Detail', 'journal'], ['Shift Reconciliation', 'shift'], ['Cashier Shifts', 'shifts']]],
-  ['Front Desk Reports', [['Cancellation List', 'history'], ['No Show Report', 'history']]],
+  ['Front Desk Reports', [['Cancellation List', 'cancel'], ['No Show Report', 'noshow']]],
   ['Housekeeping Reports', [['Housekeeping Check-off List', 'hkcheck']]],
-  ['Reservation Reports', [['10 Day Availability', 'future'], ['No Show Report', 'history']]],
+  ['Reservation Reports', [['Reservation Activity Report', 'activity'], ['10 Day Availability', 'future'], ['No Show Report', 'noshow']]],
   ['Group Reports', [['Group Pickup Summary', 'grouppickup']]],
   ['Accounts Receivable Reports', [['Accounts Receivable Aging Report', 'araging']]]];
 const REPORT_INFO = {
   arrivals: 'Guests with a reservation due to arrive who have not checked in yet.', departures: 'In-house guests due to leave today or earlier, with their balances.',
   inhouse: 'Every guest checked in right now, with room, dates, rate and balance.', vacant: 'Rooms that are empty tonight, with their housekeeping condition.',
   hkcheck: 'A room-by-room sheet for housekeepers to check off as each room is done.', ledger: 'Every stay that has a balance owing or a credit, with the total.',
-  future: 'How many rooms of each type are still available over the next 14 days.', stats: 'Rooms sold, occupancy, room revenue, ADR and RevPAR for each business date.',
-  closeout: 'Totals for every posting code (charges, taxes and payments) for the dates chosen.', shift: 'Totals by user and posting code, to balance each cashier at the end of a shift.',
-  journal: 'Every line posted to a folio, in order, with who posted it and when.', history: 'Reservations that were no shows, cancelled or departed in the dates chosen.',
+  future: 'How many rooms of each type are still available over the next 14 days.', stats: 'Rooms, occupancy, revenue, ADR and RevPAR for the day, month to date and year to date, with last year beside them.',
+  closeout: 'Every posting code for the day: opening balance, totals, adjustments, month to date and year to date.', shift: 'Payments taken on a day by posting code, with the lines behind each total, to balance the drawer.',
+  journal: 'Every line posted to a folio, in order, with who posted it and when.', cancel: 'Reservations that were cancelled and were due to arrive in the dates chosen.', noshow: 'Reservations that were due to arrive in the dates chosen and never came.',
+  activity: 'Reservations made (created) in the dates chosen, whatever their status now.',
   araging: 'What each direct-bill company owes, grouped by how old the charge is.', grouppickup: 'For each group, the rooms blocked, picked up and still left.',
   shifts: 'Each cashier shift with opening cash, cash taken in, counted cash and over or short.' };
+// Options page of each report: [key, kind, label, choices or default]. Keys `from` and `to` are the date boxes (ids repFrom / repTo).
+const optTypes = () => [['', 'Select All']].concat(S.config.types.map(t => [t.code, t.code + (t.name ? ' - ' + t.name : '')]));
+const OPT_RANGE = () => [{ k: 'from', t: 'date', l: '*Start Date:' }, { k: 'to', t: 'date', l: 'End Date:' }];
+const REP_OPTS = {
+  shift: () => [{ k: 'from', t: 'date', l: 'Date:' }, { k: 'user', t: 'select', l: 'User ID:', o: [['All', 'Select All']], d: 'All' }, { k: 'drawer', t: 'money', l: 'Drawer Total:', d: '' }, { k: 'details', t: 'check', l: 'Transaction Details:', d: true }],
+  closeout: () => [{ k: 'from', t: 'date', l: 'Date:' }],
+  stats: OPT_RANGE, journal: OPT_RANGE, cancel: OPT_RANGE, noshow: OPT_RANGE, shifts: OPT_RANGE,
+  inhouse: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['name', 'Guest Name'], ['room', 'Room'], ['account', 'Account']], d: 'name' }, { k: 'type', t: 'select', l: 'Room Type:', o: optTypes(), d: '' }],
+  vacant: () => [{ k: 'type', t: 'select', l: 'Room Type:', o: optTypes(), d: '' }, { k: 'cond', t: 'select', l: 'Condition:', o: [['', 'Select All'], ['R', 'Ready'], ['C', 'Clean'], ['D', 'Dirty']], d: '' },
+    { k: 'ooo', t: 'check', l: 'Include Out of Order Rooms:', d: true }, { k: 'arr', t: 'check', l: "Include Today's Arrival:", d: true }, { k: 'names', t: 'check', l: 'Include Guest Names:', d: true }],
+  activity: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['arrive', 'Arrival Date'], ['name', 'Guest Name'], ['created', 'Created']], d: 'arrive' }, { k: 'from', t: 'date', l: '*Start Date:' }, { k: 'to', t: 'date', l: '*End Date:' }, { k: 'type', t: 'select', l: 'Room Type:', o: optTypes(), d: '' }],
+  arrivals: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['name', 'Guest Name'], ['room', 'Room']], d: 'name' }],
+  departures: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['name', 'Guest Name'], ['room', 'Room']], d: 'room' }] };
+const CSV_FIELD = { k: 'csv', t: 'check', l: 'Generate report as .CSV file:', d: false };
+const repFields = () => (REP_OPTS[view.rep] ? REP_OPTS[view.rep]() : []);
+const fieldId = f => f.k === 'from' ? 'repFrom' : f.k === 'to' ? 'repTo' : 'opt_' + f.k;
+const optVal = f => f.k === 'from' ? view.from : f.k === 'to' ? view.to : view.opt && view.opt[f.k] !== undefined ? view.opt[f.k] : f.d;
+function optField(f) {
+  const id = fieldId(f), v = optVal(f); let ctl;
+  if (f.t === 'date') ctl = `<input type="date" id="${id}" value="${esc(v)}">`;
+  else if (f.t === 'money') ctl = `<input id="${id}" inputmode="decimal" placeholder="0.00" value="${esc(v)}">`;
+  else if (f.t === 'check') ctl = `<input type="checkbox" id="${id}" ${v ? 'checked' : ''}>`;
+  else { const o = f.o.some(x => String(x[0]) === String(v)) ? f.o : f.o.concat([[v, v]]); ctl = `<select id="${id}">${o.map(x => `<option value="${esc(x[0])}" ${String(x[0]) === String(v) ? 'selected' : ''}>${esc(x[1])}</option>`).join('')}</select>`; }
+  return `<label class="fl" for="${id}">${esc(f.l)}</label><div class="fc">${ctl}</div>`;
+}
+function readOpts() {   // copy what is typed on the options page into view
+  view.opt = view.opt || {};
+  for (const f of repFields().concat([CSV_FIELD])) { const el = $('#' + fieldId(f)); if (!el) continue; if (f.k === 'from') view.from = el.value || view.from; else if (f.k === 'to') view.to = el.value; else view.opt[f.k] = f.t === 'check' ? el.checked : el.value; }
+}
+async function fillShiftUsers() {   // the User ID box lists everyone who posted a payment on that date
+  if (view.rep !== 'shift' || !$('#opt_user')) return;
+  try {
+    const R = await api('/report?name=shift2&date=' + encodeURIComponent(($('#repFrom') && $('#repFrom').value) || view.from)), sel = $('#opt_user'); if (!sel) return;
+    const cur = (view.opt && view.opt.user) || 'All'; if (cur !== 'All' && !R.users.includes(cur)) view.opt.user = 'All';
+    sel.innerHTML = [['All', 'Select All']].concat(R.users.map(u => [u, u])).map(o => `<option value="${esc(o[0])}" ${o[0] === view.opt.user ? 'selected' : ''}>${esc(o[1])}</option>`).join('');
+  } catch (e) { /* leave Select All */ }
+}
 const repFilter = () => {
   const q = ((view.repQ || '')).trim().toLowerCase();
   document.querySelectorAll('.rcat').forEach(c => { let n = 0; c.querySelectorAll('.rlink').forEach(a => { const ok = !q || a.textContent.toLowerCase().includes(q); a.style.display = ok ? '' : 'none'; if (ok) n++; }); c.style.display = n ? '' : 'none'; });
@@ -389,48 +428,125 @@ const repFilter = () => {
 function repTitle() { return view.repLabel || (REPORTS.find(r => r[0] === view.rep) || [])[1] || ''; }
 function vReports() {
   if (!view.from) view.from = view.to = B();
-  const rep = REPORTS.find(r => r[0] === view.rep);
+  view.opt = view.opt || {};
+  const rep = REPORTS.find(r => r[0] === view.rep), fields = repFields();
   if (view.rep && rep && view.repStage === 'options') {
     return `<h1 class="rtitle">${esc(repTitle())}</h1><p class="rdesc">${esc(REPORT_INFO[view.rep] || '')}</p>
-    ${rep[2] ? `<div class="rform"><label>*Start Date:<input type="date" id="repFrom" value="${view.from}"></label><label>End Date:<input type="date" id="repTo" value="${view.to}"></label></div>` : ''}
-    <hr class="dash"><div class="rbtns"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="repRun">SUBMIT</button></div>`;
+    ${fields.length ? `<div class="rform">${fields.map(optField).join('')}</div>` : ''}
+    <hr class="dash"><div class="rfmt">Formatting Options:</div><div class="rform">${optField(CSV_FIELD)}</div>
+    <div class="rbtns"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="repRun">SUBMIT</button></div>`;
   }
   if (view.rep && rep && view.repStage === 'result') {
-    return `<h1 class="rtitle">${esc(repTitle())}</h1><div class="rbtns left"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="printRep">PRINT</button></div>
-    <div class="wrap" id="repOut" style="padding:12px"><div class="hint">Loading…</div></div>`;
+    return `<div class="rbtns left"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="printRep">PRINT</button></div>
+    <div id="repOut"><div class="hint">Loading…</div></div>`;
   }
   const col = view.repCol || {}, allOff = REPORT_CATS.every(c => col[c[0]]);
   return `<h1 class="rtitle">Reports</h1><div class="rsearch"><label for="repSearch">Search:</label><br><input type="text" id="repSearch" value="${esc(view.repQ || '')}" autocomplete="off"></div><hr class="dash">
   <div class="rtop"><button class="btn blue" data-act="repAll">${allOff ? 'EXPAND ALL' : 'COLLAPSE ALL'}</button></div>
   <div class="rcols">${REPORT_CATS.map(c => `<div class="rcat ${col[c[0]] ? 'off' : ''}"><div class="rch" data-act="repCat" data-cat="${esc(c[0])}"><span class="tri">${col[c[0]] ? '▶' : '▼'}</span>${esc(c[0])}</div>${c[1].map(r => `<a class="rlink" href="#" data-act="rep" data-rep="${r[1]}" data-label="${esc(r[0])}">${esc(r[0])}</a>`).join('')}</div>`).join('')}</div>`;
 }
-async function drawReport() {
-  const out = $('#repOut'); if (!out) return; const title = REPORTS.find(r => r[0] === view.rep)[1]; let h = '';
-  const T = (heads, rows) => `<table><tr>${heads.map(x => `<th class="${/^#/.test(x) ? 'num' : ''}">${x.replace(/^#/, '')}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map((c, i) => `<td class="${/^#/.test(heads[i]) ? 'num' : ''}">${c}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${heads.length}" class="empty">Nothing to show.</td></tr>`}</table>`;
-  const sortRoom = (a, b) => String(a.room || a.no).localeCompare(String(b.room || b.no), 'en', { numeric: true });
-  try {
-    if (view.rep === 'arrivals') h = T(['Guest', 'Room', 'Type', '#Nights', '#Rate', 'Guarantee', 'Phone', 'Conf. #'], S.res.filter(r => r.status === 'reserved' && r.arrive <= B()).sort(byName).map(r => [esc(gname(r)), esc(r.room), esc(r.type), nights(r.arrive, r.depart), money(r.rate), esc(r.guarantee), esc(r.phone), esc(r.conf)]));
-    else if (view.rep === 'departures') h = T(['Room', 'Guest', 'Arrival', 'Departure', '#Balance'], S.res.filter(r => r.status === 'inhouse' && r.depart <= B()).sort(sortRoom).map(r => [esc(r.room), esc(gname(r)), dshort(r.arrive), dshort(r.depart), money(S.bal[r.id] || 0)]));
-    else if (view.rep === 'inhouse') h = T(['Room', 'Guest', 'Type', 'Arrival', 'Departure', '#Adults', '#Children', '#Rate', '#Balance'], S.res.filter(r => r.status === 'inhouse').sort(sortRoom).map(r => [esc(r.room), esc(gname(r)), esc(r.type), dshort(r.arrive), dshort(r.depart), r.adults, r.children, money(r.rate), money(S.bal[r.id] || 0)]));
-    else if (view.rep === 'vacant') h = T(['Room', 'Type', 'Condition', 'Arriving today'], S.config.rooms.filter(r => !inRoom(r.no) && !isOOO(r.no, B())).map(r => { const a = S.res.find(x => x.status === 'reserved' && x.room === r.no && x.arrive <= B()); return [esc(r.no), esc(r.type), { R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(r.no)], a ? esc(gname(a)) : '']; }));
-    else if (view.rep === 'hkcheck') h = hkCheckHtml();
-    else if (view.rep === 'ledger') { const l = S.res.filter(r => (S.bal[r.id] || 0) !== 0).sort(sortRoom); h = T(['Room', 'Guest', 'Status', 'Arrival', 'Departure', '#Balance'], l.map(r => [esc(r.room), esc(gname(r)), r.status, dshort(r.arrive), dshort(r.depart), money(S.bal[r.id])])) + `<p><b>Total: ${money(l.reduce((s, r) => s + S.bal[r.id], 0))}</b></p>`; }
-    else if (view.rep === 'future') { const days = []; for (let i = 0; i < 14; i++) days.push(addDays(B(), i)); h = T(['Type'].concat(days.map(d => '#' + dshort(d).replace(/\/\d+$/, ''))), S.config.types.map(t => [`<b>${esc(t.code)}</b>`].concat(days.map(d => availOfType(t.code, d, addDays(d, 1))))).concat([['<b>Hotel</b>'].concat(days.map(d => '<b>' + S.config.types.reduce((s, t) => s + availOfType(t.code, d, addDays(d, 1)), 0) + '</b>'))])); }
-    else {
-      const R = await api(`/report?name=${view.rep}&from=${view.from}&to=${view.to}`);
-      if (view.rep === 'stats') h = T(['Date', '#Rooms', '#Sold', '#Out of order', '#Occupancy %', '#Room revenue', '#ADR', '#RevPAR', '#No shows'], R.rows.map(x => [dshort(x.date) + (x.live ? ' (today so far)' : ''), x.total, x.sold, x.ooo, x.occ, money(x.roomRev), money(x.adr), money(x.revpar), x.noShows == null ? '' : x.noShows]));
-      else if (view.rep === 'closeout') { const tot = R.rows.reduce((s, x) => s + x.total, 0); h = T(['Code', 'Description', '#Count', '#Total'], R.rows.map(x => [esc(x.code), esc(x.descr), x.cnt, money(x.total)])) + `<p><b>Charges less payments: ${money(tot)}</b></p>`; }
-      else if (view.rep === 'shift') h = T(['User', 'Code', 'Description', '#Count', '#Total'], R.rows.map(x => [esc(x.user), esc(x.code), esc(x.descr), x.cnt, money(x.total)]));
-      else if (view.rep === 'journal') h = T(['Item #', 'Date', 'Posted', 'Room', 'Guest', 'Description', 'Comments', 'By', '#Amount'], R.rows.map(l => [l.id, dshort(l.bdate), stamp(l.at), esc(l.room), esc(l.name), esc(l.descr), esc(l.comment), esc(l.user), money(l.amount)]));
-      else if (view.rep === 'araging') h = T(['Company', '#0–30 days', '#31–60', '#61–90', '#Over 90', '#Unapplied credit', '#Balance'], R.rows.map(x => [esc(x.name), money(x.cur), money(x.d30), money(x.d60), money(x.d90), money(x.credit), '<b>' + money(x.balance) + '</b>'])) + `<p><b>Total owed: ${money(R.rows.reduce((s, x) => s + x.balance, 0))}</b></p>`;
-      else if (view.rep === 'grouppickup') h = T(['Group', 'Arrival', 'Departure', 'Cut-off', '#Blocked', '#Picked up', '#Left', '#Room revenue', 'Status'], R.rows.map(x => [esc(x.name), dshort(x.arrive), dshort(x.depart), dshort(x.cutoff), x.blocked, x.picked, x.left, money(x.revenue), x.status]));
-      else if (view.rep === 'shifts') h = T(['Cashier', 'Opened', 'Closed', '#Opening cash', '#Cash taken in', '#Expected', '#Counted', '#Over / short'], R.rows.map(x => [esc(x.user), stamp(x.openAt), x.closeAt ? stamp(x.closeAt) : '<span class="badge a">Open</span>', money(x.openCash), x.closeAt ? money(x.cashIn) : '', x.closeAt ? money(x.expected) : '', x.closeAt ? money(x.counted) : '', x.closeAt ? (x.overShort < 0 ? '(' + money(-x.overShort) + ')' : money(x.overShort)) : '']));
-      else if (view.rep === 'history') { const L = (t, l) => `<h2>${t} (${l.length})</h2>` + T(['Guest', 'Arrival', 'Departure', 'Type', 'Room', '#Rate', '#Balance', 'Conf. #'], l.map(r => [esc(r.name), dshort(r.arrive), dshort(r.depart), esc(r.type), esc(r.room), money(r.rate), money(r.bal), esc(r.conf)])); h = L('No shows', R.noshow) + L('Cancellations', R.cancelled) + L('Departed', R.out); }
-    }
-  } catch (e) { h = `<div class="err">${esc(e.message)}</div>`; }
-  out.innerHTML = `<h2 style="margin-top:0">${title}</h2>` + h; out.dataset.title = title;
+
+/* The report sheet: every report is drawn on this "paper" (title, header line, body, footer). PRINT prints exactly this. */
+const mm = c => c < 0 ? '(' + money(-c) + ')' : money(c);   // money, negative in parentheses
+const mdy = d => d ? d.slice(5, 7) + '/' + d.slice(8, 10) + '/' + d.slice(0, 4) : '';
+const printedAt = () => new Date().toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '');
+function sheet(title, bodyHtml, o) {
+  o = o || {};
+  return `<div class="sheet"><div class="sh-title">${esc(title)}</div>
+    <div class="sh-head"><span>Business Date: ${esc(mdy(o.date || B()))}</span><span>Property: ${esc(S.config.name)}</span><span>Shift: ${esc(o.shift || 'All')}</span><span>User: ${esc(o.user || S.me.name)}</span></div>
+    <div class="sh-body">${bodyHtml}</div>
+    <div class="sh-foot"><span>Date/Time of Printing: ${esc(printedAt())}</span><span>Page 1 of 1</span></div></div>`;
 }
-function hkCheckHtml() { return `<table><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc(st.note || '')}</td><td>☐</td></tr>`; }).join('')}</table>`; }
+function downloadCsv(name, rows) {
+  const text = rows.map(r => r.map(c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const a = document.createElement('a'), url = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+const DATED = { shift: 1, closeout: 1, stats: 1, activity: 1, journal: 1, cancel: 1, noshow: 1, shifts: 1 };
+async function buildReport() {
+  const title = repTitle(), opt = view.opt || {}, money = mm; let h = '', csv = null;
+  const plain = x => { const d = document.createElement('div'); d.innerHTML = String(x == null ? '' : x).replace(/<br\s*\/?>/gi, ' '); return d.textContent.replace(/\s+/g, ' ').trim(); };
+  // T: a table. Headings starting with # are numbers (right aligned). A row is a list of cells, or a ready-made <tr> string. The first table is what CSV saves.
+  const T = (heads, rows, cls) => {
+    if (!csv) csv = [heads.map(x => plain(String(x).replace(/^#/, '')))].concat(rows.filter(Array.isArray).map(r => r.map(plain)));
+    const num = heads.map(x => /^#/.test(x));
+    return `<table class="rt ${cls || ''}"><tr>${heads.map((x, i) => `<th class="${num[i] ? 'num' : ''}">${x.replace(/^#/, '')}</th>`).join('')}</tr>${rows.map(r => typeof r === 'string' ? r : `<tr>${r.map((c, i) => `<td class="${num[i] ? 'num' : ''}">${c}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${heads.length}" class="empty">Nothing to show.</td></tr>`}</table>`;
+  };
+  const tot = (label, vals, lead) => `<tr class="tot"><td class="lbl" colspan="${lead || 1}">${label}</td>${vals.map(v => `<td class="num amt">${v}</td>`).join('')}</tr>`;
+  const sortRoom = (a, b) => String(a.room || a.no).localeCompare(String(b.room || b.no), 'en', { numeric: true });
+  const sorter = k => k === 'room' ? sortRoom : byName;
+  const rateOf = r => r.rate != null ? r.rate : (r.rates && r.rates[B()]) != null ? r.rates[B()] : rateFor(r.type, B());
+  const shortDate = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }) : '';
+  const kv = (a, b, cls) => `<tr class="${cls || ''}"><td class="lbl">${a}</td><td class="num">${b}</td></tr>`;
+  let date = DATED[view.rep] ? view.from : B(), user = '';
+  const api2 = (name, extra) => api(`/report?name=${name}&from=${view.from}&to=${view.to}${extra || ''}`);
+  if (view.rep === 'arrivals') h = T(['Guest', 'Room', 'Type', '#Nights', '#Rate', 'Guarantee', 'Phone', 'Conf. #'], S.res.filter(r => r.status === 'reserved' && r.arrive <= B()).sort(sorter(opt.sort || 'name')).map(r => [esc(gname(r)), esc(r.room), esc(r.type), nights(r.arrive, r.depart), money(r.rate), esc(r.guarantee), esc(r.phone), esc(r.conf)]));
+  else if (view.rep === 'departures') h = T(['Room', 'Guest', 'Arrival', 'Departure', '#Balance'], S.res.filter(r => r.status === 'inhouse' && r.depart <= B()).sort(sorter(opt.sort || 'room')).map(r => [esc(r.room), esc(gname(r)), dshort(r.arrive), dshort(r.depart), money(S.bal[r.id] || 0)]));
+  else if (view.rep === 'inhouse') {
+    const gtd = g => /credit/i.test(g || '') ? 'CC' : /cash/i.test(g || '') ? 'CA' : /direct/i.test(g || '') ? 'DB' : /6 ?pm/i.test(g || '') ? '6PM' : '';
+    const l = S.res.filter(r => r.status === 'inhouse' && (!opt.type || r.type === opt.type)).sort(opt.sort === 'room' ? sortRoom : opt.sort === 'account' ? (a, b) => String(a.conf).localeCompare(String(b.conf), 'en', { numeric: true }) : byName);
+    const guest = r => { const g = r.groupId && (S.groups || []).find(x => x.id === +r.groupId); return `<b>${esc(gname(r))}</b>` + [r.company, g && g.name, r.vehicle].filter(Boolean).map(x => `<div class="sub">${esc(x)}</div>`).join(''); };
+    h = T(['Room', 'Account', 'VIP', 'Guest Name', 'Notes', 'Arrive', 'Depart', 'Adults/ Children', 'Room Type', 'Package', '#Rate', 'GTD', 'Source', '#Balance'], l.map(r => [esc(r.room), esc(r.conf), r.vip ? 'VIP' : '', guest(r), `<div class="note">${esc(r.notes)}</div>`, dshort(r.arrive), dshort(r.depart), (r.adults || 0) + '/' + (r.children || 0), esc(r.type), esc(r.pkg), money(rateOf(r)), gtd(r.guarantee), esc(r.source), money(S.bal[r.id] || 0)]), 'inh')
+      + `<div class="sh-total">Total Guests: ${l.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0)} &nbsp; &nbsp;Total Rooms: ${l.length}</div>`;
+  }
+  else if (view.rep === 'vacant') {
+    const rows = S.config.rooms.filter(r => !inRoom(r.no) && (!opt.type || r.type === opt.type) && (!opt.cond || cond(r.no) === opt.cond) && (opt.ooo !== false || !isOOO(r.no, B()))).map(r => ({ r, out: isOOO(r.no, B()), a: S.res.find(x => x.status === 'reserved' && x.room === r.no && x.arrive <= B()) })).filter(x => opt.arr !== false || !x.a);
+    const names = opt.names !== false, heads = ['Room', 'Type', 'Condition', 'Status'].concat(names ? ['Arriving Guest'] : []);
+    h = T(heads, rows.map(x => [esc(x.r.no), esc(x.r.type), { R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.r.no)], x.out ? 'Out of Order' : 'Vacant'].concat(names ? [x.a ? esc(gname(x.a)) : ''] : []))) + `<div class="sh-total">Total Vacant Rooms: ${rows.filter(x => !x.out).length}</div>`;
+  }
+  else if (view.rep === 'hkcheck') h = hkCheckHtml();
+  else if (view.rep === 'ledger') { const l = S.res.filter(r => (S.bal[r.id] || 0) !== 0).sort(sortRoom); h = T(['Room', 'Guest', 'Status', 'Arrival', 'Departure', '#Balance'], l.map(r => [esc(r.room), esc(gname(r)), r.status, dshort(r.arrive), dshort(r.depart), money(S.bal[r.id])]).concat([tot('Total:', [money(l.reduce((s, r) => s + S.bal[r.id], 0))], 5)])); }
+  else if (view.rep === 'future') { const days = []; for (let i = 0; i < 14; i++) days.push(addDays(B(), i)); h = T(['Type'].concat(days.map(d => '#' + dshort(d).replace(/\/\d+$/, ''))), S.config.types.map(t => [`<b>${esc(t.code)}</b>`].concat(days.map(d => availOfType(t.code, d, addDays(d, 1))))).concat([['<b>Hotel</b>'].concat(days.map(d => '<b>' + S.config.types.reduce((s, t) => s + availOfType(t.code, d, addDays(d, 1)), 0) + '</b>'))])); }
+  else if (view.rep === 'closeout') {
+    const R = await api(`/report?name=closeout2&date=${view.from}`), row = (label, x) => [label, mm(x.opening), mm(x.today), mm(x.adj), mm(x.net), mm(x.ptd), mm(x.ytd)];
+    const rows = []; for (const g of R.groups) { rows.push(`<tr class="grp"><td colspan="7">Transaction Type: ${esc(g.label)}</td></tr>`); for (const x of g.rows) rows.push(`<tr><td class="lbl">${esc(x.name)} (${esc(x.code)})</td>${row('', x).slice(1).map(v => `<td class="num">${v}</td>`).join('')}</tr>`); rows.push(tot('Total For ' + esc(g.label) + ':', row('', g.total).slice(1))); }
+    if (R.groups.length) rows.push(tot('Grand Total:', row('', R.grand).slice(1)));
+    h = T(['Description (Transaction Code)', "#Today's Opening Balance", "#Today's Totals (Include Corrections)", "#Today's Adjustments", "#Today's Net", '#PTD Totals', '#YTD Totals'], rows, 'co');
+    csv = [csv[0]].concat(R.groups.flatMap(g => g.rows.map(x => row(`${x.name} (${x.code})`, x)).concat([row('Total For ' + g.label + ':', g.total)])), R.groups.length ? [row('Grand Total:', R.grand)] : []);
+  }
+  else if (view.rep === 'shift') {
+    const R = await api(`/report?name=shift2&date=${view.from}&user=${encodeURIComponent(opt.user || 'All')}` + (String(opt.drawer || '').trim() ? '&drawer=' + toCents(opt.drawer) : ''));
+    const drawer = String(opt.drawer || '').trim() ? toCents(opt.drawer) || 0 : 0;
+    h = `<div class="sh-sub"><span>Shift: All</span><span>User: ${esc(R.user || 'All')}</span></div>`
+      + T(['Transaction Code', '#Total'], R.codes.map(g => [esc(g.name) + ' (' + esc(g.code) + ')', money(g.total)]).concat([tot('Grand Total:', [money(R.grand)])]))
+      + `<div class="sh-h">Summary:</div><table class="rt kv">${kv('Grand Total:', money(R.grand))}${kv('Beginning Bank:', money(R.beginBank))}${kv('Drawer Total:', money(drawer))}${kv(R.overShort < 0 ? 'Short:' : 'Over:', money(R.overShort), 'b')}</table>`;
+    if (opt.details !== false) for (const g of R.codes) h += `<div class="sh-h">Transaction Code: ${esc(g.name)} (${esc(g.code)})</div>`
+      + `<table class="rt det"><colgroup>${[10, 11, 6, 9, 8, 11, 22, 5, 9, 9].map(w => `<col style="width:${w}%">`).join('')}</colgroup><tr>${['Posting Date', 'User ID', 'Shift ID', 'Room/ Invoice', 'Account Type', 'Account', 'Name Comment', 'Type', '#Amount', '#Adjustment'].map(x => `<th class="${/^#/.test(x) ? 'num' : ''}">${x.replace(/^#/, '')}</th>`).join('')}</tr>`
+      + g.rows.map(x => `<tr><td>${mdy(x.bdate)}</td><td>${esc(x.user)}</td><td>${esc(x.shift)}</td><td>${esc(x.room)}</td><td>${esc(x.accType)}</td><td>${esc(x.account)}</td><td><div>${esc(x.name)}</div>${x.comment ? `<div class="sub">${esc(x.comment)}</div>` : ''}</td><td></td><td class="num">${money(x.amount)}</td><td class="num">${money(x.adj)}</td></tr>`).join('')
+      + tot('Total For: ' + esc(g.name) + ' (' + esc(g.code) + ')', [money(g.total), money(0)], 8) + '</table>';
+    if (!R.codes.length) h += '<div class="empty">No payments were posted on this date.</div>';
+  }
+  else if (view.rep === 'stats') {
+    const R = await api(`/report?name=stats2&from=${view.from}&to=${view.to}`), C = R.cols, cs = [C.day, C.ptd, C.lyPtd, C.ytd, C.lyYtd];
+    const line = (label, f, o) => { o = o || {}; return `<tr class="${o.b ? 'b' : ''}"><td class="ind">${label}</td>${cs.map(c => `<td class="num">${f(c)}</td>`).join('')}</tr>`; };
+    const sec = n => `<tr class="ssec"><td colspan="6">${n}</td></tr>`, int = k => c => c[k], pct = k => c => c[k].toFixed(2) + '%', mon = k => c => mm(c[k]);
+    const rows = [sec('Room Statistics'), line('Total Rooms', int('total')), line('Out Of Order', int('ooo')), line('Rooms Available to Sell', int('avail'), { b: 1 }), line('Stay Over Rooms', int('stay')), line('Total Revenue Rooms', int('revRooms'), { b: 1 }), line('Total Occupied Rooms', int('occupied'), { b: 1 }),
+      sec('Performance Statistics'), line('Occ% of Total Available Rooms', pct('occAvail')), line('Occ% of Total Rooms', pct('occTotal')), line('ADR for Total Rev Rooms', mon('adr')), line('RevPar', mon('revpar')),
+      sec('Revenue'), line('Room Revenue', mon('roomRev')), line('Other Revenue', mon('otherRev')), line('Total Tax', mon('tax')), line('Total Revenue', mon('totalRev'), { b: 1 }), line('Total Payments', mon('payments'))];
+    h = T(['', '#' + (R.from === R.to ? mdy(R.from) : mdy(R.from) + ' - ' + mdy(R.to)), '#PTD', '#Last Year PTD', '#YTD', '#Last YTD'], rows, 'st');
+    csv = [csv[0]].concat(rows.filter(r => !/class="ssec"/.test(r)).map(r => { const d = document.createElement('table'); d.innerHTML = r; return [...d.querySelectorAll('td')].map(td => td.textContent); }));
+    if (R.includesToday) h += '<div class="sh-note">Includes the open business date (today so far).</div>';
+  }
+  else if (view.rep === 'activity') {
+    const R = await api2('activity', `&sort=${encodeURIComponent(opt.sort || 'arrive')}&type=${encodeURIComponent(opt.type || '')}&tz=${encodeURIComponent((Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || '')}`);
+    h = T(['Account', 'Guest Name', 'Arrive', 'Depart', '#Nights', 'Status', '#Rate', 'Package', 'Type', 'Room', 'Source', 'Pay', 'Created', 'User'], R.rows.map(x => [esc(x.conf), esc(x.name), dshort(x.arrive), dshort(x.depart), x.nights, x.status, money(x.rate), esc(x.pkg), esc(x.type), esc(x.room), esc(x.source), x.pay, shortDate(x.created), esc(x.user)]), 'act')
+      + `<div class="sh-total">Total Reservations: ${R.count}</div><div class="sh-total">Total Room Nights: ${R.roomNights}</div>`;
+  }
+  else {
+    const R = await api2(view.rep === 'cancel' || view.rep === 'noshow' ? 'history' : view.rep);
+    if (view.rep === 'journal') h = T(['Item #', 'Date', 'Posted', 'Room', 'Guest', 'Description', 'Comments', 'By', '#Amount'], R.rows.map(l => [l.id, dshort(l.bdate), stamp(l.at), esc(l.room), esc(l.name), esc(l.descr), esc(l.comment), esc(l.user), money(l.amount)]));
+    else if (view.rep === 'araging') h = T(['Company', '#0–30 days', '#31–60', '#61–90', '#Over 90', '#Unapplied credit', '#Balance'], R.rows.map(x => [esc(x.name), money(x.cur), money(x.d30), money(x.d60), money(x.d90), money(x.credit), '<b>' + money(x.balance) + '</b>']).concat([tot('Total owed:', [money(R.rows.reduce((s, x) => s + x.balance, 0))], 6)]));
+    else if (view.rep === 'grouppickup') h = T(['Group', 'Arrival', 'Departure', 'Cut-off', '#Blocked', '#Picked up', '#Left', '#Room revenue', 'Status'], R.rows.map(x => [esc(x.name), dshort(x.arrive), dshort(x.depart), dshort(x.cutoff), x.blocked, x.picked, x.left, money(x.revenue), x.status]));
+    else if (view.rep === 'shifts') h = T(['Cashier', 'Opened', 'Closed', '#Opening cash', '#Cash taken in', '#Expected', '#Counted', '#Over / short'], R.rows.map(x => [esc(x.user), stamp(x.openAt), x.closeAt ? stamp(x.closeAt) : 'Open', money(x.openCash), x.closeAt ? money(x.cashIn) : '', x.closeAt ? money(x.expected) : '', x.closeAt ? money(x.counted) : '', x.closeAt ? money(x.overShort) : '']));
+    else if (view.rep === 'cancel' || view.rep === 'noshow') { const l = view.rep === 'cancel' ? R.cancelled : R.noshow; h = T(['Guest', 'Arrival', 'Departure', 'Type', 'Room', '#Rate', '#Balance', 'Conf. #'], l.map(r => [esc(r.name), dshort(r.arrive), dshort(r.depart), esc(r.type), esc(r.room), money(r.rate), money(r.bal), esc(r.conf)])) + `<div class="sh-total">Total: ${l.length}</div>`; }
+  }
+  return { title, html: sheet(title, h, { date, user }), csv: csv || [[title]], date };
+}
+async function drawReport() {
+  const out = $('#repOut'); if (!out) return;
+  try { const r = await buildReport(); out.innerHTML = r.html; out.dataset.title = r.title; }
+  catch (e) { out.innerHTML = sheet(repTitle(), `<div class="err">${esc(e.message)}</div>`); }
+}
+const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc(st.note || '')}</td><td>☐</td></tr>`; }).join('')}</table>`;
 async function nightAudit() {
   const s = S.stats;
   if (!confirm(`Run the night audit for ${dlong(B())}?\n\n• Posts tonight's room charge and tax to ${s.sold} in-house rooms\n• Marks ${s.arrivalsLeft} arrivals that did not check in as no shows\n• Extends ${s.dueOut} guests who were due out but are still checked in\n• Moves the business date to ${dlong(addDays(B(), 1))}\n\nThis cannot be undone.`)) return;
@@ -555,7 +671,7 @@ document.addEventListener('click', async e => {
   if (a === 'findOpen') { view.name = 'find'; view.findQ = ''; view.found = []; render(); const f = $('#find2'); if (f) f.focus(); return; }
   if (a === 'findGo') return doFind($('#find2').value);
   if (a === 'setupGo') { view.name = 'setup'; view.setup = el.dataset.tab; return render(); }
-  if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; view.repLabel = ''; view.repStage = 'result'; return render(); }
+  if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; view.repLabel = ''; view.repStage = 'result'; view.opt = {}; view.from = view.to = B(); return render(); }
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
   if (a === 'openRes') return run(() => openRes(el.dataset.id));
@@ -592,13 +708,16 @@ document.addEventListener('click', async e => {
   if (a === 'tapeMove') { view.tapeStart = addDays(view.tapeStart, +el.dataset.n); return render(); }
   if (a === 'tapeToday') { view.tapeStart = B(); return render(); }
   if (a === 'hkRange') return run(async () => { const f = $('#hkFrom').value.trim(), t = $('#hkTo').value.trim() || f; if (!f) throw new Error('Type the first room number.'); const nums = S.config.rooms.map(r => r.no).filter(no => no.localeCompare(f, 'en', { numeric: true }) >= 0 && no.localeCompare(t, 'en', { numeric: true }) <= 0); if (!nums.length) throw new Error('No rooms in that range.'); await op('roomCond', { rooms: nums, cond: el.dataset.cond }); await refresh(); toast(nums.length + ' rooms updated.'); });
-  if (a === 'printHk') return printHtml(letterHead() + `<h2>Housekeeping Check-off List: ${dlong(B())}</h2>` + hkCheckHtml());
-  if (a === 'rep') { view.rep = el.dataset.rep; view.repLabel = el.dataset.label || ''; view.repStage = 'options'; return render(); }
-  if (a === 'repRun') { if ($('#repFrom')) { view.from = $('#repFrom').value || B(); view.to = $('#repTo').value || view.from; if (view.to < view.from) view.to = view.from; } view.repStage = 'result'; return render(); }
+  if (a === 'printHk') return printHtml(sheet('Housekeeping Check-off List', hkCheckHtml()));
+  if (a === 'rep') { view.rep = el.dataset.rep; view.repLabel = el.dataset.label || ''; view.repStage = 'options'; view.opt = {}; view.from = view.to = B(); return render(); }
+  if (a === 'repRun') return run(async () => {
+    readOpts(); view.from = view.from || B(); if (!repFields().some(f => f.k === 'to') || !view.to || view.to < view.from) view.to = view.from;
+    if (view.opt.csv) { const r = await buildReport(), base = r.title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase(); downloadCsv(`${base}-${r.date}.csv`, r.csv); return toast('Saved ' + base + '.csv'); }
+    view.repStage = 'result'; render(); });
   if (a === 'repBack') { if (view.repStage === 'result') view.repStage = 'options'; else { view.repStage = 'list'; view.rep = ''; } return render(); }
   if (a === 'repCat') { view.repCol = view.repCol || {}; view.repCol[el.dataset.cat] = !view.repCol[el.dataset.cat]; return render(); }
   if (a === 'repAll') { const off = !REPORT_CATS.every(c => (view.repCol || {})[c[0]]); view.repCol = {}; if (off) REPORT_CATS.forEach(c => view.repCol[c[0]] = true); return render(); }
-  if (a === 'printRep') return printHtml(letterHead() + $('#repOut').innerHTML);
+  if (a === 'printRep') return printHtml($('#repOut').innerHTML);
   if (a === 'nightAudit') return nightAudit();
   if (a === 'setupTab') { view.setup = el.dataset.tab; return render(); }
   if (a === 'setupSave') return setupSave();
@@ -615,14 +734,15 @@ document.addEventListener('change', e => {
   if (t.dataset.hk) return run(async () => { await op('hkSet', { room: t.dataset.room, [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }); S.roomstate[t.dataset.room] = { ...(S.roomstate[t.dataset.room] || {}), [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }; });
   if (t.id === 'tapeDate' && t.value) { view.tapeStart = t.value; return render(); }
   if (t.id === 'tapeFloor' || t.id === 'hkFloor') { view.floor = t.value; return render(); }
-  if (t.id === 'repFrom' || t.id === 'repTo') { view.from = $('#repFrom').value || B(); view.to = $('#repTo').value || view.from; if (view.to < view.from) view.to = view.from; return render(); }
+  if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
+  if (e.key === 'Enter' && e.target.id === 'roomJump') { const no = e.target.value.trim(); if (!no) return; const g = S.res.find(r => r.status === 'inhouse' && String(r.room).toLowerCase() === no.toLowerCase()); if (!g) return toast('Nobody is checked in to room ' + no, true); e.target.value = ''; return run(() => openRes(g.id)); }
   if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.

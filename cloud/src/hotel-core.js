@@ -251,7 +251,74 @@ export class HotelCore {
     }
     if (q.name === 'shifts') return { from, to, rows: this.rows('SELECT * FROM shifts WHERE open_at>=? AND open_at<? ORDER BY id DESC LIMIT 500', Date.parse(from + 'T00:00:00Z') - 864e5, Date.parse(to + 'T00:00:00Z') + 2 * 864e5).map(x => ({ id: x.id, user: x.user, openAt: x.open_at, closeAt: x.close_at, ...JSON.parse(x.data) })) };
     if (q.name === 'grouppickup') { const act = this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse','out')").map(x => JSON.parse(x.data)); return { rows: this.groups().filter(g => g.depart >= from).map(g => { const blk = Object.values(g.blocks || {}).reduce((s, n) => s + (n || 0), 0), mem = act.filter(r => r.groupId === g.id); return { id: g.id, name: g.name, arrive: g.arrive, depart: g.depart, cutoff: g.cutoff || '', blocked: blk, picked: mem.length, left: Math.max(0, blk - mem.length), revenue: mem.reduce((s, r) => { let t = 0; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) t += this.nightRate(r, d); return s + t; }, 0), status: g.status || 'active' }; }) }; }
+    if (q.name === 'closeout2') return this.closeout2(q, c);
+    if (q.name === 'shift2') return this.shift2(q, c);
+    if (q.name === 'stats2') return this.stats2(q, c);
+    if (q.name === 'activity') return this.activity(q, c);
     throw err(404, 'That report was not found.');
+  }
+  /* ---- helpers for the document-style reports (closeout2, shift2, stats2, activity) ---- */
+  kindOf(c) { const m = {}; for (const k of c.codes) m[k.code] = k.type; for (const t of c.taxes || []) m[t.code] = 'TAX'; return m; }
+  yearAgo(d) { const y = +d.slice(0, 4) - 1, md = d.slice(5); return (md === '02-29' ? y + '-02-28' : y + '-' + md); }
+  // Final Transaction Closeout: per posting code: opening balance (this year, before the date), the day, its adjustments, month to date, year to date.
+  closeout2(q, c) {
+    const date = isDate(q.date) ? q.date : isDate(q.from) ? q.from : c.bdate, y0 = date.slice(0, 4) + '-01-01', m0 = date.slice(0, 7) + '-01';
+    const by = {}; for (const x of this.rows("SELECT code, COUNT(*) cnt, SUM(CASE WHEN bdate<? THEN amount ELSE 0 END) opening, SUM(CASE WHEN bdate=? THEN amount ELSE 0 END) today, SUM(CASE WHEN bdate=? AND substr(comment,1,4)='ADJ:' THEN amount ELSE 0 END) adj, SUM(CASE WHEN bdate>=? THEN amount ELSE 0 END) ptd, SUM(amount) ytd FROM lines WHERE bdate>=? AND bdate<=? GROUP BY code", date, date, date, m0, y0, date)) by[x.code] = x;
+    const ORDER = [['AREC', 'ACCOUNTS RECEIVABLE'], ['ADMIN', 'ADMINISTRATION'], ['CASH', 'CASH'], ['CRED', 'CREDIT CARD'], ['GFTCRD', 'GIFT CARD'], ['MISC', 'MISCELLANEOUS'], ['ROOM', 'ROOM'], ['TAX', 'TAX']];
+    const known = this.kindOf(c), names = {}; for (const k of c.codes) names[k.code] = k.name; for (const t of c.taxes || []) names[t.code] = t.name;
+    const zero = () => ({ opening: 0, today: 0, adj: 0, net: 0, ptd: 0, ytd: 0 }), add = (a, x) => { for (const k of Object.keys(a)) a[k] += x[k] || 0; };
+    const grand = zero(), groups = [];
+    for (const [type, label] of ORDER) {
+      const codes = Object.keys(by).filter(code => (known[code] || 'ADMIN') === type); if (!codes.length) continue;   // a code that was removed from setup is shown under ADMINISTRATION
+      const order = Object.keys(known); codes.sort((a, b) => (order.indexOf(a) + 1 || 9999) - (order.indexOf(b) + 1 || 9999) || (a < b ? -1 : 1));
+      const total = zero(), rows = codes.map(code => { const x = by[code], r = { code, name: names[code] || code, opening: x.opening, today: x.today, adj: x.adj, net: x.today, ptd: x.ptd, ytd: x.ytd }; add(total, r); return r; });
+      add(grand, total); groups.push({ type, label, rows, total });
+    }
+    return { date, groups, grand };
+  }
+  // Shift Reconciliation: payments taken on a business date, by posting code, with the lines behind each total.
+  shift2(q, c) {
+    const date = isDate(q.date) ? q.date : isDate(q.from) ? q.from : c.bdate, user = q.user && q.user !== 'All' ? clip(q.user, 60) : '', kinds = this.kindOf(c);
+    const pay = c.codes.filter(k => PAY_TYPES.includes(k.type)), isPay = code => pay.some(k => k.code === code);
+    const shifts = this.rows('SELECT id, user, open_at, close_at, data FROM shifts ORDER BY id DESC LIMIT 3000').map(x => ({ id: x.id, user: x.user, openAt: x.open_at, closeAt: x.close_at, ...JSON.parse(x.data) }));
+    const shiftOf = (u, at) => { const s = shifts.find(x => x.user === u && x.openAt <= at && (x.closeAt == null || at <= x.closeAt)); return s ? s.id : ''; };
+    const all = [];
+    for (const l of this.rows("SELECT l.id, l.at, l.code, l.comment, l.amount, l.user, r.room, r.name, json_extract(r.data,'$.conf') conf FROM lines l LEFT JOIN res r ON r.id=l.res WHERE l.bdate=? ORDER BY l.id", date)) if (isPay(l.code)) all.push({ bdate: date, at: l.at, code: l.code, user: l.user, shift: shiftOf(l.user, l.at), room: l.room || '', accType: 'Guest', account: l.conf || '', name: String(l.name || '').replace(/,\s*$/, ''), comment: l.comment || '', amount: l.amount, adj: 0 });
+    for (const a of this.rows("SELECT a.at, a.descr, a.amount, a.user, co.data FROM ar a LEFT JOIN companies co ON co.id=a.company WHERE a.kind='payment' AND a.bdate=? ORDER BY a.id", date)) {
+      const code = String(a.descr).split(' ')[0]; if (!isPay(code)) continue; const co = a.data ? JSON.parse(a.data) : {};
+      all.push({ bdate: date, at: a.at, code, user: a.user, shift: shiftOf(a.user, a.at), room: '', accType: 'Company', account: co.corpId || co.name || '', name: String(co.name || '').toUpperCase(), comment: String(a.descr).split(' ').slice(2).join(' ').replace(/^· /, ''), amount: a.amount, adj: 0 });
+    }
+    const users = [...new Set(all.map(x => x.user))].sort(), lines = user ? all.filter(x => x.user === user) : all;
+    const codes = pay.map(k => ({ code: k.code, name: k.name, rows: lines.filter(x => x.code === k.code) })).filter(g => g.rows.length).map(g => ({ ...g, total: g.rows.reduce((s, x) => s + x.amount, 0) }));
+    const grand = codes.reduce((s, g) => s + g.total, 0), cashIn = -codes.filter(g => kinds[g.code] === 'CASH').reduce((s, g) => s + g.total, 0);
+    const beginBank = shifts.filter(x => x.bdate === date && (!user || x.user === user)).reduce((s, x) => s + (x.openCash || 0), 0);
+    const drawer = q.drawer === undefined || q.drawer === '' ? 0 : Math.round(Number(q.drawer)) || 0;
+    return { date, user, users, codes, grand, beginBank, drawer, cashIn, overShort: drawer - beginBank - cashIn };
+  }
+  // Hotel Statistics: the day (or range), month to date, year to date, and the same periods last year.
+  stats2(q, c) {
+    const from = isDate(q.from) ? q.from : c.bdate, to = isDate(q.to) && q.to >= from ? q.to : from, kinds = this.kindOf(c);
+    const period = (f, t) => {
+      let total = 0, ooo = 0, sold = 0, stay = 0, any = false; const add = a => { total += a.total || 0; ooo += a.ooo || 0; sold += a.sold || 0; stay += a.stayovers || 0; any = true; };
+      for (const x of this.rows('SELECT data FROM audits WHERE bdate>=? AND bdate<=?', f, t)) add(JSON.parse(x.data));
+      if (c.bdate && f <= c.bdate && c.bdate <= t) add(this.stats(c));
+      let roomRev = 0, otherRev = 0, tax = 0, payments = 0;
+      for (const x of this.rows('SELECT code, SUM(amount) n FROM lines WHERE bdate>=? AND bdate<=? GROUP BY code', f, t)) { const k = kinds[x.code]; if (k === 'ROOM') roomRev += x.n; else if (k === 'MISC') otherRev += x.n; else if (k === 'TAX') tax += x.n; else if (PAY_TYPES.includes(k)) payments += x.n; }
+      const avail = total - ooo, pct = (a, b) => b > 0 ? Math.round(a / b * 10000) / 100 : 0;
+      return { total, ooo, avail, stay, sold, revRooms: sold, occupied: sold, occAvail: pct(sold, avail), occTotal: pct(sold, total), adr: sold ? Math.round(roomRev / sold) : 0, revpar: total ? Math.round(roomRev / total) : 0, roomRev, otherRev, tax, totalRev: roomRev + otherRev + tax, payments };
+    };
+    const m0 = to.slice(0, 7) + '-01', y0 = to.slice(0, 4) + '-01-01', ly = d => this.yearAgo(d);
+    return { from, to, includesToday: !!c.bdate && from <= c.bdate && c.bdate <= to, cols: { day: period(from, to), ptd: period(m0, to), lyPtd: period(ly(m0), ly(to)), ytd: period(y0, to), lyYtd: period(ly(y0), ly(to)) } };
+  }
+  // Reservation Activity: reservations made (created) in the dates, any status. `tz` (optional) is the time zone the dates are read in.
+  activity(q, c) {
+    const from = isDate(q.from) ? q.from : c.bdate, to = isDate(q.to) && q.to >= from ? q.to : from;
+    let fmt = null; try { fmt = new Intl.DateTimeFormat('en-CA', { timeZone: q.tz || 'UTC' }); } catch (e) { fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }); }
+    const ST = { reserved: 'R', inhouse: 'I', out: 'O', cancelled: 'C', noshow: 'N' }, PAY = { Card: 'CC', Cash: 'CA', Check: 'CK', 'Direct bill': 'DB' };
+    let rows = this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)).filter(r => r.created && (d => d >= from && d <= to)(fmt.format(new Date(r.created))) && (!q.type || r.type === q.type));
+    const key = { name: (a, b) => (a.last + a.first).localeCompare(b.last + b.first), created: (a, b) => a.created - b.created, arrive: (a, b) => a.arrive.localeCompare(b.arrive) || a.created - b.created }[q.sort] || ((a, b) => a.arrive.localeCompare(b.arrive) || a.created - b.created);
+    rows = rows.sort(key).map(r => ({ id: r.id, conf: r.conf, name: r.last + (r.first ? ', ' + r.first : ''), arrive: r.arrive, depart: r.depart, nights: nightsBetween(r.arrive, r.depart), status: ST[r.status] || '', rate: r.rate != null ? r.rate : (Object.values(r.rates || {})[0] || 0), pkg: r.pkg || '', type: r.type, room: r.room || '', source: r.source || '', pay: PAY[r.payType] || '', created: r.created, user: r.createdBy || '' }));
+    return { from, to, rows, count: rows.length, roomNights: rows.filter(r => r.status !== 'C' && r.status !== 'N').reduce((s, r) => s + r.nights, 0) };
   }
 
   /* ---------- every request comes through here ---------- */

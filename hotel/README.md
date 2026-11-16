@@ -27,7 +27,7 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
   (a manager can override).
 - **Housekeeping**: condition, service (Stay Over / Check Out), housekeeper, do not disturb, notes, range edit, check-off list.
 - **Reports**: arrival, departure, in-house, vacant, housekeeping check-off, guest ledger, future availability, hotel statistics,
-  final transaction closeout, shift reconciliation, hotel journal, no-show/cancellation/departed lists.
+  final transaction closeout, shift reconciliation, reservation activity, hotel journal, no-show and cancellation lists (see Reports below).
 - **Night Audit** (manager): posts room + tax to every in-house room, marks arrivals that never came as no shows, extends guests who
   were due out but not checked out, sets occupied rooms Dirty, saves the day's statistics and moves the business date forward.
 - **Setup** (manager): property, room types and rates, rooms, taxes, posting codes, housekeepers, logins, out-of-order rooms.
@@ -64,6 +64,33 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
 - **Scan ID**: in the reservation window. Any 2D barcode scanner in keyboard mode reads the PDF417 on the back of a US/Canadian
   license (AAMVA); `parseLicense` fills name, address and license number. The birth date is not kept.
 - **Not built: key encoder.** It needs the lock brand's own PMS interface, so it waits on knowing the lock system.
+
+## Reports (document layout)
+
+- **Sheet**: every report is drawn by `sheet(title, bodyHtml, opts)` in `app.js` on a white "paper" (max 1000px, Arial 12.5px, black on white, light grey page).
+  Title (bold 20px), a header line (`Business Date`, `Property`, `Shift`, `User` = signed-in name) over a 2px rule, the tables (no colours,
+  underlined 11.5px headings, numbers right aligned, negative money in parentheses, total rows with a 1px rule over the amounts), and a footer
+  (`Date/Time of Printing`, `Page 1 of 1`) above a 2px rule. PRINT prints exactly this sheet (`printHtml(#repOut.innerHTML)`; print CSS is at the end of `style.css`).
+  "Page 1 of 1" is fixed text: a very long report simply runs on to more printed pages.
+- **Options pages** (`REP_OPTS` in `app.js`): fields, a dashed rule, "Formatting Options:" with "Generate report as .CSV file", then BACK / SUBMIT.
+  With the box ticked, SUBMIT saves the report's main table as a `.csv` (Blob + `a[download]`) and stays on the options page.
+  Shift Reconciliation (Date, User ID filled from that date's postings, Drawer Total, Transaction Details), Final Transaction Closeout (Date),
+  Hotel Statistics (*Start, End), In House List (Sort, Room Type), Vacant Room List (Room Type, Condition, 3 checkboxes), Reservation Activity (Sort, *Start, *End, Room Type),
+  Arrival / Departure (Sort). Cancellation List and No Show Report are separate reports (both read server `history`).
+- **Server reports** (`report()` in `hotel-core.js`; old `closeout`, `shift`, `stats` are kept):
+  - `closeout2` (`date`): per posting code (taxes count as type TAX), grouped AR, ADMIN, CASH, CRED, GFTCRD, MISC, ROOM, TAX.
+    Opening = lines before the date in the same year; Today = lines on the date; Adjustments = lines on the date whose comment starts `ADJ:`;
+    Net = Today (adjustments are already inside it); PTD = 1st of the month through the date; YTD = Jan 1 through the date. Only codes with a line this year are listed.
+  - `shift2` (`date`, `user`, `drawer`): payment codes (CASH, CRED, AREC, GFTCRD) posted on the date, with each line (guests from `lines`, company payments from `ar`).
+    Payments are negative as stored. Beginning Bank = openCash of shifts opened on that business date (for that user);
+    Over/Short = drawer - beginning bank - cash taken in (minus the sum of CASH lines). Also returns `users` for the User ID box.
+  - `stats2` (`from`, `to`): columns day, PTD (month to `to`), Last Year PTD, YTD, Last YTD (same dates one year earlier; zeros when there is no data).
+    Rooms are summed from `audits` (plus live `stats()` for the open business date); revenue is summed from `lines` by code type.
+    Total Revenue = Room + Other (MISC) + Tax; Total Payments = payment lines (negative); ADR = room revenue / rooms sold; RevPAR = room revenue / total rooms.
+  - `activity` (`from`, `to`, `sort`, `type`, `tz`): reservations whose `created` time falls in the dates (read in `tz`, the browser's time zone; UTC if missing), any status.
+    Room nights = nights of reservations that are not cancelled or no show.
+- **Home**: the rooms bar (check ins remaining, stayovers, vacant, OOO, sized by count, min 34px) replaces the small 2x2 numbers.
+  The header has a **Room #** box: Enter opens the in-house guest in that room, or says nobody is checked in.
 
 ## Rules worth knowing
 
