@@ -94,6 +94,39 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
   matches. The reservation page has "Add to Do Not Rent List" (asks for the reason) and, for owner and manager, "Remove from Do Not Rent List". The list screen has Quick Search,
   "+ Add" and "Export .CSV".
 
+## Recurring charges, rooming lists, quick links and more (added Nov 16, 2026)
+
+1. **Recurring charges.** A reservation has `recur: [{code, amount, comment, from, to}]` (at most 10); a group has the same list, saved with `groupSave` (field `recur`),
+   and it applies to every reservation in the group (not when the group is cancelled). The code must be a posting code of type ROOM or MISC; the amount is above zero (cents);
+   `from` / `to` default to the stay (arrival to departure date). The night audit posts, for every in-house reservation, each charge (its own first, then its group's) whose
+   `from <= business date <= to`, through `postCharge` (taxes follow the code), comment "Recurring: <comment or code name>", and counts them in the audit result as `recurring`.
+   Ops: `recurAdd` {id, code, amount, comment, from?, to?}, `recurRemove` {id, index}. Screen: "Recurring Charges" in Actions (reservation page and folio, window with an add row);
+   the group window has the same small list (saved with Save). The night-audit message ends with "Recurring charges posted: n".
+2. **Room Blocking (bulk out of order).** Op `blockAddMany` {rooms, start, end, reason}: validates like `blockAdd`; if any room has a guest or reservation in those dates nothing is
+   blocked and the answer is 409 with `rooms` listing them. The window has From room / To room (hotel room order), an "Only floor" filter with "Select all on this floor",
+   From / Through, Reason, and under it the current blocks: "Put back in order" per row and "Put ALL back in order" for rows with the same reason and dates (`blockRemove` for each).
+3. **Room assignment optimizer.** Op `optimize` {date, apply}. Takes reserved reservations with no room that arrive on `date` (default the business date), oldest first, and proposes a free room
+   of the same type for the whole stay: Ready before Clean before Dirty, then the room with the fewest past stays (`out` or `inhouse`), then the one vacated longest ago, then room number.
+   Never a room with an out-of-order block or an overlapping reservation (rooms proposed earlier in the same plan count). Returns `plan: [{id, name, type, room|null, reason}]`; `apply: true`
+   saves the rooms (history "Room assigned by optimizer") and returns `assigned`. Screen: Tape Chart side panel "Optimize Room Assignments?" (Start Date, RUN) opens the plan; ASSIGN ROOMS applies it.
+4. **Quick links on Home.** `configSave` takes `quickLinks`: a list of link keys (at most 14; an empty list goes back to the default). `TILES` in `app.js` is the catalogue (the 14 default tiles plus
+   Night Audit, Future Availability, Do Not Rent List, Find Reservation, Hotel Configuration, Manage Rates, Packages, Logins, Cancellation List, Arrival List Report); manager-only tiles are hidden for
+   desk logins. Owner / manager see a blue EDIT button on the dark band: Shown (up, down, Remove) and Available (Add), Save, Reset to default.
+5. **Returning guests.** `GET /guest?last=&first=&phone=&guestId=&except=` (front desk roles): up to 20 past reservations of the same guest (same guest ID letters/digits, or same last + first name,
+   or same phone digits when 7 or more), any status, newest first, each {conf, arrive, depart, room, type, rate, status, notes, requests, balance}. `count` and `nights` count only stays that happened
+   (out or in house); `total` counts every match; `lastNote` is the newest stay's notes and requests; `last` is that stay. The wizard (guest step, after the names are left or a guest is picked / scanned)
+   and the reservation page show a blue banner "Returning guest: n stays, n nights. Last stay <date>, room <no>." with View history and the quoted note. Checking in a reservation that has notes or
+   special requests first opens a "Guest notes" window ("Continue check-in" or Cancel).
+6. **Rolling cut-off.** A group may have `cutoffDays` (0 to 365) instead of the fixed `cutoff` date (sending one clears the other). Each night is released once the business date is later than
+   night minus `cutoffDays` (`groupReleased` in the server, `grpGone` in `app.js`). The group window has the choice (Fixed date / Rolling); the Groups list and the pickup report show "Rolling, 14 days".
+7. **Import a rooming list.** Group window, "Import Rooming List": one guest per line, `Last, First, Room type, Arrival, Departure, Adults, Phone, E-mail` (commas or tabs, heading line allowed; only Last is needed;
+   no type = the group's first blocked type; no dates = the group's dates, or today when the group has started; dates as YYYY-MM-DD or M/D/YYYY). "Check" shows each line as OK or its problem (checked on the
+   screen against what the hotel has); "Create n reservations" sends the good lines. Op `groupImport` {id, rows, up to 200} books each line through `resSave` (group rate, availability and block rules, Do Not Rent
+   is reported, not booked) and answers `created` and `problems: [{line, name, error}]`; good lines are booked even when others fail.
+8. **Housekeeping on a phone.** Under 700px wide the Housekeeping screen shows a card for each room (big room number, type, Occupied / Vacant, service, Ready / Clean / Dirty buttons at least 48px tall,
+   Do not disturb switch, notes) with a sticky filter row (floor, "Dirty only"); the housekeeping login's header is one bar (hotel name, date, Logout). Home tiles, lists, tape chart and the wizard fit a
+   390px screen (tables scroll inside their own box).
+
 ## Reports (document layout)
 
 - **Sheet**: every report is drawn by `sheet(title, bodyHtml, opts)` in `app.js` on a white "paper" (max 1000px, Arial 12.5px, black on white, light grey page).

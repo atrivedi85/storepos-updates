@@ -72,10 +72,13 @@ export class HotelCore {
     for (const r of c.rateRules) if (r.from <= d && d <= r.to && (r.type === '*' || r.type === type) && (!r.days || !r.days.length || r.days.includes(dow))) v = r.rate;
     return v;
   }
+  // Has this group let go of its unsold rooms for the night `d`? Rolling (cutoffDays): each night goes back on sale cutoffDays before it
+  // (business date > night - cutoffDays). Otherwise the fixed cut-off date: released once the business date is past it.
+  groupReleased(c, g, d) { if (g.cutoffDays != null) return c.bdate > addDays(d, -g.cutoffDays); return !!g.cutoff && g.cutoff < c.bdate; }
   // Rooms of a type that groups are still holding on a night (blocks not picked up yet, until the cut-off date passes).
   groupHold(c, type, d, exceptGroup, act, grps) {
     let n = 0;
-    for (const g of grps) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || (g.cutoff && g.cutoff < c.bdate)) continue; const blk = (g.blocks || {})[type] || 0; if (!blk) continue; n += Math.max(0, blk - act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); }
+    for (const g of grps) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || this.groupReleased(c, g, d)) continue; const blk = (g.blocks || {})[type] || 0; if (!blk) continue; n += Math.max(0, blk - act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); }
     return n;
   }
 
@@ -238,13 +241,58 @@ export class HotelCore {
     const hk = me.role === 'hk';
     return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, ...(hk ? {} : { dnr: this.dnrList() }), stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
   }
+  /* ---------- recurring charges (a reservation's own list and its group's list) ---------- */
+  // Checks a list of {code, amount, comment, from, to}. A charge code is a posting code of type ROOM or MISC. Dates are optional; `def` supplies the defaults.
+  cleanRecur(list, c, def) {
+    if (!Array.isArray(list)) throw err(400, 'The recurring charges must be a list.'); if (list.length > 10) throw err(400, 'At most 10 recurring charges.');
+    return list.map(x => {
+      const k = c.codes.find(z => z.code === String(x && x.code || '').toUpperCase()); if (!k || !['ROOM', 'MISC'].includes(k.type)) throw err(400, 'Pick a charge code for the recurring charge (payments cannot repeat).');
+      const amount = cents(x.amount); if (!(amount > 0)) throw err(400, 'Type an amount above zero for the recurring charge.'); if (amount > 5000000) throw err(400, 'That amount is too large.');
+      const from = x.from ? x.from : def.from, to = x.to ? x.to : def.to; if (!isDate(from) || !isDate(to)) throw err(400, 'Check the dates of the recurring charge.'); if (to < from) throw err(400, 'The recurring charge ends before it starts.');
+      return { code: k.code, amount, comment: clip(x.comment, 100), from, to };
+    });
+  }
+  /* ---------- guests who stayed before ---------- */
+  // Past reservations of the same guest: same guest ID, or same last and first name, or the same phone (7 or more digits). Newest first.
+  guestHistory(q) {
+    const idn = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase(), nm = x => String(x || '').trim().toLowerCase(), dg = x => String(x || '').replace(/\D/g, '');
+    const id = idn(q.guestId), last = nm(q.last), first = nm(q.first), ph = dg(q.phone), except = Number(q.except) || 0;
+    const same = (a, b) => a === b || (a.length >= 10 && b.length >= 10 && a.slice(-10) === b.slice(-10));
+    if (!id && !(last && first) && ph.length < 7) return { stays: [], count: 0, nights: 0, total: 0, lastNote: '', last: null };
+    const all = this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)).filter(r => r.id !== except && ((id && idn(r.guestId) === id) || (last && first && nm(r.last) === last && nm(r.first) === first) || (ph.length >= 7 && dg(r.phone).length >= 7 && same(dg(r.phone), ph))))
+      .sort((a, b) => b.arrive.localeCompare(a.arrive) || b.id - a.id);
+    const real = all.filter(r => r.status === 'out' || r.status === 'inhouse');   // stays that happened (or are happening); cancelled, no show and future bookings are listed but not counted
+    const l = real[0] || null, note = r => [r.notes, r.requests].filter(Boolean).join(' / ');
+    return { stays: all.slice(0, 20).map(r => ({ id: r.id, conf: r.conf, arrive: r.arrive, depart: r.depart, room: r.room || '', type: r.type, rate: r.rate, status: r.status, notes: r.notes || '', requests: r.requests || '', balance: this.balance(r.id) })),
+      count: real.length, nights: real.reduce((s, r) => s + nightsBetween(r.arrive, r.depart), 0), total: all.length, lastNote: l ? note(l) : '', last: l ? { arrive: l.arrive, depart: l.depart, room: l.room || '', conf: l.conf } : null };
+  }
+  /* ---------- room assignment optimizer ---------- */
+  // Proposes a room for every reserved, unassigned arrival on `date`: Ready before Clean before Dirty, then the room used least (fewest past stays), then the one empty longest. Nothing out of order, nothing overlapping.
+  optimizePlan(c, date) {
+    const act = this.activeRes(), blks = this.blocks(), all = this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)), rs = this.roomState();
+    const used = {}, lastOut = {}; for (const r of all) if (r.room && (r.status === 'out' || r.status === 'inhouse')) { used[r.room] = (used[r.room] || 0) + 1; if (r.depart > (lastOut[r.room] || '')) lastOut[r.room] = r.depart; }
+    const taken = act.filter(r => r.room).map(r => ({ room: r.room, arrive: r.arrive, depart: r.depart })), RANK = { R: 0, C: 1, D: 2 }, plan = [];
+    const todo = act.filter(r => r.status === 'reserved' && !r.room && r.arrive === date).sort((a, b) => a.id - b.id);
+    for (const r of todo) {
+      const cands = c.rooms.filter(rm => rm.type === r.type && !taken.some(t => t.room === rm.no && t.arrive < r.depart && r.arrive < t.depart) && !blks.some(b => b.room === rm.no && b.start < r.depart && r.arrive <= b.end))
+        .sort((a, b) => (RANK[(rs[a.no] || {}).cond || 'R'] - RANK[(rs[b.no] || {}).cond || 'R']) || ((used[a.no] || 0) - (used[b.no] || 0)) || (lastOut[a.no] || '').localeCompare(lastOut[b.no] || '') || (a.no < b.no ? -1 : a.no > b.no ? 1 : 0));
+      const name = (r.last + (r.first ? ', ' + r.first : '')), pick = cands[0];
+      if (!pick) { plan.push({ id: r.id, name, type: r.type, room: null, reason: 'No ' + r.type + ' room is free for ' + r.arrive + ' to ' + r.depart + '.' }); continue; }
+      const cd = ({ R: 'Ready', C: 'Clean', D: 'Dirty' })[(rs[pick.no] || {}).cond || 'R'], n = used[pick.no] || 0;
+      taken.push({ room: pick.no, arrive: r.arrive, depart: r.depart }); used[pick.no] = n + 1;
+      plan.push({ id: r.id, name, type: r.type, room: pick.no, reason: cd + ', ' + (n ? 'used ' + n + (n === 1 ? ' time' : ' times') : 'not used yet') });
+    }
+    return plan;
+  }
   nightAudit(me, c) {
     const d = c.bdate, act = this.activeRes(), out = { date: d, posted: 0, noShows: [], extended: [], revenue: 0 };
-    const snap = this.stats(c, act);
+    const snap = this.stats(c, act), grps = {}; for (const g of this.groups()) grps[g.id] = g; out.recurring = 0;
     for (const r of act.filter(r => r.status === 'inhouse')) {
       if (r.depart <= d) { r.depart = addDays(d, 1); r.history.push({ at: now(), by: 'night audit', what: 'Not checked out: stay extended to ' + r.depart }); out.extended.push(r.room + ' ' + r.last); this.putRes(r); }
       if (!r.noPost) { const amt = this.nightRate(r, d); this.postCharge(r, c, 'RM', amt, '#' + r.room + ' ' + (r.last + ', ' + r.first).toUpperCase(), 'night audit'); out.posted++; out.revenue += amt; }
       const pk = r.pkg && c.packages.find(x => x.code === r.pkg); if (pk && pk.price > 0) { this.postCharge(r, c, c.codes.some(k => k.code === pk.charge) ? pk.charge : 'MS', pk.price, 'Package: ' + pk.name, 'night audit'); out.packages = (out.packages || 0) + 1; }
+      const g = r.groupId && grps[r.groupId] && grps[r.groupId].status !== 'cancelled' ? grps[r.groupId] : null;   // the guest's own recurring charges, then the group's
+      for (const x of (r.recur || []).concat(g ? g.recur || [] : [])) if ((!x.from || x.from <= d) && (!x.to || d <= x.to) && c.codes.some(k => k.code === x.code)) { const nm = (c.codes.find(k => k.code === x.code) || {}).name || x.code; this.postCharge(r, c, x.code, x.amount, 'Recurring: ' + (x.comment || nm), 'night audit'); out.recurring++; }
     }
     for (const r of act.filter(r => r.status === 'reserved' && r.arrive <= d)) { r.status = 'noshow'; r.history.push({ at: now(), by: 'night audit', what: 'No show' }); this.putRes(r); out.noShows.push(r.last + ', ' + r.first + ' (' + r.conf + ')'); }
     this.setCond(this.activeRes().filter(r => r.status === 'inhouse').map(r => r.room), { cond: 'D' });
@@ -268,7 +316,7 @@ export class HotelCore {
       return { rows: out };
     }
     if (q.name === 'shifts') return { from, to, rows: this.rows('SELECT * FROM shifts WHERE open_at>=? AND open_at<? ORDER BY id DESC LIMIT 500', Date.parse(from + 'T00:00:00Z') - 864e5, Date.parse(to + 'T00:00:00Z') + 2 * 864e5).map(x => ({ id: x.id, user: x.user, openAt: x.open_at, closeAt: x.close_at, ...JSON.parse(x.data) })) };
-    if (q.name === 'grouppickup') { const act = this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse','out')").map(x => JSON.parse(x.data)); return { rows: this.groups().filter(g => g.depart >= from).map(g => { const blk = Object.values(g.blocks || {}).reduce((s, n) => s + (n || 0), 0), mem = act.filter(r => r.groupId === g.id); return { id: g.id, name: g.name, arrive: g.arrive, depart: g.depart, cutoff: g.cutoff || '', blocked: blk, picked: mem.length, left: Math.max(0, blk - mem.length), revenue: mem.reduce((s, r) => { let t = 0; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) t += this.nightRate(r, d); return s + t; }, 0), status: g.status || 'active' }; }) }; }
+    if (q.name === 'grouppickup') { const act = this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse','out')").map(x => JSON.parse(x.data)); return { rows: this.groups().filter(g => g.depart >= from).map(g => { const blk = Object.values(g.blocks || {}).reduce((s, n) => s + (n || 0), 0), mem = act.filter(r => r.groupId === g.id); return { id: g.id, name: g.name, arrive: g.arrive, depart: g.depart, cutoff: g.cutoff || '', cutoffDays: g.cutoffDays == null ? null : g.cutoffDays, blocked: blk, picked: mem.length, left: Math.max(0, blk - mem.length), revenue: mem.reduce((s, r) => { let t = 0; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) t += this.nightRate(r, d); return s + t; }, 0), status: g.status || 'active' }; }) }; }
     if (q.name === 'closeout2') return this.closeout2(q, c);
     if (q.name === 'shift2') return this.shift2(q, c);
     if (q.name === 'stats2') return this.stats2(q, c);
@@ -365,6 +413,7 @@ export class HotelCore {
       const list = rows.map(x => { const { history, ...r } = JSON.parse(x.data); return r; }).filter(r => digits.length >= 3 && !/[A-Z]/.test(q) ? r.conf.startsWith(digits) || (r.phone || '').replace(/\D/g, '').includes(digits) : true);
       return { status: 200, json: { list } };
     }
+    if (p === '/guest') { desk(); return { status: 200, json: this.guestHistory(req.query) }; }
     if (p === '/company') { desk(); const co = this.company(req.query.id); if (!co) throw err(404, 'That company was not found.'); return { status: 200, json: { company: co, ledger: this.rows('SELECT * FROM ar WHERE company=? ORDER BY id DESC LIMIT 1000', co.id), balance: this.arBalance(co.id) } }; }
     if (p === '/group') { desk(); const g = this.group(req.query.id); if (!g) throw err(404, 'That group was not found.'); return { status: 200, json: { group: g, members: this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)).filter(r => r.groupId === g.id).map(({ history, ...r }) => ({ ...r, bal: this.balance(r.id) })) } }; }
     if (p === '/report') { desk(); return { status: 200, json: this.report(req.query, c) }; }
@@ -411,7 +460,10 @@ export class HotelCore {
         const g = a.id ? this.group(a.id) : { status: 'active', created: now() }; if (a.id && !g) throw err(404, 'That group was not found.');
         for (const [k, n] of [['name', 80], ['contact', 80], ['phone', 30], ['email', 100], ['notes', 500]]) if (k in a) g[k] = clip(a[k], n);
         if (!g.name) throw err(400, 'Type the group\'s name.'); if ('arrive' in a) g.arrive = a.arrive; if ('depart' in a) g.depart = a.depart; if (!isDate(g.arrive) || !isDate(g.depart) || g.depart <= g.arrive) throw err(400, 'Check the group\'s dates.');
-        if ('cutoff' in a) { if (a.cutoff && !isDate(a.cutoff)) throw err(400, 'Check the cut-off date.'); g.cutoff = a.cutoff || ''; }
+        const days = a.cutoffDays === '' || a.cutoffDays == null ? null : Number(a.cutoffDays);
+        if ('cutoff' in a) { if (a.cutoff && !isDate(a.cutoff)) throw err(400, 'Check the cut-off date.'); if (a.cutoff && days != null) throw err(400, 'Use a fixed cut-off date or a rolling number of days, not both.'); g.cutoff = a.cutoff || ''; if (a.cutoff && !('cutoffDays' in a)) delete g.cutoffDays; }
+        if ('cutoffDays' in a) { if (days == null) delete g.cutoffDays; else { if (!Number.isInteger(days) || days < 0 || days > 365) throw err(400, 'The rolling cut-off must be a whole number of days from 0 to 365.'); g.cutoffDays = days; g.cutoff = ''; } }
+        if ('recur' in a) g.recur = this.cleanRecur(a.recur || [], c, { from: g.arrive, to: g.depart });
         if ('companyId' in a) g.companyId = this.company(a.companyId) ? Number(a.companyId) : 0; if ('status' in a) g.status = a.status === 'cancelled' ? 'cancelled' : 'active';
         const num = (o, money) => { const out = {}; for (const t of c.types) { const v = o && o[t.code]; if (v !== '' && v != null && Number(v) > 0) out[t.code] = money ? cents(v) : Math.min(500, Math.round(Number(v))); } return out; };
         if ('blocks' in a) g.blocks = num(a.blocks, false); if ('rates' in a) g.rates = num(a.rates, true);
@@ -437,6 +489,45 @@ export class HotelCore {
       }
       case 'history': return ok({ history: this.getRes(a.id).history || [] });
       case 'blockAdd': { if (!c.rooms.some(r => r.no === a.room)) throw err(400, 'Room not found.'); if (!isDate(a.start) || !isDate(a.end) || a.end < a.start) throw err(400, 'Check the dates.'); const clash = this.activeRes().find(r => r.room === a.room && r.arrive <= a.end && a.start < r.depart); if (clash) throw err(409, 'Room ' + a.room + ' has ' + clash.last + ', ' + clash.first + ' in it for those dates. Move the guest first.'); this.sql.exec('INSERT INTO blocks(room,start,end,reason) VALUES(?,?,?,?)', a.room, a.start, a.end, clip(a.reason, 120)); this.log(me.username, 'out of order ' + a.room); return ok(); }
+      case 'blockAddMany': {
+        const rooms = [...new Set(Array.isArray(a.rooms) ? a.rooms.map(x => String(x)) : [])]; if (!rooms.length) throw err(400, 'Pick at least one room.'); if (rooms.length > 300) throw err(400, 'Too many rooms at once.');
+        const bad = rooms.filter(no => !c.rooms.some(r => r.no === no)); if (bad.length) throw err(400, 'Room not found: ' + bad.join(', ') + '.'); if (!isDate(a.start) || !isDate(a.end) || a.end < a.start) throw err(400, 'Check the dates.');
+        const act = this.activeRes(), busy = rooms.filter(no => act.some(r => r.room === no && r.arrive <= a.end && a.start < r.depart));
+        if (busy.length) return { status: 409, json: { error: 'These rooms have a guest or reservation in those dates, so nothing was blocked: ' + busy.join(', ') + '. Move the guests first.', rooms: busy } };
+        for (const no of rooms) this.sql.exec('INSERT INTO blocks(room,start,end,reason) VALUES(?,?,?,?)', no, a.start, a.end, clip(a.reason, 120)); this.log(me.username, 'out of order ' + rooms.length + ' rooms'); return ok({ added: rooms.length });
+      }
+      case 'recurAdd': {
+        const r = this.getRes(a.id); if (!ACTIVE.includes(r.status)) throw err(400, 'This reservation is ' + r.status + '.'); if ((r.recur || []).length >= 10) throw err(400, 'At most 10 recurring charges.');
+        r.recur = (r.recur || []).concat(this.cleanRecur([{ code: a.code, amount: a.amount, comment: a.comment, from: a.from, to: a.to }], c, { from: r.arrive, to: r.depart }));
+        r.history.push({ at: now(), by: me.username, what: 'Recurring charge added: ' + r.recur.at(-1).code + ' ' + (r.recur.at(-1).amount / 100).toFixed(2) }); this.putRes(r); return ok({ recur: r.recur });
+      }
+      case 'recurRemove': {
+        const r = this.getRes(a.id), i = Number(a.index); if (!Number.isInteger(i) || !(r.recur || [])[i]) throw err(404, 'That recurring charge was not found.'); const x = r.recur.splice(i, 1)[0];
+        r.history.push({ at: now(), by: me.username, what: 'Recurring charge removed: ' + x.code + ' ' + (x.amount / 100).toFixed(2) }); this.putRes(r); return ok({ recur: r.recur });
+      }
+      case 'optimize': {
+        const date = isDate(a.date) ? a.date : c.bdate, plan = this.optimizePlan(c, date); let assigned = 0;
+        if (a.apply) for (const x of plan) if (x.room) { const r = this.getRes(x.id); if (r.status !== 'reserved' || r.room) continue; r.room = x.room; r.history.push({ at: now(), by: me.username, what: 'Room assigned by optimizer' }); r.history = r.history.slice(-60); this.putRes(r); assigned++; }
+        if (a.apply) this.log(me.username, 'optimizer assigned ' + assigned + ' rooms for ' + date);
+        return ok({ date, plan, assigned });
+      }
+      case 'groupImport': {
+        const g = this.group(a.id); if (!g) throw err(404, 'That group was not found.'); if (g.status === 'cancelled') throw err(400, 'That group is cancelled.');
+        const rows = Array.isArray(a.rows) ? a.rows : []; if (!rows.length) throw err(400, 'There are no lines to import.'); if (rows.length > 200) throw err(400, 'At most 200 lines at a time.');
+        const fix = d => { const s = String(d || '').trim(), m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); return m ? m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0') : s; };
+        const firstType = (c.types.find(t => (g.blocks || {})[t.code]) || c.types[0]).code, problems = []; let created = 0; const ids = [];
+        rows.forEach((row, i) => {
+          const line = Number(row && row.line) || i + 1, name = row ? (clip(row.last, 60) + (row.first ? ', ' + clip(row.first, 60) : '')) : '';
+          try {
+            if (!row || !clip(row.last, 60)) throw err(400, 'Type the guest\'s last name.');
+            const type = clip(row.type, 8).toUpperCase() || firstType; if (!c.types.some(t => t.code === type)) throw err(400, 'Unknown room type ' + type + '.');
+            const arrive = row.arrive ? fix(row.arrive) : (g.arrive > c.bdate ? g.arrive : c.bdate), depart = row.depart ? fix(row.depart) : g.depart; if (!isDate(arrive) || !isDate(depart)) throw err(400, 'Check the dates.');
+            const r = this.resSave({ last: row.last, first: row.first || '', type, arrive, depart, adults: row.adults || 1, phone: row.phone || '', email: row.email || '', groupId: g.id, source: 'Phone', guarantee: 'Credit card' }, me, c);
+            created++; ids.push(r.id);
+          } catch (e) { if (!e.code) throw e; problems.push({ line, name, error: e.message }); }
+        });
+        this.log(me.username, 'group import ' + g.name + ': ' + created + ' created, ' + problems.length + ' problems'); return ok({ created, problems, ids });
+      }
       case 'blockRemove': { this.sql.exec('DELETE FROM blocks WHERE id=?', Number(a.id) || 0); return ok(); }
       case 'nightAudit': { mgr(); if (a.date !== c.bdate) throw err(409, 'The business date changed. Reload and try again.'); return ok({ audit: this.nightAudit(me, c) }); }
       case 'configSave': {
@@ -449,6 +540,7 @@ export class HotelCore {
         if (Array.isArray(n.packages)) c.packages = n.packages.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), price: Math.max(0, cents(k.price || 0)), charge: clip(k.charge, 8).toUpperCase() || 'MS' })).filter(k => k.code).slice(0, 50);
         if (Array.isArray(n.rateRules)) { c.rateRules = n.rateRules.map(k => ({ name: clip(k.name, 40), from: k.from, to: k.to, days: (k.days || []).map(Number).filter(x => x >= 0 && x <= 6), type: clip(k.type, 8).toUpperCase() || '*', rate: cents(k.rate) })).slice(0, 300); for (const k of c.rateRules) { if (!isDate(k.from) || !isDate(k.to) || k.to < k.from) throw err(400, 'Check the dates on the rate line "' + k.name + '".'); if (k.type !== '*' && !c.types.some(t => t.code === k.type)) throw err(400, 'The rate line "' + k.name + '" has an unknown room type (' + k.type + ').'); if (!(k.rate >= 0)) throw err(400, 'Check the rate on the line "' + k.name + '".'); } }
         if ('requireShift' in n) c.requireShift = !!n.requireShift;
+        if ('quickLinks' in n) { if (n.quickLinks == null || (Array.isArray(n.quickLinks) && !n.quickLinks.length)) delete c.quickLinks; else { if (!Array.isArray(n.quickLinks)) throw err(400, 'The quick links must be a list.'); const keys = [...new Set(n.quickLinks.map(x => clip(x, 30)).filter(x => /^[a-z0-9_]+$/i.test(x)))]; if (keys.length > 14) throw err(400, 'At most 14 quick links.'); c.quickLinks = keys; } }
         if (Array.isArray(n.housekeepers)) c.housekeepers = n.housekeepers.map(x => clip(x, 40)).filter(Boolean).slice(0, 40);
         this.setKv('config', c); this.log(me.username, 'changed setup'); return ok();
       }

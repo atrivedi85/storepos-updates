@@ -43,7 +43,10 @@ function roomFree(no, from, to, exceptId) {
 function rateFor(type, d) { const t = S.config.types.find(x => x.code === type); let v = t ? t.rate : 0; const dow = new Date(d + 'T00:00:00Z').getUTCDay(); for (const r of S.config.rateRules || []) if (r.from <= d && d <= r.to && (r.type === '*' || r.type === type) && (!r.days || !r.days.length || r.days.includes(dow))) v = r.rate; return v; }
 // What the nights of a stay cost at the standard rate (group rate first, then the company's rate, then rates by date).
 function quote(r) { const g = r.groupId && S.groups.find(x => x.id === +r.groupId), co = r.companyId && S.companies.find(x => x.id === +r.companyId), out = []; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) out.push(g && g.rates && g.rates[r.type] > 0 ? g.rates[r.type] : co && co.rate > 0 ? co.rate : rateFor(r.type, d)); return out; }
-function groupHold(type, d, exceptGroup) { let n = 0; for (const g of S.groups) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || (g.cutoff && g.cutoff < B())) continue; const blk = (g.blocks || {})[type] || 0; if (blk) n += Math.max(0, blk - active().filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); } return n; }
+// Has the group let go of its unsold rooms for night d? Rolling cut-off: each night goes back on sale cutoffDays before it. Otherwise the fixed date.
+const grpGone = (g, d) => g.cutoffDays != null ? B() > addDays(d, -g.cutoffDays) : !!g.cutoff && g.cutoff < B();
+const cutTxt = g => g.cutoffDays != null ? 'Rolling, ' + g.cutoffDays + (g.cutoffDays === 1 ? ' day' : ' days') : dshort(g.cutoff);
+function groupHold(type, d, exceptGroup) { let n = 0; for (const g of S.groups) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || grpGone(g, d)) continue; const blk = (g.blocks || {})[type] || 0; if (blk) n += Math.max(0, blk - active().filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); } return n; }
 function availOfType(type, from, to, exceptId, forGroup) {
   const rooms = S.config.rooms.filter(r => r.type === type).map(r => r.no); let min = rooms.length;
   for (let d = from; d < to; d = addDays(d, 1)) { const sold = active().filter(r => r.id !== exceptId && r.type === type && r.arrive <= d && d < r.depart).length; min = Math.min(min, rooms.length - sold - rooms.filter(no => isOOO(no, d)).length - groupHold(type, d, +forGroup || 0)); }
@@ -133,22 +136,36 @@ function paint(hk, nav) {
     menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
     menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
-  $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
+  $('#app').innerHTML = `<header class="${hk ? 'hkbar' : ''}"><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
     <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
-    ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span></div></header>
+    ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span>${hk ? '<button type="button" class="btn sm hklogout" data-act="logout">Logout</button>' : ''}</div></header>
     <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
+// Every tile that can sit on Home: key -> [attributes, icon, label, who]. who 'boss' = owner or manager only (hidden for everyone else).
+const TILES = {
+  shift: ['data-act="shift"', '$', 'Cashier<br>Shift'], arrivals: ['data-nav="arrivals"', '🛎', 'View<br>Arrivals'], inhouse: ['data-nav="inhouse"', '🧳', 'In House<br>List'], departures: ['data-nav="departures"', '🚗', 'View Departures<br>List'],
+  stats: ['data-nav="stats"', '📊', 'Quick<br>Statistics'], tape: ['data-nav="tape"', '▦', 'Tape<br>Chart'], hk: ['data-nav="hk"', '🧹', 'Housekeeping<br>Center'], newres: ['data-act="newRes"', '＋', 'Create<br>Reservation'],
+  walkin: ['data-act="walkIn"', '🚶', 'Walk-In'], find: ['data-act="findOpen"', '👤', 'Find<br>Guest'], blocking: ['data-act="blockNew"', '⛔', 'Room<br>Blocking'], groups: ['data-nav="groups"', '👥', 'Group<br>Master'],
+  companies: ['data-nav="companies"', '🏢', 'Company<br>Profiles'], reports: ['data-nav="reports"', '📄', 'Reports'],
+  nightaudit: ['data-act="nightAudit"', '🌙', 'Night<br>Audit', 'boss'], future: ['data-act="repGo" data-rep="future"', '📅', 'Future<br>Availability'], dnr: ['data-nav="dnr"', '🚫', 'Do Not Rent<br>List'],
+  findres: ['data-act="findOpen"', '🔎', 'Find<br>Reservation'], config: ['data-nav="setup"', '⚙', 'Hotel<br>Configuration', 'boss'], rates: ['data-act="setupGo" data-tab="rates"', '💲', 'Manage<br>Rates', 'boss'],
+  packages: ['data-act="setupGo" data-tab="packages"', '🎁', 'Packages', 'boss'], logins: ['data-act="setupGo" data-tab="users"', '🔑', 'Logins', 'boss'], cancellations: ['data-act="repGo" data-rep="cancel"', '✖', 'Cancellation<br>List'],
+  arrrep: ['data-act="repGo" data-rep="arrivals"', '📋', 'Arrival List<br>Report']
+};
+const QL_DEFAULT = ['shift', 'arrivals', 'inhouse', 'departures', 'stats', 'tape', 'hk', 'newres', 'walkin', 'find', 'blocking', 'groups', 'companies', 'reports'];
+const qlSaved = () => (S.config.quickLinks && S.config.quickLinks.length ? S.config.quickLinks : QL_DEFAULT).filter(k => TILES[k]);
+const quickKeys = () => qlSaved().filter(k => TILES[k][3] !== 'boss' || boss());   // tiles a role cannot use are hidden for that role
+const tileName = k => TILES[k][2].replace(/<br>/g, ' ');
 function vHome() {
   const s = S.stats, d = B(), hr = new Date().getHours(), hello = hr < 12 ? 'Good Morning' : hr < 18 ? 'Good Afternoon' : 'Good Evening';
   const types = S.config.types.map(t => ({ t, n: availOfType(t.code, d, addDays(d, 1)) })).sort((a, b) => b.n - a.n);
   const dirtyVacant = S.config.rooms.filter(r => !inRoom(r.no) && cond(r.no) === 'D').length, arrToday = s.checkedIn + s.arrivalsLeft;
   const outToday = S.res.filter(r => r.status === 'out' && r.depart === d).length;
-  const T = (attr, icon, label) => `<button class="tile" ${attr}><span class="ic">${icon}</span><span>${label}</span></button>`;
-  return `<div class="tiles">${T('data-act="shift"', '$', 'Cashier<br>Shift')}${T('data-nav="arrivals"', '🛎', 'View<br>Arrivals')}${T('data-nav="inhouse"', '🧳', 'In House<br>List')}${T('data-nav="departures"', '🚗', 'View Departures<br>List')}${T('data-nav="stats"', '📊', 'Quick<br>Statistics')}${T('data-nav="tape"', '▦', 'Tape<br>Chart')}${T('data-nav="hk"', '🧹', 'Housekeeping<br>Center')}
-    ${T('data-act="newRes"', '＋', 'Create<br>Reservation')}${T('data-act="walkIn"', '🚶', 'Walk-In')}${T('data-act="findOpen"', '👤', 'Find<br>Guest')}${T('data-act="blockNew"', '⛔', 'Room<br>Blocking')}${T('data-nav="groups"', '👥', 'Group<br>Master')}${T('data-nav="companies"', '🏢', 'Company<br>Profiles')}${T('data-nav="reports"', '📄', 'Reports')}</div>
-  <div class="band"><div class="greet">${hello},<br>${esc(String(S.me.name).split(' ')[0])}!</div>
+  const T = k => { const t = TILES[k]; return `<button class="tile" ${t[0]}><span class="ic">${t[1]}</span><span>${t[2]}</span></button>`; };
+  return `<div class="tiles">${quickKeys().map(T).join('')}</div>
+  <div class="band">${boss() ? '<button class="btn sm blue qledit" data-act="qlEdit">EDIT</button>' : ''}<div class="greet">${hello},<br>${esc(String(S.me.name).split(' ')[0])}!</div>
     <div class="bigs"><div><b>${s.occ}%</b><span>Today's Occupancy</span></div><div><b>${money(s.adr)}</b><span>Expected ADR</span></div></div>
     <div class="trio"><div><b>${arrToday}</b><span>Total Arrivals Today</span></div><div><b>${s.checkedIn}</b><span>Check Ins Completed</span></div><div><b>${s.arrivalsLeft}</b><span>Check Ins Remaining</span></div></div>
     <div class="trio"><div><b>${s.dueOut + outToday}</b><span>Total Departures Today</span></div><div><b>${dirtyVacant}</b><span>Vacant/Dirty Rooms Remaining</span></div><div><b>${s.vacant}</b><span>Total Rooms Available</span></div></div>
@@ -195,6 +212,7 @@ function vTape() {
     <select id="tapeFloor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select><span class="flex"></span><button class="btn sm red" data-act="blockNew">Room Blocking…</button></div>
   <div class="tapewrap"><div class="wrap" style="max-height:calc(100vh - 200px);flex:1"><table class="tape"><tr><th class="c1">Room #</th><th class="c2">Type</th><th class="c3">Condition</th>${days.map(d => { const dt = new Date(d + 'T00:00:00Z'); const we = [5, 6].includes(dt.getUTCDay()); return `<th class="${we ? 'we' : ''} ${d === B() ? 'td' : ''}">${dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' })}.<br>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</th>`; }).join('')}</tr>${rows}</table></div>
   <aside class="tside"><h3>Overview</h3><div class="lg"><i style="background:var(--green)"></i>In House</div><div class="lg"><i style="background:var(--blue)"></i>Reserved</div><div class="lg"><i style="background:var(--amber)"></i>Due Out</div><div class="lg"><i style="background:#9aa6b8"></i>Checked Out</div><div class="lg"><i style="background:var(--red)"></i>Out of Order</div><p class="hint">R ready · C clean · D dirty.<br>Click an empty day to book that room.</p>
+    <h3>Optimize Room Assignments?</h3><div class="optbox"><label for="optDate" class="hint">Start Date:</label><input type="date" id="optDate" value="${esc(view.optDate || B())}"><button class="btn blue" data-act="optRun">RUN</button></div>
     <h3>Unassigned Reservations</h3>${un.length ? Object.keys(byDay).sort().map(d => `<div class="uday">Arrival Date: ${new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' })}</div>` + byDay[d].map(r => `<a href="#" class="un" data-act="openRes" data-id="${r.id}"><span>${esc(gname(r))}</span><span>${esc(r.type)}</span><span>${nights(r.arrive, r.depart)}</span></a>`).join('')).join('') : '<p class="hint">None.</p>'}</aside></div>`;
 }
 
@@ -264,16 +282,24 @@ const hkPreText = no => { const g = inRoom(no); return g ? [g.crib && 'Crib', g.
 const hkPre = no => hkPreText(no) ? `<span class="hkpre">${hkPreText(no)}</span>` : '';   // read-only prefix in the Notes cell
 function vHk() {
   const floors = [...new Set(S.config.rooms.map(r => r.floor))].sort();
-  const rooms = S.config.rooms.filter(r => !view.floor || r.floor === view.floor);
-  const cnt = k => rooms.filter(r => cond(r.no) === k).length;
-  return `<h1>Housekeeping</h1><div class="bar"><select id="hkFloor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select>
-    <span class="badge r">${cnt('D')} dirty</span><span class="badge a">${cnt('C')} clean</span><span class="badge g">${cnt('R')} ready</span><span class="flex"></span>
-    <span class="hint">Rooms</span><input id="hkFrom" placeholder="from" style="width:80px"><input id="hkTo" placeholder="to" style="width:80px"><button class="btn sm red" data-act="hkRange" data-cond="D">Dirty</button><button class="btn sm amber" data-act="hkRange" data-cond="C">Clean</button><button class="btn sm green" data-act="hkRange" data-cond="R">Ready</button><button class="btn sm" data-act="printHk">Print check-off list</button></div>
-  <div class="wrap"><table><tr><th>Room</th><th>Type</th><th>Room status</th><th>Condition</th><th>Service</th><th>Assigned to</th><th>Do not disturb</th><th>Notes</th></tr>
-  ${rooms.map(rm => { const st = S.roomstate[rm.no] || {}; const occ = !!inRoom(rm.no); return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${isOOO(rm.no, B()) ? '<span class="badge r">Out of order</span>' : occ ? '<span class="badge g">Occupied</span>' : '<span class="badge s">Vacant</span>'}</td><td>${condBtns(rm.no)}</td><td>${service(rm.no)}</td>
+  const rooms = S.config.rooms.filter(r => (!view.floor || r.floor === view.floor) && (!view.hkDirty || cond(r.no) === 'D'));
+  const cnt = k => S.config.rooms.filter(r => (!view.floor || r.floor === view.floor) && cond(r.no) === k).length;
+  const roomBadge = rm => isOOO(rm.no, B()) ? '<span class="badge r">Out of order</span>' : inRoom(rm.no) ? '<span class="badge g">Occupied</span>' : '<span class="badge s">Vacant</span>';
+  const card = rm => { const st = S.roomstate[rm.no] || {}, n = esc(rm.no); return `<div class="hkcard" data-room="${n}"><div class="hkh"><span class="hkno">${n}</span><span class="hkty">${esc(rm.type)}</span>${roomBadge(rm)}</div>
+    <div class="hksv">Service: <b>${service(rm.no)}</b></div>
+    <div class="hkbtns">${['R', 'C', 'D'].map(k => `<button type="button" class="hkb ${k} ${cond(rm.no) === k ? 'on' : ''}" data-act="cond" data-room="${n}" data-cond="${k}">${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[k]}</button>`).join('')}</div>
+    <label class="swk"><input type="checkbox" data-hk="dnd" data-room="${n}" ${st.dnd ? 'checked' : ''}><i></i><span>Do not disturb</span></label>
+    <div class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${n}" value="${esc(st.note || '')}" maxlength="200" placeholder="Notes" aria-label="Notes for room ${n}"></div></div>`; };
+  return `<h1>Housekeeping</h1><div class="bar hkfilter"><select id="hkFloor" aria-label="Floor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select>
+    <label class="swk hkdirty"><input type="checkbox" id="hkDirty" ${view.hkDirty ? 'checked' : ''}><i></i><span>Dirty only</span></label>
+    <span class="hkcnt"><span class="badge r">${cnt('D')} dirty</span><span class="badge a">${cnt('C')} clean</span><span class="badge g">${cnt('R')} ready</span></span><span class="flex hkdesk"></span>
+    <span class="hkdesk hint">Rooms</span><input class="hkdesk" id="hkFrom" placeholder="from" style="width:80px"><input class="hkdesk" id="hkTo" placeholder="to" style="width:80px"><button class="btn sm red hkdesk" data-act="hkRange" data-cond="D">Dirty</button><button class="btn sm amber hkdesk" data-act="hkRange" data-cond="C">Clean</button><button class="btn sm green hkdesk" data-act="hkRange" data-cond="R">Ready</button><button class="btn sm hkdesk" data-act="printHk">Print check-off list</button></div>
+  <div class="wrap hkwrap"><table><tr><th>Room</th><th>Type</th><th>Room status</th><th>Condition</th><th>Service</th><th>Assigned to</th><th>Do not disturb</th><th>Notes</th></tr>
+  ${rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${roomBadge(rm)}</td><td>${condBtns(rm.no)}</td><td>${service(rm.no)}</td>
     <td><select data-hk="hk" data-room="${esc(rm.no)}" style="min-height:34px;padding:4px 8px"><option value=""></option>${S.config.housekeepers.map(h => `<option ${st.hk === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></td>
     <td><input type="checkbox" data-hk="dnd" data-room="${esc(rm.no)}" ${st.dnd ? 'checked' : ''}></td><td class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${esc(rm.no)}" value="${esc(st.note || '')}" maxlength="200" style="min-height:34px;padding:4px 8px"></td></tr>`; }).join('')}</table></div>
-  ${S.config.housekeepers.length ? '' : '<p class="hint">To assign rooms, a manager adds the housekeepers\' names in Setup › Housekeepers.</p>'}`;
+  <div class="hkcards">${rooms.map(card).join('') || '<div class="empty">No rooms to show.</div>'}</div>
+  ${S.config.housekeepers.length ? '' : '<p class="hint hkdesk">To assign rooms, a manager adds the housekeepers\' names in Setup › Housekeepers.</p>'}`;
 }
 
 /* ---------- Reservation window ---------- */
@@ -293,9 +319,9 @@ function resForm(r, mode) {
   const bal = S.bal[r.id] || 0;
   const A = (act, label) => `<a href="#" data-act="${act}">${label}</a>`;
   const listed = !isNew && dnrMatchC(r), dnrAct = isNew || locked && !listed ? '' : listed ? (boss() ? A('dnrRemoveRes', 'Remove from Do Not Rent List') : '') : A('dnrAddRes', 'Add to Do Not Rent List');
-  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}`) + dnrAct;
+  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}${A('recurring', 'Recurring Charges').replace('<a ', '<a data-src="ed" ')}`) + dnrAct;
   const side = `<aside class="pside"><h3>Overview</h3><dl><dt>Status:</dt><dd class="big">${isNew ? 'New' : { reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>Guest Name:</dt><dd>${esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())}</dd>${r.groupId ? `<dt>Group Master:</dt><dd>${esc((S.groups.find(g => g.id === +r.groupId) || {}).name || '')}</dd>` : ''}<dt>Account Number:</dt><dd>${esc(r.conf || '')}</dd><dt>Balance:</dt><dd>${bal < 0 ? '(' + money(-bal) + ')' : money(bal)}</dd></dl><h3>Actions</h3><div class="alinks">${acts}</div></aside>`;
-  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain">${dnrBanner(r)}<div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
+  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain">${dnrBanner(r)}${histBanner()}<div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
   <div class="sec">Stay</div><div class="grid">
     <label class="c3">Arrival<input type="date" id="r_arrive" value="${r.arrive}" ${locked || mode === 'walkin' || r.status === 'inhouse' ? 'disabled' : ''}></label>
     <label class="c2">Nights<input type="number" id="r_nights" min="1" max="365" value="${n}" ${locked ? 'disabled' : ''}></label>
@@ -338,6 +364,7 @@ function drawRes() {
   if (drawing) return; drawing = true;
   try { $('#modal').innerHTML = ED.mode === 'edit' ? resForm(ED.r, ED.mode) : wizForm(); } finally { drawing = false; }
   if (ED.mode !== 'edit' && ED.step === 3 && $('#r_last') && !$('#r_last').value) $('#r_last').focus();
+  if (ED.mode === 'edit' || ED.step === 3) { histPaint(); histLoad(); }
 }
 async function openRes(id) { let r = S.res.find(x => x.id === +id); if (!r) { const f = await api('/folio?id=' + id); r = f.res; S.bal[r.id] = f.balance; } ED = { mode: 'edit', r: JSON.parse(JSON.stringify(r)) }; drawRes(); }
 
@@ -423,7 +450,7 @@ function wizForm() {
       <button class="btn blue wzbtn" data-act="saveRes">${walk ? 'CHECK IN NOW' : 'BOOK RESERVATION'}</button>`;
     side = wizSide(4);
   }
-  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain wz">${step >= 3 ? dnrBanner(r) : ''}<div class="mtitle">${titles[step - 1]}</div>${track}${main}</div><aside class="pside wz">${side}<h3>Actions</h3><div class="alinks"><a href="#" data-act="closeModal">Cancel</a></div></aside></div></div></div>`;
+  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain wz">${step >= 3 ? dnrBanner(r) : ''}${step === 3 ? histBanner() : ''}<div class="mtitle">${titles[step - 1]}</div>${track}${main}</div><aside class="pside wz">${side}<h3>Actions</h3><div class="alinks"><a href="#" data-act="closeModal">Cancel</a></div></aside></div></div></div>`;
 }
 const wizErr = m => { const e = $('#r_err'); if (e) e.textContent = m; return false; };
 function wizNext() {
@@ -495,7 +522,7 @@ async function saveRes() {
 async function resAction(act) {
   const r = ED.r, done = async msg => { await refresh(); toast(msg); const fresh = S.res.find(x => x.id === r.id); if (fresh) { ED.r = JSON.parse(JSON.stringify(fresh)); drawRes(); } else { $('#modal').innerHTML = ''; ED = null; } };
   try {
-    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); const fl = {}; for (;;) { try { await op('checkIn', { id: r.id, ...fl }); break; } catch (e) { if (e.status === 412 && !fl.dirtyOk && confirm(e.message)) fl.dirtyOk = true; else if (e.status === 428 && !fl.dnrOk && confirm(e.message)) fl.dnrOk = true; else throw e; } } await done('Checked in to room ' + r.room + '.'); }
+    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); if (r.notes || r.requests) { const yes = await askBox('Guest notes', `<div class="gnotes">${r.requests ? `<p><b>Special requests</b><br>${esc(r.requests)}</p>` : ''}${r.notes ? `<p><b>Notes</b><br>${esc(r.notes)}</p>` : ''}</div>`, 'Continue check-in'); if (!yes) return; } await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); const fl = {}; for (;;) { try { await op('checkIn', { id: r.id, ...fl }); break; } catch (e) { if (e.status === 412 && !fl.dirtyOk && confirm(e.message)) fl.dirtyOk = true; else if (e.status === 428 && !fl.dnrOk && confirm(e.message)) fl.dnrOk = true; else throw e; } } await done('Checked in to room ' + r.room + '.'); }
     else if (act === 'checkOut') { try { await op('checkOut', { id: r.id }); } catch (e) { if (e.status === 412 && boss() && confirm(e.message + '\n\nCheck out anyway and leave the balance on the folio?')) await op('checkOut', { id: r.id, force: true }); else if (e.status === 412) { toast(e.message, true); return openFolio(r.id); } else throw e; } await done('Checked out.'); }
     else if (act === 'undoCheckIn') { if (confirm('Undo the check-in for ' + gname(r) + '?')) { await op('undoCheckIn', { id: r.id }); await done('Check-in undone.'); } }
     else if (act === 'undoCheckOut') { await op('undoCheckOut', { id: r.id }); await done('Guest is back in house.'); }
@@ -518,7 +545,7 @@ function drawFolio() {
   $('#modal').innerHTML = `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain"><div class="mtitle">Guest Folio ${statusBadge(r)} <span class="hint">${dshort(r.arrive)} to ${dshort(r.depart)}</span></div>
     <div id="postBox"></div><div class="hint" style="margin-bottom:6px">Viewing Lines 1 through ${FO.lines.length} of ${FO.lines.length}</div><div class="wrap" style="max-height:66vh">${folioTable(FO)}</div></div>
     <aside class="pside"><h3>Overview</h3><dl><dt>Guest Status:</dt><dd class="big">${{ reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>First Name:</dt><dd>${esc((r.first || '').toUpperCase())}</dd><dt>Last Name:</dt><dd>${esc((r.last || '').toUpperCase())}</dd><dt>Account #:</dt><dd>${esc(r.conf)}</dd><dt>Room #:</dt><dd>${esc(r.room || '')}</dd><dt>Balance:</dt><dd>${b < 0 ? '(' + money(-b) + ')' : money(b)}</dd></dl>
-    <h3>Actions</h3><div class="alinks">${L('folioBack', 'Back')}${L('postOpen', 'Post Charge', 'data-kind="charge"')}${L('postOpen', 'Post Payment', 'data-kind="payment"')}${L('postOpen', 'Post Adjustment', 'data-kind="adjust"')}${L('printFolio', 'Print')}${L('emailFolio', 'Email Folio')}${r.status === 'inhouse' ? L('folioCheckOut', 'Check Out') : ''}${L('closeModal', 'Close')}</div></aside></div></div></div>`;
+    <h3>Actions</h3><div class="alinks">${L('folioBack', 'Back')}${L('postOpen', 'Post Charge', 'data-kind="charge"')}${L('postOpen', 'Post Payment', 'data-kind="payment"')}${L('postOpen', 'Post Adjustment', 'data-kind="adjust"')}${L('printFolio', 'Print')}${L('emailFolio', 'Email Folio')}${L('recurring', 'Recurring Charges', 'data-src="fo"')}${r.status === 'inhouse' ? L('folioCheckOut', 'Check Out') : ''}${L('closeModal', 'Close')}</div></aside></div></div></div>`;
 }
 function postOpen(kind) {
   const pay = ['CASH', 'CRED', 'AREC', 'GFTCRD'], codes = S.config.codes.filter(k => kind === 'payment' ? pay.includes(k.type) : !pay.includes(k.type) && k.type !== 'ADMIN');
@@ -716,7 +743,7 @@ async function buildReport() {
     const R = await api2(view.rep === 'cancel' || view.rep === 'noshow' ? 'history' : view.rep);
     if (view.rep === 'journal') h = T(['Item #', 'Date', 'Posted', 'Room', 'Guest', 'Description', 'Comments', 'By', '#Amount'], R.rows.map(l => [l.id, dshort(l.bdate), stamp(l.at), esc(l.room), esc(l.name), esc(l.descr), esc(l.comment), esc(l.user), money(l.amount)]));
     else if (view.rep === 'araging') h = T(['Company', '#0–30 days', '#31–60', '#61–90', '#Over 90', '#Unapplied credit', '#Balance'], R.rows.map(x => [esc(x.name), money(x.cur), money(x.d30), money(x.d60), money(x.d90), money(x.credit), '<b>' + money(x.balance) + '</b>']).concat([tot('Total owed:', [money(R.rows.reduce((s, x) => s + x.balance, 0))], 6)]));
-    else if (view.rep === 'grouppickup') h = T(['Group', 'Arrival', 'Departure', 'Cut-off', '#Blocked', '#Picked up', '#Left', '#Room revenue', 'Status'], R.rows.map(x => [esc(x.name), dshort(x.arrive), dshort(x.depart), dshort(x.cutoff), x.blocked, x.picked, x.left, money(x.revenue), x.status]));
+    else if (view.rep === 'grouppickup') h = T(['Group', 'Arrival', 'Departure', 'Cut-off', '#Blocked', '#Picked up', '#Left', '#Room revenue', 'Status'], R.rows.map(x => [esc(x.name), dshort(x.arrive), dshort(x.depart), esc(cutTxt(x)), x.blocked, x.picked, x.left, money(x.revenue), x.status]));
     else if (view.rep === 'shifts') h = T(['Cashier', 'Opened', 'Closed', '#Opening cash', '#Cash taken in', '#Expected', '#Counted', '#Over / short'], R.rows.map(x => [esc(x.user), stamp(x.openAt), x.closeAt ? stamp(x.closeAt) : 'Open', money(x.openCash), x.closeAt ? money(x.cashIn) : '', x.closeAt ? money(x.expected) : '', x.closeAt ? money(x.counted) : '', x.closeAt ? money(x.overShort) : '']));
     else if (view.rep === 'cancel' || view.rep === 'noshow') { const l = view.rep === 'cancel' ? R.cancelled : R.noshow; h = T(['Guest', 'Arrival', 'Departure', 'Type', 'Room', '#Rate', '#Balance', 'Conf. #'], l.map(r => [esc(r.name), dshort(r.arrive), dshort(r.depart), esc(r.type), esc(r.room), money(r.rate), money(r.bal), esc(r.conf)])) + `<div class="sh-total">Total: ${l.length}</div>`; }
   }
@@ -731,7 +758,7 @@ const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>S
 async function nightAudit() {
   const s = S.stats;
   if (!confirm(`Run the night audit for ${dlong(B())}?\n\n• Posts tonight's room charge and tax to ${s.sold} in-house rooms\n• Marks ${s.arrivalsLeft} arrivals that did not check in as no shows\n• Extends ${s.dueOut} guests who were due out but are still checked in\n• Moves the business date to ${dlong(addDays(B(), 1))}\n\nThis cannot be undone.`)) return;
-  await run(async () => { const x = (await op('nightAudit', { date: B() })).audit; view.tapeStart = x.newDate; view.from = x.date; view.to = x.newDate; await refresh(); alert(`Night audit finished for ${dshort(x.date)}.\n\nRoom charges posted: ${x.posted} (${money(x.revenue)})\nNo shows: ${x.noShows.length}${x.noShows.length ? '\n  ' + x.noShows.join('\n  ') : ''}\nStays extended: ${x.extended.length}${x.extended.length ? '\n  ' + x.extended.join('\n  ') : ''}\n\nThe business date is now ${dlong(x.newDate)}.`); });
+  await run(async () => { const x = (await op('nightAudit', { date: B() })).audit; view.tapeStart = x.newDate; view.from = x.date; view.to = x.newDate; await refresh(); alert(`Night audit finished for ${dshort(x.date)}.\n\nRoom charges posted: ${x.posted} (${money(x.revenue)})\nRecurring charges posted: ${x.recurring || 0}\nNo shows: ${x.noShows.length}${x.noShows.length ? '\n  ' + x.noShows.join('\n  ') : ''}\nStays extended: ${x.extended.length}${x.extended.length ? '\n  ' + x.extended.join('\n  ') : ''}\n\nThe business date is now ${dlong(x.newDate)}.`); });
 }
 
 /* ---------- Companies and direct-bill accounts ---------- */
@@ -758,17 +785,21 @@ function vGroups() {
   const l = S.groups.slice().sort((a, b) => a.arrive.localeCompare(b.arrive));
   const picked = g => S.res.filter(r => r.groupId === g.id && ['reserved', 'inhouse', 'out'].includes(r.status)).length, blocked = g => Object.values(g.blocks || {}).reduce((a, b) => a + b, 0);
   return `<h1>Groups</h1><div class="bar"><button class="btn green" data-act="grpNew">+ Group</button><span class="hint">A group holds rooms (a block) until its cut-off date. Reservations added to the group get the group's rate.</span></div>
-  ${l.length ? `<div class="wrap"><table><tr><th>Group</th><th>Arrival</th><th>Departure</th><th>Cut-off</th><th class="num">Blocked</th><th class="num">Picked up</th><th class="num">Left</th><th>Status</th></tr>${l.map(g => `<tr class="click" data-act="grpOpen" data-id="${g.id}"><td><b>${esc(g.name)}</b></td><td>${dshort(g.arrive)}</td><td>${dshort(g.depart)}</td><td>${dshort(g.cutoff)}${g.cutoff && g.cutoff < B() ? ' <span class="badge s">released</span>' : ''}</td><td class="num">${blocked(g)}</td><td class="num">${picked(g)}</td><td class="num">${Math.max(0, blocked(g) - picked(g))}</td><td>${g.status === 'cancelled' ? '<span class="badge r">Cancelled</span>' : '<span class="badge g">Active</span>'}</td></tr>`).join('')}</table></div>` : '<div class="empty">No groups yet.</div>'}`;
+  ${l.length ? `<div class="wrap"><table><tr><th>Group</th><th>Arrival</th><th>Departure</th><th>Cut-off</th><th class="num">Blocked</th><th class="num">Picked up</th><th class="num">Left</th><th>Status</th></tr>${l.map(g => `<tr class="click" data-act="grpOpen" data-id="${g.id}"><td><b>${esc(g.name)}</b></td><td>${dshort(g.arrive)}</td><td>${dshort(g.depart)}</td><td>${esc(cutTxt(g))}${g.cutoffDays == null && g.cutoff && g.cutoff < B() ? ' <span class="badge s">released</span>' : ''}</td><td class="num">${blocked(g)}</td><td class="num">${picked(g)}</td><td class="num">${Math.max(0, blocked(g) - picked(g))}</td><td>${g.status === 'cancelled' ? '<span class="badge r">Cancelled</span>' : '<span class="badge g">Active</span>'}</td></tr>`).join('')}</table></div>` : '<div class="empty">No groups yet.</div>'}`;
 }
 let GR = null;
-async function grpOpen(id) { GR = id ? await api('/group?id=' + id) : { group: { name: '', arrive: B(), depart: addDays(B(), 2), cutoff: '', blocks: {}, rates: {}, status: 'active' }, members: [] }; grpDraw(); }
+async function grpOpen(id) { GR = id ? await api('/group?id=' + id) : { group: { name: '', arrive: B(), depart: addDays(B(), 2), cutoff: '', blocks: {}, rates: {}, recur: [], status: 'active' }, members: [] }; grpDraw(); }
 function grpDraw() {
   const g = GR.group, n = !g.id, f = (k, label, cls, extra) => `<label class="${cls || ''}">${label}<input id="g_${k}" value="${esc(g[k] == null ? '' : g[k])}" ${extra || ''}></label>`;
   $('#modal').innerHTML = `<div class="mback"><div class="mbox wide"><div class="mtitle">${n ? 'New group' : esc(g.name)}</div>
-  <div class="grid">${f('name', 'Group name *', 'c6', 'maxlength="80"')}${f('contact', 'Contact person', 'c3', 'maxlength="80"')}${f('phone', 'Phone', 'c3', 'maxlength="30"')}${f('arrive', 'Arrival', 'c3', 'type="date"')}${f('depart', 'Departure', 'c3', 'type="date"')}${f('cutoff', 'Cut-off date (unsold rooms go back on sale after it)', 'c6', 'type="date"')}
+  <div class="grid">${f('name', 'Group name *', 'c6', 'maxlength="80"')}${f('contact', 'Contact person', 'c3', 'maxlength="80"')}${f('phone', 'Phone', 'c3', 'maxlength="30"')}${f('arrive', 'Arrival', 'c3', 'type="date"')}${f('depart', 'Departure', 'c3', 'type="date"')}
     <label class="c6">Company (optional)<select id="g_companyId"><option value="0">No company</option>${S.companies.map(c => `<option value="${c.id}" ${c.id === g.companyId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>${f('email', 'E-mail', 'c6', 'maxlength="100"')}${f('notes', 'Notes', 'c12', 'maxlength="500"')}</div>
+  <div class="cutbox"><b>Cut-off</b> <span class="hint">(unsold rooms go back on sale)</span>
+    <label class="rad"><input type="radio" name="gcm" id="g_cm_fixed" ${g.cutoffDays == null ? 'checked' : ''}> Fixed date</label><input type="date" id="g_cutoff" value="${esc(g.cutoff || '')}" aria-label="Fixed cut-off date">
+    <span class="nw"><label class="rad"><input type="radio" name="gcm" id="g_cm_roll" ${g.cutoffDays != null ? 'checked' : ''}> Rolling: release each night</label><input type="number" id="g_cutoffDays" min="0" max="365" value="${g.cutoffDays != null ? g.cutoffDays : ''}" aria-label="Days before each night"><span>days before it</span></span></div>
   <div class="sec">Rooms held and group rate</div><div class="wrap"><table><tr><th>Room type</th><th class="num">Hotel has</th><th>Rooms to hold</th><th>Group rate / night (blank = normal rate)</th></tr>${S.config.types.map(t => `<tr><td><b>${esc(t.code)}</b> ${esc(t.name)}</td><td class="num">${S.config.rooms.filter(r => r.type === t.code).length}</td><td><input data-gb="${esc(t.code)}" type="number" min="0" value="${(g.blocks || {})[t.code] || ''}" style="width:110px;min-height:34px"></td><td><input data-gr="${esc(t.code)}" inputmode="decimal" value="${(g.rates || {})[t.code] ? ((g.rates[t.code]) / 100).toFixed(2) : ''}" style="width:130px;min-height:34px"></td></tr>`).join('')}</table></div>
-  ${n ? '' : `<div class="sec">Reservations in this group (${GR.members.length})</div><div class="acts" style="margin-bottom:8px"><button class="btn sm green" data-act="grpAddRes">+ Reservation in this group</button><button class="btn sm" data-act="grpPrint">Print rooming list</button>${g.status === 'cancelled' ? '<button class="btn sm" data-act="grpStatus" data-to="active">Reactivate group</button>' : '<button class="btn sm red" data-act="grpStatus" data-to="cancelled">Cancel group (release the rooms)</button>'}</div><div class="wrap" style="max-height:30vh">${grpMembers()}</div>`}
+  ${n ? '' : `<div class="sec">Reservations in this group (${GR.members.length})</div><div class="acts" style="margin-bottom:8px"><button class="btn sm green" data-act="grpAddRes">+ Reservation in this group</button><button class="btn sm" data-act="grpPrint">Print rooming list</button><button class="btn sm blue" data-act="impOpen">Import Rooming List</button>${g.status === 'cancelled' ? '<button class="btn sm" data-act="grpStatus" data-to="active">Reactivate group</button>' : '<button class="btn sm red" data-act="grpStatus" data-to="cancelled">Cancel group (release the rooms)</button>'}</div><div class="wrap" style="max-height:30vh">${grpMembers()}</div>`}
+  <div class="sec">Recurring charges <span class="hint">(posted every night to every guest in the group)</span></div><div id="grRecur">${grRecur()}</div>
   <div class="err" id="g_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Close</button><button class="btn green" data-act="grpSave">${n ? 'Add group' : 'Save'}</button></div></div></div>`;
 }
 const grpMembers = () => `<table><tr><th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th><th>Type</th><th>Room</th><th class="num">Rate</th><th class="num">Balance</th><th>Conf. #</th></tr>${GR.members.sort(byName).map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(gname(r))}</b></td><td>${statusBadge(r)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td>${esc(r.type)}</td><td>${esc(r.room)}</td><td class="num">${money(r.rate)}</td><td class="num">${money(r.bal)}</td><td>${esc(r.conf)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">No reservations in this group yet.</td></tr>'}</table>`;
@@ -845,8 +876,154 @@ async function setupSave() {
   if (view.setup === 'hks') c.housekeepers = $('#s_hks').value.split('\n').map(x => x.trim()).filter(Boolean);
   await run(async () => { await op('configSave', { config: c }); await refresh(); toast('Saved.'); });
 }
-function blockNew() {
-  $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle">Take a room out of order</div><div class="grid"><label class="c12">Room<select id="b_room">${S.config.rooms.map(r => `<option>${esc(r.no)}</option>`).join('')}</select></label><label class="c6">From<input type="date" id="b_start" value="${B()}"></label><label class="c6">Through<input type="date" id="b_end" value="${B()}"></label><label class="c12">Reason<input id="b_reason" maxlength="120" placeholder="AC repair, plumbing…"></label></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn red" data-act="blockSave">Take out of order</button></div></div></div>`;
+/* ---------- Room Blocking: several rooms at once, and the list of what is out of order now ---------- */
+let BK = null;   // what is typed in the window: from room, to room, floor filter, dates, reason
+const roomIdx = no => S.config.rooms.findIndex(r => r.no === no);
+function blockRooms() {   // every room from "From room" to "To room" in the hotel's room order (only one floor when a floor is picked)
+  const i = roomIdx(BK.from), j = roomIdx(BK.to); if (i < 0 || j < 0) return [];
+  return S.config.rooms.slice(Math.min(i, j), Math.max(i, j) + 1).filter(r => !BK.floor || r.floor === BK.floor).map(r => r.no);
+}
+function blockRead() { if (!$('#b_from') || !BK) return; for (const [k, id] of [['from', 'b_from'], ['to', 'b_to'], ['floor', 'b_floor'], ['start', 'b_start'], ['end', 'b_end'], ['reason', 'b_reason']]) BK[k] = $('#' + id).value; }
+const blockNote = () => { const l = blockRooms(); return l.length ? l.length + (l.length === 1 ? ' room' : ' rooms') + ': ' + (l.length > 8 ? l.slice(0, 4).join(', ') + ' … ' + l.slice(-2).join(', ') : l.join(', ')) : 'No rooms picked.'; };
+function blockNew() { const f = S.config.rooms[0]; BK = { from: f ? f.no : '', to: f ? f.no : '', floor: '', start: B(), end: B(), reason: '' }; blockDraw(); }
+function blockSync() { blockRead(); const n = $('#bkNote'); if (n) n.textContent = blockNote(); }
+function blockDraw() {
+  const rs = S.config.rooms, floors = [...new Set(rs.map(r => r.floor))].sort(), rsel = (id, v) => `<select id="${id}">${rs.map(r => `<option ${r.no === v ? 'selected' : ''}>${esc(r.no)}</option>`).join('')}</select>`;
+  const bl = S.blocks.slice().sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || String(a.reason).localeCompare(String(b.reason)) || String(a.room).localeCompare(String(b.room), 'en', { numeric: true }));
+  const sets = {}; for (const b of bl) (sets[b.reason + '|' + b.start + '|' + b.end] = sets[b.reason + '|' + b.start + '|' + b.end] || []).push(b);
+  const many = Object.values(sets).filter(l => l.length > 1);
+  $('#modal').innerHTML = `<div class="mback" id="bkwin"><div class="mbox"><div class="mtitle thin">Room Blocking</div>
+  <div class="grid"><label class="c3">From room${rsel('b_from', BK.from)}</label><label class="c3">To room${rsel('b_to', BK.to)}</label>
+    <label class="c3">Only floor<select id="b_floor"><option value="">All floors</option>${floors.map(f => `<option value="${esc(f)}" ${BK.floor === f ? 'selected' : ''}>Floor ${esc(f)}</option>`).join('')}</select></label>
+    <label class="c3" style="justify-content:flex-end"><button type="button" class="btn sm" data-act="bkFloor">Select all on this floor</button></label>
+    <label class="c3">From<input type="date" id="b_start" value="${esc(BK.start)}"></label><label class="c3">Through<input type="date" id="b_end" value="${esc(BK.end)}"></label><label class="c6">Reason<input id="b_reason" maxlength="120" value="${esc(BK.reason)}" placeholder="AC repair, plumbing…"></label></div>
+  <p class="hint" id="bkNote" style="margin:8px 0 0">${esc(blockNote())}</p><div class="err" id="b_err"></div>
+  <div class="mfoot" style="margin-top:6px"><button class="btn" data-act="closeModal">Close</button><button class="btn red" data-act="blockSave">Take out of order</button></div>
+  <div class="sec">Out of order now (${bl.length})</div>
+  ${many.length ? `<div class="bkall">${many.map(l => `<a href="#" data-act="blockRemoveAll" data-ids="${l.map(b => b.id).join(',')}">Put ALL back in order: ${esc(l[0].reason || 'no reason')}, ${dshort(l[0].start)} to ${dshort(l[0].end)} (${l.length} rooms)</a>`).join('')}</div>` : ''}
+  <div class="wrap" style="max-height:34vh"><table><tr><th>Room</th><th>From</th><th>Through</th><th>Reason</th><th></th></tr>${bl.map(b => `<tr><td><b>${esc(b.room)}</b></td><td>${dshort(b.start)}</td><td>${dshort(b.end)}</td><td>${esc(b.reason)}</td><td class="num"><button class="btn sm" data-act="blockRemove" data-id="${b.id}">Put back in order</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No rooms are out of order.</td></tr>'}</table></div></div></div>`;
+}
+async function blockSave() {
+  blockRead(); const rooms = blockRooms(); try { if (!rooms.length) throw new Error('Pick the rooms first.'); await op('blockAddMany', { rooms, start: BK.start, end: BK.end, reason: BK.reason }); BK.reason = ''; await refresh(); blockDraw(); toast(rooms.length + (rooms.length === 1 ? ' room is' : ' rooms are') + ' out of order.'); } catch (e) { const el = $('#b_err'); if (el) el.textContent = e.message; else toast(e.message, true); }
+}
+async function blockBack(ids) { blockRead(); await run(async () => { for (const id of ids) await op('blockRemove', { id: +id }); await refresh(); if ($('#bkwin')) blockDraw(); toast(ids.length > 1 ? ids.length + ' rooms put back in order.' : 'Room put back in order.'); }); }
+
+/* ---------- Recurring charges (a reservation's own list, and the same small list inside the group window) ---------- */
+let RC = null;   // { src: 'ed' (reservation page) | 'fo' (folio) }
+const rcRes = () => RC.src === 'fo' ? FO.res : ED.r;
+const rcName = code => (S.config.codes.find(k => k.code === code) || {}).name || code;
+const rcSet = (r, list) => { r.recur = list; const s0 = S.res.find(x => x.id === r.id); if (s0) s0.recur = list; };
+const rcAddRow = (pre, act) => `<tr class="addrow"><td><select id="${pre}_code" aria-label="Charge">${S.config.codes.filter(k => ['ROOM', 'MISC'].includes(k.type)).map(k => `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('')}</select></td><td><input id="${pre}_amt" inputmode="decimal" placeholder="0.00" aria-label="Amount"></td><td><input type="date" id="${pre}_from" aria-label="From"></td><td><input type="date" id="${pre}_to" aria-label="To"></td><td><input id="${pre}_note" maxlength="100" placeholder="Comment" aria-label="Comment"></td><td><button type="button" class="btn sm blue" data-act="${act}">Add</button></td></tr>`;
+const rcTable = (list, o) => `<div class="wrap rctab"><table><tr><th>Charge</th><th class="num">Amount</th><th>From</th><th>To</th><th>Comment</th><th>${o.del ? 'Remove' : ''}</th></tr>${list.map((x, i) => `<tr><td>${esc(rcName(x.code))} <span class="hint">${esc(x.code)}</span></td><td class="num">${money(x.amount)}</td><td>${dshort(x.from)}</td><td>${dshort(x.to)}</td><td>${esc(x.comment)}</td><td>${o.del ? `<button type="button" class="btn sm" data-act="${o.del}" data-i="${i}">Remove</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">${o.empty}</td></tr>`}${o.add || ''}</table></div>`;
+function rcDraw() {
+  const r = rcRes(), live = ['reserved', 'inhouse'].includes(r.status), g = r.groupId && S.groups.find(x => x.id === +r.groupId), old = $('#rcwin'); if (old) old.remove();
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="rcwin"><div class="mbox wide"><div class="mtitle thin">Recurring Charges</div><p class="hint" style="text-align:center">${esc(gname(r))}. The night audit posts these every night the guest is in house, with the code's taxes. Leave From and To empty for the whole stay.</p>
+    ${rcTable(r.recur || [], { del: 'rcDel', empty: 'No recurring charges.', add: live && (r.recur || []).length < 10 ? rcAddRow('rc', 'rcAdd') : '' })}
+    ${g && (g.recur || []).length ? `<h3>From the group ${esc(g.name)}</h3>${rcTable(g.recur, { empty: '' })}` : ''}
+    <div class="err" id="rc_err"></div><div class="mfoot"><button class="btn" data-act="rcClose">Close</button></div></div></div>`);
+}
+async function rcAdd() {
+  const r = rcRes(); try { const amount = toCents($('#rc_amt').value); if (!(amount > 0)) throw new Error('Type an amount above zero.'); const x = await op('recurAdd', { id: r.id, code: $('#rc_code').value, amount, comment: $('#rc_note').value, from: $('#rc_from').value, to: $('#rc_to').value }); rcSet(r, x.recur); rcDraw(); toast('Recurring charge added.'); } catch (e) { const el = $('#rc_err'); if (el) el.textContent = e.message; }
+}
+const grRecur = () => { const l = GR.group.recur || []; return rcTable(l, { del: 'grcDel', empty: 'None.', add: l.length < 10 ? rcAddRow('gc', 'grcAdd') : '' }) + '<p class="hint" style="margin:4px 0 0">Add and Remove here change the list; Save keeps it. Empty From / To means the group\'s dates.</p>'; };
+function cutoffFields() {   // the group's cut-off: a fixed date, or a rolling number of days before each night
+  if ($('#g_cm_roll').checked) { const d = $('#g_cutoffDays').value.trim(); if (d === '') throw new Error('Type how many days before each night the unsold rooms are released.'); return { cutoff: '', cutoffDays: +d }; }
+  return { cutoff: $('#g_cutoff').value, cutoffDays: '' };
+}
+
+/* ---------- Room assignment optimizer (Tape Chart side panel) ---------- */
+let OPT = null;
+function optDraw() {
+  const p = OPT.plan, n = p.filter(x => x.room).length;
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox"><div class="mtitle thin">Optimize Room Assignments</div><p class="hint" style="text-align:center">Reservations arriving ${esc(dlong(OPT.date))} that have no room yet. Ready rooms first, then Clean, then Dirty; of equals, the room used least. Nothing is saved until you click ASSIGN ROOMS.</p>
+  ${p.length ? `<div class="wrap"><table><tr><th>Guest</th><th>Type</th><th>Proposed room</th></tr>${p.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${x.room ? `<b>${esc(x.room)}</b> <span class="hint">${esc(x.reason)}</span>` : `<span class="noroom">${esc(x.reason)}</span>`}</td></tr>`).join('')}</table></div>` : '<div class="empty">Every reservation arriving that day already has a room.</div>'}
+  <div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn blue" data-act="optApply" ${n ? '' : 'disabled'}>ASSIGN ROOMS</button></div></div></div>`;
+}
+
+/* ---------- Quick links on Home ---------- */
+let QL = null;
+function qlDraw() {
+  const avail = Object.keys(TILES).filter(k => !QL.includes(k)), full = QL.length >= 14, nm = k => esc(tileName(k)) + (TILES[k][3] === 'boss' ? ' <span class="hint">(managers only)</span>' : '');
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox"><div class="mtitle thin">Edit Quick Links</div><p class="hint" style="text-align:center">The tiles at the top of Home, in this order. Up to 14. A tile a person's login cannot use is hidden for that person.</p>
+  <div class="qlcols"><div><h3>Shown (${QL.length} of 14)</h3><ul class="qllist" id="qlShown">${QL.map((k, i) => `<li><span>${nm(k)}</span><span class="qlb"><button type="button" class="btn sm" data-act="qlUp" data-i="${i}" ${i ? '' : 'disabled'} aria-label="Move up">▲</button><button type="button" class="btn sm" data-act="qlDown" data-i="${i}" ${i < QL.length - 1 ? '' : 'disabled'} aria-label="Move down">▼</button><button type="button" class="btn sm" data-act="qlRemove" data-i="${i}">Remove</button></span></li>`).join('')}</ul></div>
+  <div><h3>Available</h3><ul class="qllist" id="qlAvail">${avail.map(k => `<li><span>${nm(k)}</span><span class="qlb"><button type="button" class="btn sm blue" data-act="qlAdd" data-k="${k}" ${full ? 'disabled' : ''}>Add</button></span></li>`).join('') || '<li class="hint">Everything is shown.</li>'}</ul></div></div>
+  <div class="err" id="ql_err"></div><div class="mfoot"><button class="btn" data-act="qlReset">Reset to default</button><span class="flex"></span><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="qlSave">Save</button></div></div></div>`;
+}
+
+/* ---------- Guests who stayed before: banner, history window ---------- */
+const digitsOf = x => String(x || '').replace(/\D/g, '');
+function histQuery() {
+  const r = ED.r, v = k => { const el = $('#r_' + k); return el ? el.value : (r[k] || ''); }, last = v('last').trim(), first = v('first').trim(), phone = digitsOf(v('phone')), guestId = v('guestId').trim();
+  if (!(last && first) && !guestId && phone.length < 7) return '';
+  const q = new URLSearchParams({ last, first, phone: phone.length >= 7 ? phone : '', guestId }); if (r.id) q.set('except', r.id); return q.toString();
+}
+const histBanner = () => '<div class="infoban" id="histBan" hidden></div>';
+function histPaint() {
+  const b = $('#histBan'); if (!b || !ED) return; const h = ED.hist;
+  if (!h || !h.count || !h.last) { b.hidden = true; b.innerHTML = ''; return; }
+  const pl = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  b.hidden = false; b.innerHTML = `<b>Returning guest:</b> ${pl(h.count, 'stay')}, ${pl(h.nights, 'night')}. Last stay ${esc(dshort(h.last.arrive))}${h.last.room ? ', room ' + esc(h.last.room) : ''}. <a href="#" data-act="histOpen">View history</a>${h.lastNote ? `<div class="histnote">“${esc(h.lastNote)}”</div>` : ''}`;
+}
+async function histLoad() {
+  if (!ED) return; const key = histQuery(); if (key === ED.histKey) return histPaint();
+  ED.histKey = key; if (!key) { ED.hist = null; return histPaint(); }
+  try { const h = await api('/guest?' + key); if (ED && ED.histKey === key) { ED.hist = h; histPaint(); } } catch (e) { if (ED && ED.histKey === key) { ED.hist = null; histPaint(); } }
+}
+function histOpen() {
+  const h = ED && ED.hist; if (!h) return; const old = $('#hist'); if (old) old.remove();
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="hist"><div class="mbox wide"><div class="mtitle thin">Guest History</div><div class="wrap"><table><tr><th>Conf. #</th><th>Arrival</th><th>Departure</th><th>Room</th><th>Type</th><th class="num">Rate</th><th>Status</th><th class="num">Balance</th><th>Notes and requests</th></tr>${h.stays.map(x => `<tr><td>${esc(x.conf)}</td><td>${dshort(x.arrive)}</td><td>${dshort(x.depart)}</td><td>${esc(x.room)}</td><td>${esc(x.type)}</td><td class="num">${money(x.rate)}</td><td>${statusBadge(x)}</td><td class="num">${balTxt(x.balance)}</td><td>${esc([x.notes, x.requests].filter(Boolean).join(' / '))}</td></tr>`).join('')}</table></div><p class="hint">${h.stays.length < h.total ? 'The newest 20 of ' + h.total + ' are shown.' : ''}</p><div class="mfoot"><button class="btn" data-act="closeHist">Close</button></div></div></div>`);
+}
+/* A confirm-style window: resolves true on the blue button, false on Cancel or Escape. */
+let askRes = null;
+function askBox(title, html, okLabel) { return new Promise(res => { askRes = res; $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="ask"><div class="mbox sm"><div class="mtitle thin">${esc(title)}</div>${html}<div class="mfoot"><button class="btn" data-act="askNo">Cancel</button><button class="btn blue" data-act="askYes">${esc(okLabel)}</button></div></div></div>`); }); }
+function askDone(v) { const b = $('#ask'); if (b) b.remove(); const f = askRes; askRes = null; if (f) f(v); }
+
+/* ---------- Import a rooming list into a group ---------- */
+let IMP = null;   // { good: [rows that passed the check] }
+const parseDay = t => { t = String(t || '').trim(); let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t) || /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t); if (!m) return ''; const [y, mo, d] = t.includes('-') ? [m[1], m[2], m[3]] : [m[3], m[1], m[2]], iso = y + '-' + mo.padStart(2, '0') + '-' + d.padStart(2, '0'); return isNaN(Date.parse(iso + 'T00:00:00Z')) ? '' : iso; };
+function impOpen() {
+  IMP = { good: [] }; const old = $('#imp'); if (old) old.remove();
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="imp"><div class="mbox wide"><div class="mtitle thin">Import Rooming List</div><p class="hint">One guest per line: <b>Last, First, Room type, Arrival, Departure, Adults, Phone, E-mail</b>. Commas or tabs (paste from a spreadsheet). Only Last is needed. No room type means ${esc(impType())}; no dates means the group's dates. Dates as 2027-05-01 or 5/1/2027.</p>
+    <textarea id="imp_txt" rows="7" style="font-family:Consolas,monospace" placeholder="Smith, Ann, NK, 5/1/2027, 5/3/2027, 2, 555-0100, ann@example.com&#10;Jones, Bo"></textarea><div id="imp_out"></div>
+    <div class="mfoot"><button class="btn" data-act="impClose">Close</button><button class="btn blue" data-act="impCheck">Check</button></div></div></div>`);
+  $('#imp_txt').focus();
+}
+const impType = () => (S.config.types.find(t => (GR.group.blocks || {})[t.code]) || S.config.types[0]).code;
+function impParse() {
+  const g = GR.group, rows = [], taken = [];
+  $('#imp_txt').value.split(/\r?\n/).forEach((raw, i) => {
+    if (!raw.trim()) return; const c = (raw.includes('\t') ? raw.split('\t') : raw.split(',')).map(x => x.trim());
+    if (i === 0 && /^last(\s*name)?$/i.test(c[0])) return;   // a heading line
+    const row = { line: i + 1, last: c[0] || '', first: c[1] || '', type: (c[2] || impType()).toUpperCase(), arrive: c[3] ? parseDay(c[3]) : (g.arrive > B() ? g.arrive : B()), depart: c[4] ? parseDay(c[4]) : g.depart, adults: c[5] ? parseInt(c[5], 10) : 1, phone: c[6] || '', email: c[7] || '', error: '' };
+    const night = d => { const rooms = S.config.rooms.filter(r => r.type === row.type); return rooms.length - active().filter(r => r.type === row.type && r.arrive <= d && d < r.depart).length - rooms.filter(r => isOOO(r.no, d)).length - groupHold(row.type, d, g.id) - taken.filter(t => t.type === row.type && t.arrive <= d && d < t.depart).length; };
+    if (!row.last) row.error = 'The last name is missing.';
+    else if (!S.config.types.some(t => t.code === row.type)) row.error = 'Unknown room type ' + row.type + '.';
+    else if (!row.arrive || !row.depart) row.error = 'A date was not understood. Use 2027-05-01 or 5/1/2027.';
+    else if (!(row.adults >= 1)) row.error = 'Adults must be a number, 1 or more.';
+    else if (row.depart <= row.arrive) row.error = 'The departure must be after the arrival.';
+    else if (row.arrive < g.arrive || row.depart > g.depart) row.error = 'Outside the group\'s dates (' + dshort(g.arrive) + ' to ' + dshort(g.depart) + ').';
+    else if (row.arrive < B()) row.error = 'The arrival is before today\'s business date.';
+    else if (dnrMatchC(row)) row.error = 'DO NOT RENT: ' + dnrMatchC(row).reason;
+    else { for (let d = row.arrive; d < row.depart && !row.error; d = addDays(d, 1)) if (night(d) < 1) row.error = 'No ' + row.type + ' rooms left on ' + dshort(d) + '.'; }
+    if (!row.error) taken.push(row); rows.push(row);
+  });
+  return rows;
+}
+function impShow(rows, created) {
+  const good = rows.filter(r => !r.error && !r.done).length;
+  $('#imp_out').innerHTML = rows.length ? `<div class="wrap" style="max-height:34vh;margin-top:10px"><table><tr><th>Line</th><th>Guest</th><th>Type</th><th>Arrival</th><th>Departure</th><th class="num">Adults</th><th>Status</th></tr>${rows.map(r => `<tr><td>${r.line}</td><td><b>${esc(r.last)}${r.first ? ', ' + esc(r.first) : ''}</b></td><td>${esc(r.type)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td class="num">${r.adults || ''}</td><td>${r.done ? '<span class="badge g">Created</span>' : r.error ? `<span class="noroom">${esc(r.error)}</span>` : '<span class="badge g">OK</span>'}</td></tr>`).join('')}</table></div>
+    <p class="hint">${created != null ? created + ' created. ' : ''}${good} ${good === 1 ? 'line is' : 'lines are'} OK${rows.some(r => r.error) ? '; the others will not be created' : ''}.</p>${good ? `<div class="mfoot" style="margin-top:0"><button class="btn green" data-act="impGo">Create ${good} reservation${good === 1 ? '' : 's'}</button></div>` : ''}` : '<p class="hint">Nothing to check. Type or paste at least one line.</p>';
+  IMP.rows = rows;
+}
+async function impGo() {
+  const g = GR.group, rows = IMP.rows.filter(r => !r.error && !r.done);
+  await run(async () => {
+    const x = await op('groupImport', { id: g.id, rows: rows.map(({ error, done, ...r }) => r) }), bad = new Map(x.problems.map(p => [p.line, p.error]));
+    for (const r of rows) { if (bad.has(r.line)) r.error = bad.get(r.line); else r.done = true; }
+    await refresh(); GR = await api('/group?id=' + g.id);
+    if (!x.problems.length) { $('#imp').remove(); grpDraw(); return toast(x.created + ' reservation' + (x.created === 1 ? '' : 's') + ' created.'); }
+    impShow(IMP.rows, x.created); toast(x.created + ' created, ' + x.problems.length + ' did not go in.', true);
+  });
 }
 
 /* ---------- clicks and typing ---------- */
@@ -913,7 +1090,7 @@ document.addEventListener('click', async e => {
   if (a === 'coPrint') return printHtml(letterHead() + `<h2>Statement</h2><p><b>${esc(CO.company.name)}</b><br>${esc(CO.company.address || '')}</p>` + coLedger().replace(/<th>By<\/th>/, '<th></th>') + `<p>Statement date: ${dlong(B())}</p>`);
   if (a === 'grpNew') return run(() => grpOpen(0));
   if (a === 'grpOpen') return run(() => grpOpen(el.dataset.id));
-  if (a === 'grpSave' || a === 'grpStatus') { try { const g = GR.group, v = k => $('#g_' + k).value, blocks = {}, rates = {}; document.querySelectorAll('[data-gb]').forEach(i => blocks[i.dataset.gb] = i.value); document.querySelectorAll('[data-gr]').forEach(i => rates[i.dataset.gr] = i.value.trim() ? toCents(i.value) : ''); if (a === 'grpStatus' && el.dataset.to === 'cancelled' && !confirm('Cancel this group? Its unsold rooms go back on sale. Reservations already made stay as they are.')) return; const r = await op('groupSave', { id: g.id || 0, name: v('name'), contact: v('contact'), phone: v('phone'), email: v('email'), notes: v('notes'), arrive: v('arrive'), depart: v('depart'), cutoff: v('cutoff'), companyId: +v('companyId') || 0, blocks, rates, ...(a === 'grpStatus' ? { status: el.dataset.to } : {}) }); await refresh(); await grpOpen(r.id); toast('Saved.'); } catch (x) { $('#g_err').textContent = x.message; } return; }
+  if (a === 'grpSave' || a === 'grpStatus') { try { const g = GR.group, v = k => $('#g_' + k).value, blocks = {}, rates = {}; document.querySelectorAll('[data-gb]').forEach(i => blocks[i.dataset.gb] = i.value); document.querySelectorAll('[data-gr]').forEach(i => rates[i.dataset.gr] = i.value.trim() ? toCents(i.value) : ''); if (a === 'grpStatus' && el.dataset.to === 'cancelled' && !confirm('Cancel this group? Its unsold rooms go back on sale. Reservations already made stay as they are.')) return; const r = await op('groupSave', { id: g.id || 0, name: v('name'), contact: v('contact'), phone: v('phone'), email: v('email'), notes: v('notes'), arrive: v('arrive'), depart: v('depart'), ...cutoffFields(), recur: g.recur || [], companyId: +v('companyId') || 0, blocks, rates, ...(a === 'grpStatus' ? { status: el.dataset.to } : {}) }); await refresh(); await grpOpen(r.id); toast('Saved.'); } catch (x) { $('#g_err').textContent = x.message; } return; }
   if (a === 'grpAddRes') { const g = GR.group, t = S.config.types.find(t => (g.blocks || {})[t.code]) || S.config.types[0]; const arrive = g.arrive > B() ? g.arrive : B(); startWiz('new', { id: 0, status: 'reserved', arrive, depart: g.depart > arrive ? g.depart : addDays(arrive, 1), type: t.code, room: '', adults: 1, children: 0, rate: null, country: 'United States', guarantee: 'Credit card', source: 'Phone', groupId: g.id, companyId: g.companyId || 0 }, true); return; }
   if (a === 'grpPrint') return printHtml(letterHead() + `<h2>Rooming list: ${esc(GR.group.name)}</h2><p>${dlong(GR.group.arrive)} to ${dlong(GR.group.depart)}</p>` + grpMembers());
   if (a === 'postOpen') return postOpen(el.dataset.kind);
@@ -946,19 +1123,45 @@ document.addEventListener('click', async e => {
   if (a === 'userSave') return run(async () => { const email = $('#u_email').value.trim(); const r = await api('/account/userSave', { email, name: $('#u_name').value, role: $('#u_role').value, disabled: $('#u_disabled').checked }); render(); if (r.link) linkBox('Login made. Send them their link', r, email); else toast('Login saved.'); });
   if (a === 'userInvite') return run(async () => { const email = $('#u_email').value.trim(); if (!email) throw new Error('Click a login in the list first.'); linkBox('New password link', await api('/account/userInvite', { email }), email); });
   if (a === 'blockNew') return blockNew();
-  if (a === 'blockSave') return run(async () => { await op('blockAdd', { room: $('#b_room').value, start: $('#b_start').value, end: $('#b_end').value, reason: $('#b_reason').value }); $('#modal').innerHTML = ''; await refresh(); toast('Room is out of order.'); });
-  if (a === 'blockRemove') return run(async () => { await op('blockRemove', { id: +el.dataset.id }); await refresh(); });
+  if (a === 'blockSave') return blockSave();
+  if (a === 'blockRemove') return blockBack([el.dataset.id]);
+  if (a === 'blockRemoveAll') return blockBack(el.dataset.ids.split(','));
+  if (a === 'bkFloor') { blockRead(); const f = $('#b_floor').value; if (!f) return toast('Pick a floor first.', true); const l = S.config.rooms.filter(r => r.floor === f); BK.floor = f; BK.from = l[0].no; BK.to = l[l.length - 1].no; return blockDraw(); }
+  if (a === 'recurring') { RC = { src: el.dataset.src === 'fo' ? 'fo' : 'ed' }; return rcDraw(); }
+  if (a === 'rcAdd') return rcAdd();
+  if (a === 'rcDel') return run(async () => { const r = rcRes(), x = await op('recurRemove', { id: r.id, index: +el.dataset.i }); rcSet(r, x.recur); rcDraw(); });
+  if (a === 'rcClose') { const w = $('#rcwin'); if (w) w.remove(); return; }
+  if (a === 'grcAdd') { const g = GR.group, amount = toCents($('#gc_amt').value); if (!(amount > 0)) { $('#g_err').textContent = 'Type an amount above zero.'; return; } g.recur = (g.recur || []).concat([{ code: $('#gc_code').value, amount, comment: $('#gc_note').value.trim(), from: $('#gc_from').value || $('#g_arrive').value || g.arrive, to: $('#gc_to').value || $('#g_depart').value || g.depart }]); $('#grRecur').innerHTML = grRecur(); $('#g_err').textContent = ''; return; }
+  if (a === 'grcDel') { GR.group.recur.splice(+el.dataset.i, 1); $('#grRecur').innerHTML = grRecur(); return; }
+  if (a === 'optRun') return run(async () => { const date = $('#optDate').value || B(); view.optDate = date; const x = await op('optimize', { date }); OPT = { date, plan: x.plan }; optDraw(); });
+  if (a === 'optApply') return run(async () => { const x = await op('optimize', { date: OPT.date, apply: true }); $('#modal').innerHTML = ''; OPT = null; await refresh(); toast(x.assigned + (x.assigned === 1 ? ' room' : ' rooms') + ' assigned.'); });
+  if (a === 'qlEdit') { QL = qlSaved().slice(); return qlDraw(); }
+  if (a === 'qlUp' || a === 'qlDown') { const i = +el.dataset.i, j = a === 'qlUp' ? i - 1 : i + 1; if (j >= 0 && j < QL.length) [QL[i], QL[j]] = [QL[j], QL[i]]; return qlDraw(); }
+  if (a === 'qlRemove') { QL.splice(+el.dataset.i, 1); return qlDraw(); }
+  if (a === 'qlAdd') { if (QL.length < 14 && TILES[el.dataset.k]) QL.push(el.dataset.k); return qlDraw(); }
+  if (a === 'qlSave') { if (!QL.length) { $('#ql_err').textContent = 'Keep at least one link, or use Reset to default.'; return; } return run(async () => { await op('configSave', { config: { quickLinks: QL } }); $('#modal').innerHTML = ''; QL = null; await refresh(); toast('Quick links saved.'); }); }
+  if (a === 'qlReset') return run(async () => { await op('configSave', { config: { quickLinks: [] } }); $('#modal').innerHTML = ''; QL = null; await refresh(); toast('Quick links are back to the default.'); });
+  if (a === 'histOpen') return histOpen();
+  if (a === 'askYes') return askDone(true);
+  if (a === 'askNo') return askDone(false);
+  if (a === 'impOpen') return impOpen();
+  if (a === 'impClose') { const w = $('#imp'); if (w) w.remove(); return; }
+  if (a === 'impCheck') return impShow(impParse());
+  if (a === 'impGo') return impGo();
 });
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.hk) return run(async () => { await op('hkSet', { room: t.dataset.room, [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }); S.roomstate[t.dataset.room] = { ...(S.roomstate[t.dataset.room] || {}), [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }; });
   if (t.id === 'tapeDate' && t.value) { view.tapeStart = t.value; return render(); }
   if (t.id === 'tapeFloor' || t.id === 'hkFloor') { view.floor = t.value; return render(); }
+  if (t.id === 'hkDirty') { view.hkDirty = t.checked; return render(); }
+  if (t.id === 'optDate') { view.optDate = t.value; return; }
+  if (/^b_(from|to|floor)$/.test(t.id)) return blockSync();
   if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
-document.addEventListener('focusout', e => { if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
+document.addEventListener('input', e => { if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('focusout', e => { if (ED && ['r_last', 'r_first', 'r_phone', 'r_guestId'].includes(e.target.id)) histLoad(); if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
@@ -966,7 +1169,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'gs_q') return run(guestFind);
   if (e.key === 'Enter' && e.target.id === 'listDate' && e.target.value) { view.listDate = e.target.value; return render(); }
   if (e.key === 'Enter' && e.target.id === 'roomJump') { const no = e.target.value.trim(); if (!no) return; const g = S.res.find(r => r.status === 'inhouse' && String(r.room).toLowerCase() === no.toLowerCase()); if (!g) return toast('Nobody is checked in to room ' + no, true); e.target.value = ''; return run(() => openRes(g.id)); }
-  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#scan')) scanClose(); else if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
+  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#ask')) askDone(false); else if ($('#scan')) scanClose(); else if ($('#rcwin')) $('#rcwin').remove(); else if ($('#hist')) $('#hist').remove(); else if ($('#imp')) $('#imp').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.
 setInterval(() => { if (S && !M && !$('#modal').innerHTML && document.visibilityState === 'visible' && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) refresh().catch(e => { if (e.status === 401 || e.status === 403) { S = null; showLogin(e.status === 403 ? e.message : ''); } }); }, 20000);
