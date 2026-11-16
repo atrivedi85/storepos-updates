@@ -69,3 +69,63 @@ tr.click{cursor:pointer}tr.click:hover td{background:#eaf2ff}
 .login .btn{width:100%;margin-top:18px}
 #print{display:none}
 @media print{html,body{background:#fff;height:auto}#app,#modal,#toast{display:none!important}#print{display:block;color:#000;font-size:12.5px;padding:8px}#print th{background:#fff;color:#000;border-bottom:2px solid #000;position:static}#print td{border-bottom:1px solid #ccc;padding:4px 8px}#print h1{font-size:19px}}
+
+/* ===== Layout like the front desk is used to: one menu bar, quick-link tiles, dark numbers band, side panels ===== */
+header{background:#2b2b2b;padding:0 12px;gap:10px;flex-wrap:nowrap;min-height:58px}
+header .brand{font-size:17px;white-space:nowrap}
+header nav.menus{display:flex;flex-wrap:nowrap;gap:0;flex:1;align-items:stretch;align-self:stretch}
+header nav.menus>button,header .menu>button{background:none;border-radius:0;color:#fff;font-weight:500;font-size:17px;padding:0 18px;height:100%;min-height:58px;border-right:1px solid #555}
+header nav.menus>button.on{background:#0a7cff}
+header .menu{position:relative}
+header .menu:hover>button,header .menu:focus-within>button{background:#0a7cff}
+header .menu .drop{display:none;position:absolute;top:100%;left:0;background:#fff;min-width:240px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:40;border-radius:0 0 8px 8px;padding:6px 0}
+header .menu:hover .drop,header .menu:focus-within .drop{display:block}
+header .menu .drop a{display:block;padding:10px 18px;color:#14213d;text-decoration:none;font-size:15.5px}
+header .menu .drop a:hover{background:#e8f1fd;color:#0a59c9}
+header .find{width:200px;background:#3a3a3a;border-color:#555}
+header .who{white-space:nowrap;color:#ddd}header .who b{display:inline;margin-right:6px}header .who a{color:#8fc0ff}
+main{background:#fff;padding:16px 20px}
+h1{font-weight:300;font-size:34px;margin:4px 0 14px}h1.pgt{text-align:right}
+th{background:#f4f6f9;color:#555;border-bottom:1px dashed #333;font-weight:500;font-size:14.5px}
+.wrap{border-radius:6px}
+/* home */
+.tiles{grid-template-columns:repeat(7,1fr);gap:1px;background:#6db3ff;margin-bottom:0}
+.tile{background:#0a7cff;border-radius:0;box-shadow:none;display:flex;align-items:center;gap:14px;font-weight:500;font-size:17px;line-height:1.2;min-height:104px;padding:14px 18px}
+.tile:hover{background:#0a59c9}.tile .ic{font-size:38px;line-height:1;width:46px;text-align:center}
+@media (max-width:1100px){.tiles{grid-template-columns:repeat(4,1fr)}}@media (max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.band{background:#2f2f2f;color:#fff;display:flex;flex-wrap:wrap;gap:26px 46px;align-items:center;padding:26px 30px;margin-top:22px}
+.band .greet{font-size:46px;font-weight:200;line-height:1.1;min-width:260px}
+.band b{font-weight:200;font-variant-numeric:tabular-nums}.band span{color:#bdbdbd;font-size:16px}
+.band .bigs div{text-align:center;margin:6px 0}.band .bigs b{display:block;font-size:46px}
+.band .trio div{display:flex;align-items:center;gap:12px;margin:8px 0}.band .trio b{font-size:44px;min-width:56px;text-align:right}.band .trio span{max-width:150px;line-height:1.2}
+.band .quad{display:grid;grid-template-columns:auto auto;gap:6px 22px}.band .quad div{text-align:center}.band .quad b{display:block;font-size:30px}
+.availrow{background:#2f2f2f;color:#fff;display:flex;flex-wrap:wrap;gap:8px 30px;align-items:center;padding:0 30px 26px;border-top:1px solid #444}
+.availrow>div{display:flex;align-items:center;gap:12px;padding-top:18px}.availrow b{font-size:34px;font-weight:200}.availrow span{color:#bdbdbd;font-size:15px;line-height:1.25}
+.availrow .availtot b{font-size:52px}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px}
+/* tape chart */
+.tapewrap{display:flex;gap:16px;align-items:flex-start}
+.tside{width:270px;flex-shrink:0;border-left:1px solid var(--line);padding-left:14px;max-height:calc(100vh - 200px);overflow:auto}
+.tside h3,.pside h3{font-weight:300;font-size:28px;margin:6px 0 10px}
+.tside .lg{margin:6px 0}.tside .lg i{display:inline-block;width:42px;height:18px;border-radius:9px;vertical-align:-4px;margin-right:8px}
+.tside .uday{font-weight:700;font-size:13.5px;margin:12px 0 4px}
+.tside a.un{display:grid;grid-template-columns:1fr 54px 22px;gap:6px;padding:5px 0;border-bottom:1px solid #eef1f6;color:#0a59c9;text-decoration:none;font-size:14px}
+.tape th{background:#fff;color:#555;border-right:0;border-bottom:1px dashed #333;font-weight:500;font-size:14px;padding:8px 4px}
+.tape th.td{background:#e8f1fd!important;color:#0a59c9}.tape th.we{background:#fff}
+.tape th.c1{width:76px;position:sticky;left:0;z-index:3}.tape th.c2{width:70px}.tape th.c3{width:118px}
+.tape td.rm{width:76px;background:#fff;font-weight:500}.tape td.rm a{color:#0a59c9;text-decoration:none}
+.tape td.ty{padding:0 8px;font-size:14.5px}.tape td.cd{padding:0 6px}
+.tape td{height:46px;border-right:1px solid #f0f2f6}.tape tr:nth-child(even) td{background:#f6f7f9}.tape tr:nth-child(even) td.free:hover,.tape td.free:hover{background:#dbe8ff}
+.tbar{border-radius:12px;padding:8px 12px;font-size:14px}
+.cond button{background:none;border-radius:6px}
+/* reservation and folio: a full page with Overview and Actions on the right */
+.mbox.page{width:min(1280px,100%);padding:0;border-radius:6px}
+.pg{display:flex;align-items:stretch;min-height:70vh}
+.pgmain{flex:1;min-width:0;padding:20px 24px}
+.pgmain .mtitle{font-weight:300;font-size:30px}
+.pside{width:290px;flex-shrink:0;border-left:1px solid var(--line);padding:18px 20px;background:#fafbfc;border-radius:0 6px 6px 0}
+.pside dl{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;margin:0 0 18px;align-items:baseline}.pside dt{color:var(--mut);font-size:14px}.pside dd{margin:0;font-weight:500}.pside dd.big{font-size:22px;font-weight:400}
+.alinks a{display:block;padding:5px 0;color:#0a59c9;text-decoration:none;font-size:15.5px}.alinks a:hover{text-decoration:underline}
+.sec{color:#333;font-weight:400;font-size:20px;border-bottom:1px solid var(--line)}
+@media (max-width:860px){.pg{flex-direction:column}.pside{width:auto;border-left:0;border-top:1px solid var(--line)}.tapewrap{flex-direction:column}.tside{width:auto;border-left:0;padding-left:0;max-height:none}header{flex-wrap:wrap}header nav.menus{flex-wrap:wrap;flex-basis:100%;order:5}header nav.menus>button,header .menu>button{min-height:44px;padding:0 12px;font-size:15px}}
+@media print{.pside{display:none}}

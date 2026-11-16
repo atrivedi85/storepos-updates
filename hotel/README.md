@@ -7,6 +7,14 @@ the hotel's old system did, in the Store POS look.
 - The server is `cloud/src/hotel.js` (the `Hotel` Durable Object) and `cloud/src/hotel-core.js` (all rules and storage).
 - `test/` — `api.test.mjs` (rules), `ui.test.mjs` (clicks through every screen in Chrome), `server.mjs` (local test server).
 
+## Layout (Nov 16, 2026)
+
+The screens follow the layout the front desk already knows from its old system: one menu bar (Home, Find, View, Create, Manage,
+Run, each a drop-down), quick-link tiles and a dark numbers band on Home, a Quick Statistics page, the tape chart with
+Room # / Type / Condition columns and a side panel (legend, unassigned reservations), and the reservation and folio screens as a
+page with **Overview** and **Actions** on the right. The name, logo and artwork are our own.
+Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()` helper and scopes tab/report buttons to `main`.
+
 ## What it does
 
 - **Home**: occupancy, ADR, RevPAR, arrivals/departures left, rooms available tonight by type.

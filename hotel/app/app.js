@@ -121,33 +121,50 @@ function render() {
   if (view.name === 'reports' && view.rep) drawReport();
 }
 function paint(hk, nav) {
-  $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div>
-    <nav>${nav.map(n => `<button data-nav="${n[0]}" class="${view.name === n[0] ? 'on' : ''}">${n[1]}</button>`).join('')}</nav>
-    ${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #"><button class="btn sm green" data-act="newRes">+ Reservation</button><button class="btn sm teal" data-act="walkIn">Walk-In</button><button class="btn sm ' + (S.shift ? 'amber' : 'slate') + '" data-act="shift">' + (S.shift ? 'Shift open' : 'Open shift') + '</button>'}
-    ${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}<div class="who"><b>${esc(dshort(B()))}</b>${esc(S.me.name)} · <a href="#" data-act="myPw" style="color:#8fb4ff">My password</a> · <a href="#" data-act="logout" style="color:#8fb4ff">Sign out</a></div></header>
-    <main>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies }[view.name] || vHome)()}</main>`;
+  const it = (label, attr) => `<a href="#" ${attr}>${label}</a>`, N = (v, label) => it(label, `data-nav="${v}"`), A = (a, label, x) => it(label, `data-act="${a}" ${x || ''}`);
+  const menu = (name, items) => `<div class="menu"><button type="button">${name}</button><div class="drop">${items.filter(Boolean).join('')}</div></div>`;
+  const menus = hk ? '<button type="button" class="on" data-nav="hk">Housekeeping</button>' : `<button type="button" data-nav="home" class="${view.name === 'home' ? 'on' : ''}">Home</button>` +
+    menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
+    menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), N('groups', 'Groups')]) +
+    menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('grpNew', 'Group Master')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), boss() && N('setup', 'Hotel Configuration'), N('tape', 'Tape Chart')]) +
+    menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
+  $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
+    ${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #">'}${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}
+    <div class="who"><b>${esc(S.me.name)}</b> ${esc(dshort(B()))} · <a href="#" data-act="myPw">My password</a> · <a href="#" data-act="logout">Logout</a></div></header>
+    <main>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
 function vHome() {
-  const s = S.stats, d = B();
-  const types = S.config.types.map(t => ({ t, n: availOfType(t.code, d, addDays(d, 1)) }));
-  const dirtyVacant = S.config.rooms.filter(r => !inRoom(r.no) && cond(r.no) === 'D').length;
-  return `<div class="tiles">
-    <button class="tile blue" data-nav="arrivals">Arrivals<br><small>${s.arrivalsLeft} left to check in</small></button>
-    <button class="tile green" data-nav="inhouse">In House<br><small>${s.sold} rooms</small></button>
-    <button class="tile amber" data-nav="departures">Departures<br><small>${s.dueOut} due out</small></button>
-    <button class="tile slate" data-nav="tape">Tape Chart</button>
-    <button class="tile teal" data-nav="hk">Housekeeping<br><small>${dirtyVacant} vacant dirty</small></button>
-    <button class="tile slate" data-nav="reports">Reports</button></div>
-  <div class="stats">
-    <div class="stat"><b>${s.occ}%</b><span>Today's occupancy</span></div><div class="stat"><b>${money(s.adr)}</b><span>ADR</span></div><div class="stat"><b>${money(s.revpar)}</b><span>RevPAR</span></div>
-    <div class="stat"><b>${s.checkedIn}</b><span>Checked in today</span></div><div class="stat"><b>${s.arrivalsLeft}</b><span>Check-ins remaining</span></div><div class="stat"><b>${s.dueOut}</b><span>Departures remaining</span></div>
-    <div class="stat"><b>${s.stayovers}</b><span>Stayovers</span></div><div class="stat"><b>${s.vacant}</b><span>Vacant rooms</span></div><div class="stat"><b>${s.ooo}</b><span>Out of order</span></div>
-    <div class="stat"><b>${s.adults + s.children}</b><span>Guests in house (${s.adults} adults, ${s.children} children)</span></div></div>
-  <h2>Rooms available tonight</h2>
-  <div class="wrap"><table><tr><th>Type</th><th>Name</th><th class="num">Available</th><th class="num">Total</th><th class="num">Rate</th></tr>
-  ${types.map(x => `<tr><td><b>${esc(x.t.code)}</b></td><td>${esc(x.t.name)}</td><td class="num"><b>${x.n}</b></td><td class="num">${S.config.rooms.filter(r => r.type === x.t.code).length}</td><td class="num">${money(x.t.rate)}</td></tr>`).join('')}</table></div>`;
+  const s = S.stats, d = B(), hr = new Date().getHours(), hello = hr < 12 ? 'Good Morning' : hr < 18 ? 'Good Afternoon' : 'Good Evening';
+  const types = S.config.types.map(t => ({ t, n: availOfType(t.code, d, addDays(d, 1)) })).sort((a, b) => b.n - a.n);
+  const dirtyVacant = S.config.rooms.filter(r => !inRoom(r.no) && cond(r.no) === 'D').length, arrToday = s.checkedIn + s.arrivalsLeft;
+  const outToday = S.res.filter(r => r.status === 'out' && r.depart === d).length;
+  const T = (attr, icon, label) => `<button class="tile" ${attr}><span class="ic">${icon}</span><span>${label}</span></button>`;
+  return `<div class="tiles">${T('data-act="shift"', '$', 'Cashier<br>Shift')}${T('data-nav="arrivals"', '🛎', 'View<br>Arrivals')}${T('data-nav="inhouse"', '🧳', 'In House<br>List')}${T('data-nav="departures"', '🚗', 'View Departures<br>List')}${T('data-nav="stats"', '📊', 'Quick<br>Statistics')}${T('data-nav="tape"', '▦', 'Tape<br>Chart')}${T('data-nav="hk"', '🧹', 'Housekeeping<br>Center')}
+    ${T('data-act="newRes"', '＋', 'Create<br>Reservation')}${T('data-act="walkIn"', '🚶', 'Walk-In')}${T('data-act="findOpen"', '👤', 'Find<br>Guest')}${T('data-act="blockNew"', '⛔', 'Room<br>Blocking')}${T('data-nav="groups"', '👥', 'Group<br>Master')}${T('data-nav="companies"', '🏢', 'Company<br>Profiles')}${T('data-nav="reports"', '📄', 'Reports')}</div>
+  <div class="band"><div class="greet">${hello},<br>${esc(String(S.me.name).split(' ')[0])}!</div>
+    <div class="bigs"><div><b>${s.occ}%</b><span>Today's Occupancy</span></div><div><b>${money(s.adr)}</b><span>Expected ADR</span></div></div>
+    <div class="trio"><div><b>${arrToday}</b><span>Total Arrivals Today</span></div><div><b>${s.checkedIn}</b><span>Check Ins Completed</span></div><div><b>${s.arrivalsLeft}</b><span>Check Ins Remaining</span></div></div>
+    <div class="trio"><div><b>${s.dueOut + outToday}</b><span>Total Departures Today</span></div><div><b>${dirtyVacant}</b><span>Vacant/Dirty Rooms Remaining</span></div><div><b>${s.vacant}</b><span>Total Rooms Available</span></div></div>
+    <div class="quad"><div><span>check ins</span><b>${s.arrivalsLeft}</b></div><div><span>vacant</span><b>${s.vacant}</b></div><div><span>stayovers</span><b>${s.stayovers}</b></div><div><span>OOO</span><b>${s.ooo}</b></div></div></div>
+  <div class="availrow"><div class="availtot"><b>${s.vacant}</b><span>Available</span></div>${types.map(x => `<div class="availtype"><span>${esc(x.t.code)}<br>${money(rateFor(x.t.code, d))}</span><b>${x.n}</b></div>`).join('')}</div>`;
+}
+function vStats() {
+  const s = S.stats, d = B(), act = active(), inh = act.filter(r => r.status === 'inhouse'), arr = act.filter(r => r.status === 'reserved' && r.arrive <= d);
+  const gtd = arr.filter(r => !/6 PM/.test(r.guarantee || '')).length, occOf = k => S.config.rooms.filter(r => cond(r.no) === k && inRoom(r.no)).length, vacOf = k => S.config.rooms.filter(r => cond(r.no) === k && !inRoom(r.no)).length;
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0); const madeToday = S.res.filter(r => r.created >= today0.getTime()).length, cxlToday = S.res.filter(r => r.status === 'cancelled' && r.cxlAt >= today0.getTime()).length;
+  const row = (a, b, c) => `<tr><td>${a}</td><td class="num">${b}</td>${c === undefined ? '' : `<td class="num">${c}</td>`}</tr>`;
+  return `<h1>Hotel Quick Stats: ${esc(dlong(d))}</h1><div class="statgrid">
+  <div><h2>Property Availability</h2><div class="wrap"><table><tr><th class="num">Avail</th><th class="num">Rooms Sold</th><th class="num">OOO</th><th class="num">Total Rooms</th></tr><tr><td class="num">${s.vacant}</td><td class="num">${s.sold}</td><td class="num">${s.ooo}</td><td class="num">${s.total}</td></tr></table></div>
+    <h2>Room Types / Availability / Rates</h2><div class="wrap"><table><tr><th>Type</th><th class="num">Avail</th><th class="num">Rooms Sold</th><th class="num">OOO</th><th class="num">Total Rooms</th><th class="num">Rate</th></tr>${S.config.types.map(t => { const rooms = S.config.rooms.filter(r => r.type === t.code); return `<tr><td><b>${esc(t.code)}</b></td><td class="num">${availOfType(t.code, d, addDays(d, 1))}</td><td class="num">${inh.filter(r => r.type === t.code).length}</td><td class="num">${rooms.filter(r => isOOO(r.no, d)).length}</td><td class="num">${rooms.length}</td><td class="num">${money(rateFor(t.code, d))}</td></tr>`; }).join('')}</table></div></div>
+  <div><h2>Room Status</h2><div class="wrap"><table><tr><th>Rooms</th><th class="num">Count</th></tr>${row('Total Rooms:', s.total)}${row('Due Out Rooms:', s.dueOut)}${row('Out of Order Rooms:', s.ooo)}${row('Stayover Rooms:', s.stayovers)}${row('Vacant Rooms:', s.vacant)}${row('Guaranteed Arrivals:', gtd)}${row('Non-Guaranteed Arrivals:', arr.length - gtd)}${row('Total Arrivals:', arr.length)}${row('Rooms Available to Sell:', S.config.types.reduce((n, t) => n + Math.max(0, availOfType(t.code, d, addDays(d, 1))), 0))}</table></div>
+    <h2>Guests</h2><div class="wrap"><table><tr><th>Guests</th><th class="num">Adults</th><th class="num">Children</th></tr>${row('In House:', s.adults, s.children)}${row('Reserved:', arr.reduce((n, r) => n + (r.adults || 0), 0), arr.reduce((n, r) => n + (r.children || 0), 0))}</table></div></div>
+  <div><h2>Housekeeping</h2><div class="wrap"><table><tr><th>Housekeeping</th><th class="num">Occupied</th><th class="num">Vacant</th></tr>${row('Dirty:', occOf('D'), vacOf('D'))}${row('Clean:', occOf('C'), vacOf('C'))}${row('Ready:', occOf('R'), vacOf('R'))}</table></div>
+    <h2>Today's Activity</h2><div class="wrap"><table><tr><th></th><th class="num">Count</th></tr>${row('New Reservations:', madeToday)}${row('Cancellations:', cxlToday)}${row('Checked In Today:', s.checkedIn)}</table></div>
+    <h2>Statistics</h2><div class="wrap"><table><tr><th></th><th class="num">Today</th></tr>${row('Occupancy % with OOO:', s.occAll + '%')}${row('Occupancy % w/o OOO:', s.occ + '%')}${row('ADR:', money(s.adr))}${row('Rev PAR:', money(s.revpar))}</table></div></div></div>
+  <div class="acts" style="margin-top:14px"><button class="btn sm" data-act="findOpen">Find Guest</button><button class="btn sm" data-act="newRes">Create Reservation</button><button class="btn sm" data-act="walkIn">Walk-In</button><button class="btn sm" data-nav="groups">Find Group Master</button></div>`;
 }
 
 /* ---------- Tape chart ---------- */
@@ -166,15 +183,15 @@ function vTape() {
       else if (blk) { let n = 0; while (i + n < days.length && days[i + n] <= blk.end) n++; tds += `<td colspan="${n}"><span class="tbar ooo" title="${esc(blk.reason)}">Out of order${blk.reason ? ': ' + esc(blk.reason) : ''}</span></td>`; i += n; }
       else { tds += `<td class="${d >= B() ? 'free' : ''}" ${d >= B() ? `data-act="newRes" data-room="${esc(rm.no)}" data-date="${d}"` : ''}></td>`; i++; }
     }
-    return `<tr><td class="rm">${esc(rm.no)}<small>${esc(rm.type)}</small> <span style="float:right">${condBtns(rm.no)}</span></td>${tds}</tr>`;
+    return `<tr><td class="rm"><a href="#" data-act="newRes" data-room="${esc(rm.no)}" data-date="${B()}">${esc(rm.no)}</a></td><td class="ty">${esc(rm.type)}</td><td class="cd">${condBtns(rm.no)}</td>${tds}</tr>`;
   }).join('');
   const un = active().filter(r => !r.room && r.arrive < end).sort((a, b) => a.arrive.localeCompare(b.arrive));
-  return `<h1>Tape Chart</h1><div class="bar"><button class="btn sm" data-act="tapeMove" data-n="-7">◀ Week</button><input type="date" id="tapeDate" value="${view.tapeStart}"><button class="btn sm" data-act="tapeMove" data-n="7">Week ▶</button><button class="btn sm" data-act="tapeToday">Today</button>
-    <select id="tapeFloor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select><span class="flex"></span><button class="btn sm red" data-act="blockNew">Out of order…</button></div>
-  <div class="legend"><span><i style="background:var(--green)"></i>In house</span><span><i style="background:var(--amber)"></i>Due out</span><span><i style="background:var(--blue)"></i>Reserved</span><span><i style="background:#9aa6b8"></i>Checked out</span><span><i style="background:var(--red)"></i>Out of order</span><span class="hint">R = ready, C = clean, D = dirty. Click an empty day to book that room.</span></div>
-  <div class="wrap" style="max-height:calc(100vh - 250px)"><table class="tape"><tr><th style="width:230px;position:sticky;left:0;z-index:3">Room</th>${days.map(d => { const dt = new Date(d + 'T00:00:00Z'); const we = [5, 6].includes(dt.getUTCDay()); return `<th class="${we ? 'we' : ''}" ${d === B() ? 'style="background:var(--green)"' : ''}>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' })}<br>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</th>`; }).join('')}</tr>${rows}</table></div>
-  <h2>Reservations without a room (${un.length})</h2>
-  ${un.length ? `<div class="wrap"><table><tr><th>Arrival</th><th>Guest</th><th>Type</th><th class="num">Nights</th><th>Conf. #</th></tr>${un.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td>${dshort(r.arrive)}</td><td><b>${esc(gname(r))}</b></td><td>${esc(r.type)}</td><td class="num">${nights(r.arrive, r.depart)}</td><td>${esc(r.conf)}</td></tr>`).join('')}</table></div>` : '<div class="hint">Every reservation in this window has a room.</div>'}`;
+  const byDay = {}; for (const r of un) (byDay[r.arrive] = byDay[r.arrive] || []).push(r);
+  return `<h1 class="pgt">Tape Chart</h1><div class="bar"><span class="hint">Start Date:</span><input type="date" id="tapeDate" value="${view.tapeStart}"><button class="btn sm blue" data-act="tapeToday">TODAY</button><button class="btn sm" data-act="tapeMove" data-n="-7">◀ Week</button><button class="btn sm" data-act="tapeMove" data-n="7">Week ▶</button>
+    <select id="tapeFloor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select><span class="flex"></span><button class="btn sm red" data-act="blockNew">Room Blocking…</button></div>
+  <div class="tapewrap"><div class="wrap" style="max-height:calc(100vh - 200px);flex:1"><table class="tape"><tr><th class="c1">Room #</th><th class="c2">Type</th><th class="c3">Condition</th>${days.map(d => { const dt = new Date(d + 'T00:00:00Z'); const we = [5, 6].includes(dt.getUTCDay()); return `<th class="${we ? 'we' : ''} ${d === B() ? 'td' : ''}">${dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' })}.<br>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</th>`; }).join('')}</tr>${rows}</table></div>
+  <aside class="tside"><h3>Overview</h3><div class="lg"><i style="background:var(--green)"></i>In House</div><div class="lg"><i style="background:var(--blue)"></i>Reserved</div><div class="lg"><i style="background:var(--amber)"></i>Due Out</div><div class="lg"><i style="background:#9aa6b8"></i>Checked Out</div><div class="lg"><i style="background:var(--red)"></i>Out of Order</div><p class="hint">R ready · C clean · D dirty.<br>Click an empty day to book that room.</p>
+    <h3>Unassigned Reservations</h3>${un.length ? Object.keys(byDay).sort().map(d => `<div class="uday">Arrival Date: ${new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' })}</div>` + byDay[d].map(r => `<a href="#" class="un" data-act="openRes" data-id="${r.id}"><span>${esc(gname(r))}</span><span>${esc(r.type)}</span><span>${nights(r.arrive, r.depart)}</span></a>`).join('')).join('') : '<p class="hint">None.</p>'}</aside></div>`;
 }
 
 /* ---------- Lists ---------- */
@@ -193,7 +210,7 @@ const vDepartures = () => `<h1>Departures: ${esc(dlong(B()))}</h1>` + listTable(
   '<h2>Checked out today</h2>' + (() => { const l = S.res.filter(r => r.status === 'out' && r.coAt && new Date(r.coAt).getTime() > Date.now() - 36 * 36e5 && r.depart >= addDays(B(), -1)); return l.length ? `<div class="wrap"><table><tr><th>Room</th><th>Guest</th><th>Checked out</th><th class="num">Balance</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(r.room)}</b></td><td>${esc(gname(r))}</td><td>${stamp(r.coAt)}</td><td class="num">${money(S.bal[r.id] || 0)}</td></tr>`).join('')}</table></div>` : '<div class="hint">Nobody yet.</div>'; })();
 function vFind() {
   const l = view.found || [];
-  return `<h1>Find: “${esc(view.findQ || '')}”</h1>` + (l.length ? `<div class="wrap"><table><tr><th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th><th>Room</th><th>Type</th><th>Phone</th><th>Conf. #</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(gname(r))}</b></td><td>${statusBadge(r)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td>${esc(r.room)}</td><td>${esc(r.type)}</td><td>${esc(r.phone)}</td><td>${esc(r.conf)}</td></tr>`).join('')}</table></div>` : '<div class="empty">Nothing found. Search by last name, phone number or confirmation number.</div>');
+  return `<h1 class="pgt">Find Reservation / Guest</h1><div class="bar"><input id="find2" placeholder="Last name, phone or confirmation #" value="${esc(view.findQ || '')}" style="width:320px"><button class="btn sm blue" data-act="findGo">SEARCH</button></div>` + (view.findQ ? '' : '<div class="empty">Type a last name, a phone number or a confirmation number.</div>') + (!view.findQ ? '' : (l.length ? `<div class="wrap"><table><tr><th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th><th>Room</th><th>Type</th><th>Phone</th><th>Conf. #</th></tr>${l.map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(gname(r))}</b></td><td>${statusBadge(r)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td>${esc(r.room)}</td><td>${esc(r.type)}</td><td>${esc(r.phone)}</td><td>${esc(r.conf)}</td></tr>`).join('')}</table></div>` : '<div class="empty">Nothing found. Search by last name, phone number or confirmation number.</div>'));
 }
 
 /* ---------- Housekeeping ---------- */
@@ -227,10 +244,10 @@ function resForm(r, mode) {
   const grpOpts = S.groups.filter(g => g.status !== 'cancelled' && (g.id === +r.groupId || (g.arrive <= r.arrive && r.depart <= g.depart)));
   const f = (k, label, cls, extra) => `<label class="${cls || ''}">${label}<input id="r_${k}" value="${esc(r[k] == null ? '' : r[k])}" ${locked ? 'disabled' : ''} ${extra || ''}></label>`;
   const bal = S.bal[r.id] || 0;
-  const A = (act, label, cls) => `<button class="btn sm ${cls || ''}" data-act="${act}">${label}</button>`;
-  const acts = isNew ? '' : `<div class="acts" style="margin-bottom:6px">${A('folio', 'Guest Folio', 'blue')}${r.status === 'reserved' ? A('checkIn', 'Check In', 'green') + A('cancelRes', 'Cancel Reservation', 'red') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out', 'amber') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate', 'green') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}</div>`;
-  return `<div class="mback"><div class="mbox wide"><div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'New Reservation') : esc(gname(r))} ${isNew ? '' : statusBadge(r) + `<span class="hint">Conf. # ${esc(r.conf)} · Balance ${money(bal)}</span>`}</div>
-  ${acts}
+  const A = (act, label) => `<a href="#" data-act="${act}">${label}</a>`;
+  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}`);
+  const side = `<aside class="pside"><h3>Overview</h3><dl><dt>Status:</dt><dd class="big">${isNew ? 'New' : { reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>Guest Name:</dt><dd>${esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())}</dd>${r.groupId ? `<dt>Group Master:</dt><dd>${esc((S.groups.find(g => g.id === +r.groupId) || {}).name || '')}</dd>` : ''}<dt>Account Number:</dt><dd>${esc(r.conf || '')}</dd><dt>Balance:</dt><dd>${bal < 0 ? '(' + money(-bal) + ')' : money(bal)}</dd></dl><h3>Actions</h3><div class="alinks">${acts}</div></aside>`;
+  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain"><div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
   <div class="sec">Stay</div><div class="grid">
     <label class="c3">Arrival<input type="date" id="r_arrive" value="${r.arrive}" ${locked || mode === 'walkin' || r.status === 'inhouse' ? 'disabled' : ''}></label>
     <label class="c2">Nights<input type="number" id="r_nights" min="1" max="365" value="${n}" ${locked ? 'disabled' : ''}></label>
@@ -257,7 +274,7 @@ function resForm(r, mode) {
     <label class="c6">Special requests<input id="r_requests" maxlength="300" value="${esc(r.requests || '')}" ${locked ? 'disabled' : ''}></label><label class="c6">Notes<input id="r_notes" maxlength="1000" value="${esc(r.notes || '')}" ${locked ? 'disabled' : ''}></label></div>
   <p class="hint" style="margin:10px 0 0">Card numbers are never saved here, only the card type and last 4 digits. Run the card on your card terminal.</p>
   <div class="err" id="r_err"></div>
-  <div class="mfoot"><button class="btn" data-act="closeModal">${locked ? 'Close' : 'Cancel'}</button>${locked ? '' : `<button class="btn ${mode === 'walkin' ? 'teal' : 'green'}" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</button>`}</div></div></div>`;
+  <div class="mfoot"><button class="btn" data-act="closeModal">${locked ? 'Close' : 'Cancel'}</button>${locked ? '' : `<button class="btn ${mode === 'walkin' ? 'teal' : 'green'}" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</button>`}</div></div>${side}</div></div></div>`;
 }
 function readForm() {
   const r = ED.r, v = k => { const el = $('#r_' + k); return el ? el.value : r[k]; };
@@ -312,11 +329,11 @@ let FO = null;
 async function openFolio(id) { await run(async () => { FO = await api('/folio?id=' + id); drawFolio(); }); }
 function folioTable(f) { return `<table><tr><th>Item #</th><th>Date</th><th>Posted</th><th>Description</th><th>Comments</th><th>By</th><th class="num">Amount</th></tr>${f.lines.map(l => `<tr><td>${l.id}</td><td>${dshort(l.bdate)}</td><td>${stamp(l.at)}</td><td>${esc(l.descr)}</td><td>${esc(l.comment)}</td><td>${esc(l.user)}</td><td class="num">${l.amount < 0 ? '(' + money(-l.amount) + ')' : money(l.amount)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">Nothing is posted yet.</td></tr>'}<tr><td colspan="6" class="num"><b>Balance</b></td><td class="num"><b>${f.balance < 0 ? '(' + money(-f.balance) + ')' : money(f.balance)}</b></td></tr></table>`; }
 function drawFolio() {
-  const r = FO.res;
-  $('#modal').innerHTML = `<div class="mback"><div class="mbox wide"><div class="mtitle">Guest Folio: ${esc(gname(r))} ${statusBadge(r)} <span class="hint">Room ${esc(r.room || 'none')} · ${dshort(r.arrive)} to ${dshort(r.depart)} · Conf. # ${esc(r.conf)}</span></div>
-    <div class="acts" style="margin-bottom:10px"><button class="btn sm blue" data-act="postOpen" data-kind="charge">Post Charge</button><button class="btn sm green" data-act="postOpen" data-kind="payment">Post Payment</button><button class="btn sm" data-act="postOpen" data-kind="adjust">Post Adjustment</button><button class="btn sm" data-act="printFolio">Print</button><button class="btn sm" data-act="emailFolio">E-mail Folio</button>${r.status === 'inhouse' ? '<button class="btn sm amber" data-act="folioCheckOut">Check Out</button>' : ''}</div>
-    <div id="postBox"></div><div class="wrap" style="max-height:52vh">${folioTable(FO)}</div>
-    <div class="mfoot"><button class="btn" data-act="folioBack">Back to reservation</button><button class="btn" data-act="closeModal">Close</button></div></div></div>`;
+  const r = FO.res, b = FO.balance, L = (act, label, x) => `<a href="#" data-act="${act}" ${x || ''}>${label}</a>`;
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain"><div class="mtitle">Guest Folio ${statusBadge(r)} <span class="hint">${dshort(r.arrive)} to ${dshort(r.depart)}</span></div>
+    <div id="postBox"></div><div class="hint" style="margin-bottom:6px">Viewing Lines 1 through ${FO.lines.length} of ${FO.lines.length}</div><div class="wrap" style="max-height:66vh">${folioTable(FO)}</div></div>
+    <aside class="pside"><h3>Overview</h3><dl><dt>Guest Status:</dt><dd class="big">${{ reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>First Name:</dt><dd>${esc((r.first || '').toUpperCase())}</dd><dt>Last Name:</dt><dd>${esc((r.last || '').toUpperCase())}</dd><dt>Account #:</dt><dd>${esc(r.conf)}</dd><dt>Room #:</dt><dd>${esc(r.room || '')}</dd><dt>Balance:</dt><dd>${b < 0 ? '(' + money(-b) + ')' : money(b)}</dd></dl>
+    <h3>Actions</h3><div class="alinks">${L('folioBack', 'Back')}${L('postOpen', 'Post Charge', 'data-kind="charge"')}${L('postOpen', 'Post Payment', 'data-kind="payment"')}${L('postOpen', 'Post Adjustment', 'data-kind="adjust"')}${L('printFolio', 'Print')}${L('emailFolio', 'Email Folio')}${r.status === 'inhouse' ? L('folioCheckOut', 'Check Out') : ''}${L('closeModal', 'Close')}</div></aside></div></div></div>`;
 }
 function postOpen(kind) {
   const pay = ['CASH', 'CRED', 'AREC', 'GFTCRD'], codes = S.config.codes.filter(k => kind === 'payment' ? pay.includes(k.type) : !pay.includes(k.type) && k.type !== 'ADMIN');
@@ -478,7 +495,7 @@ function blockNew() {
 
 /* ---------- clicks and typing ---------- */
 document.addEventListener('click', async e => {
-  const nav = e.target.closest('[data-nav]'); if (nav) { view.name = nav.dataset.nav; view.q = ''; render(); return; }
+  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); view.name = nav.dataset.nav; view.q = ''; render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
   if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
   if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
@@ -496,6 +513,11 @@ document.addEventListener('click', async e => {
   if (a === 'mClose') return run(async () => { await api('/master/close', {}); S = null; $('#modal').innerHTML = ''; await refresh(); });
   if (a === 'mMail') return mMailBox();
   if (a === 'mMailSave' || a === 'mMailTest') { try { await api('/master/mail', { user: $('#mm_user').value, pass: $('#mm_pass').value, fromName: $('#mm_fromName').value, host: $('#mm_host').value, port: $('#mm_port').value }); if (a === 'mMailTest') { $('#mm_err').textContent = 'Sending…'; const r = await api('/master/mailTest', {}); $('#mm_err').textContent = ''; toast('Test e-mail sent to ' + r.to + '.'); } else toast('Saved.'); const keep = a === 'mMailTest'; await masterLoad(); if (keep) mMailBox(); else $('#modal').innerHTML = ''; } catch (x) { $('#mm_err').textContent = x.message; } return; }
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.menu')) document.activeElement.blur();
+  if (a === 'findOpen') { view.name = 'find'; view.findQ = ''; view.found = []; render(); const f = $('#find2'); if (f) f.focus(); return; }
+  if (a === 'findGo') return doFind($('#find2').value);
+  if (a === 'setupGo') { view.name = 'setup'; view.setup = el.dataset.tab; return render(); }
+  if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; return render(); }
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
   if (a === 'openRes') return run(() => openRes(el.dataset.id));
@@ -555,8 +577,9 @@ document.addEventListener('change', e => {
   resFieldChanged(t.id);
 });
 document.addEventListener('input', e => { if (e.target.id === 'q') { view.q = e.target.value; render(); } });
+const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.id === 'find') return run(async () => { view.findQ = e.target.value.trim(); view.found = (await api('/find?q=' + encodeURIComponent(view.findQ))).list; view.name = 'find'; render(); });
+  if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
   if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.
