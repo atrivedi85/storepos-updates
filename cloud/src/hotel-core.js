@@ -50,6 +50,7 @@ export class HotelCore {
       'CREATE TABLE IF NOT EXISTS ar(id INTEGER PRIMARY KEY AUTOINCREMENT, company INTEGER NOT NULL, res INTEGER, bdate TEXT, at INTEGER, kind TEXT, descr TEXT, amount INTEGER NOT NULL, user TEXT)',
       'CREATE TABLE IF NOT EXISTS grps(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, open_at INTEGER, close_at INTEGER, data TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS dnr(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, user TEXT, line TEXT)']) this.sql.exec(q);
   }
   rows(q, ...p) { return this.sql.exec(q, ...p).toArray(); }
@@ -76,6 +77,20 @@ export class HotelCore {
     let n = 0;
     for (const g of grps) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || (g.cutoff && g.cutoff < c.bdate)) continue; const blk = (g.blocks || {})[type] || 0; if (!blk) continue; n += Math.max(0, blk - act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); }
     return n;
+  }
+
+  /* ---------- Do Not Rent list ---------- */
+  dnrList() { return this.rows('SELECT id, data FROM dnr ORDER BY id').map(r => ({ ...JSON.parse(r.data), id: r.id })); }
+  // The first list entry that fits this guest: same guest ID (letters and digits only, any case), or the same last AND first name.
+  dnrMatch(r) {
+    const idn = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase(), nm = x => String(x || '').trim().toLowerCase();
+    return this.dnrList().find(e => (idn(e.guestId) && idn(e.guestId) === idn(r.guestId)) || (nm(e.last) && nm(e.first) && nm(e.last) === nm(r.last) && nm(e.first) === nm(r.first))) || null;
+  }
+  // Throws 428 when the guest is listed and the desk has not said "continue anyway" (dnrOk). Returns true when the warning was accepted.
+  dnrCheck(r, a) {
+    const e = this.dnrMatch(r); if (!e) return false; if (a && a.dnrOk) return true;
+    const d = e.bdate || new Date(e.at).toISOString().slice(0, 10), [y, m, dd] = d.split('-').map(Number), who = e.last ? (e.last + (e.first ? ', ' + e.first : '')).toUpperCase() : 'GUEST ID ' + e.guestId;
+    throw err(428, 'DO NOT RENT: ' + who + '. Reason: ' + e.reason + '. Added by ' + e.by + ' on ' + m + '/' + dd + '/' + y + '. Continue anyway?');
   }
 
   /* ---------- reservations ---------- */
@@ -111,7 +126,7 @@ export class HotelCore {
     for (const [k, n] of [['first', 60], ['last', 60], ['addr1', 100], ['addr2', 100], ['city', 60], ['state', 30], ['zip', 15], ['country', 40], ['phone', 30], ['email', 100], ['guestId', 40], ['vehicle', 40],
       ['company', 80], ['notes', 1000], ['requests', 300], ['market', 30], ['source', 30], ['guarantee', 20], ['payType', 10], ['cardType', 10]]) if (k in a) r[k] = clip(a[k], n);
     if ('cardLast4' in a) r.cardLast4 = String(a.cardLast4 || '').replace(/\D/g, '').slice(-4);
-    for (const k of ['vip', 'taxExempt', 'noPost']) if (k in a) r[k] = !!a[k];
+    for (const k of ['vip', 'taxExempt', 'noPost', 'crib', 'rollaway', 'suppressRate']) if (k in a) r[k] = !!a[k];
     if (!r.last) throw err(400, 'Type the guest\'s last name.');
     if ('arrive' in a) r.arrive = a.arrive; if ('depart' in a) r.depart = a.depart;
     if (!isDate(r.arrive) || !isDate(r.depart) || r.depart <= r.arrive) throw err(400, 'Check the arrival and departure dates.');
@@ -140,9 +155,10 @@ export class HotelCore {
       r.rates = rates; r.rateManual = false; r.rate = rates[r.arrive > c.bdate || rates[c.bdate] == null ? r.arrive : c.bdate];
     }
     if (r.rate == null) r.rate = t.rate; if (r.rate < 0) throw err(400, 'The rate cannot be negative.');
+    const dnrSeen = isNew && this.dnrCheck(r, a);
     if (isNew) { r.id = (this.one('SELECT COALESCE(MAX(id),0) n FROM res').n) + 1; r.conf = String(c.nextConf++); this.setKv('config', c); }
     const after = JSON.stringify([r.arrive, r.depart, r.type, r.room, r.rate]);
-    if (isNew) r.history.push({ at: now(), by: me.username, what: 'Created' }); else if (before !== after) r.history.push({ at: now(), by: me.username, what: 'Changed stay: ' + before + ' → ' + after });
+    if (isNew) { r.history.push({ at: now(), by: me.username, what: 'Created' }); if (dnrSeen) r.history.push({ at: now(), by: me.username, what: 'Do Not Rent warning accepted' }); } else if (before !== after) r.history.push({ at: now(), by: me.username, what: 'Changed stay: ' + before + ' → ' + after });
     r.history = r.history.slice(-60);
     this.putRes(r); this.log(me.username, (isNew ? 'new reservation ' : 'changed reservation ') + r.conf);
     return r;
@@ -151,6 +167,7 @@ export class HotelCore {
   setCond(rooms, patch) { const s = this.roomState(); for (const no of rooms) s[no] = { cond: 'R', ...(s[no] || {}), ...patch }; this.setKv('roomstate', s); }
   checkIn(r, me, c, a) {
     if (r.status !== 'reserved') throw err(400, 'This reservation is ' + r.status + '.');
+    const dnrSeen = !a.dnrDone && this.dnrCheck(r, a);
     if (r.arrive > c.bdate) throw err(400, 'This guest arrives ' + r.arrive + '. Today\'s business date is ' + c.bdate + '. Change the arrival date first.');
     if (r.depart <= c.bdate) throw err(400, 'The departure date has passed. Change the stay first.');
     if (!r.room) throw err(400, 'Pick a room first.');
@@ -159,6 +176,7 @@ export class HotelCore {
     const p = this.roomProblem(c, r.room, c.bdate, r.depart, r.id); if (p) throw err(409, p);
     const cond = (this.roomState()[r.room] || {}).cond || 'R';
     if (cond === 'D' && !a.dirtyOk) throw err(412, 'Room ' + r.room + ' is dirty. Check in anyway?');
+    if (dnrSeen) r.history.push({ at: now(), by: me.username, what: 'Do Not Rent warning accepted' });
     r.status = 'inhouse'; r.ciAt = now(); r.ciBy = me.username; r.history.push({ at: now(), by: me.username, what: 'Checked in to ' + r.room });
     this.putRes(r); this.log(me.username, 'check in ' + r.conf + ' room ' + r.room); return r;
   }
@@ -218,7 +236,7 @@ export class HotelCore {
     const slim = r => { const { history, ...x } = r; return x; };
     const arBal = {}; for (const x of this.rows('SELECT company, SUM(amount) n FROM ar GROUP BY company')) arBal[x.company] = x.n;
     const hk = me.role === 'hk';
-    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
+    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, ...(hk ? {} : { dnr: this.dnrList() }), stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
   }
   nightAudit(me, c) {
     const d = c.bdate, act = this.activeRes(), out = { date: d, posted: 0, noShows: [], extended: [], revenue: 0 };
@@ -359,8 +377,11 @@ export class HotelCore {
     desk();
     switch (b.op) {
       case 'resSave': { const r = this.resSave(a, me, c); return ok({ id: r.id, conf: r.conf }); }
-      case 'walkIn': { a.id = 0; a.arrive = c.bdate; a.source = a.source || 'Walk-In'; if (!a.room) throw err(400, 'Pick a room for the walk-in.'); const cond = (this.roomState()[a.room] || {}).cond || 'R'; if (cond === 'D' && !a.dirtyOk) throw err(412, 'Room ' + a.room + ' is dirty. Check in anyway?'); const r = this.resSave(a, me, c); this.checkIn(r, me, c, { dirtyOk: true }); return ok({ id: r.id, conf: r.conf }); }
+      case 'walkIn': { a.id = 0; a.arrive = c.bdate; a.source = a.source || 'Walk-In'; if (!a.room) throw err(400, 'Pick a room for the walk-in.'); this.dnrCheck(a, a); const cond = (this.roomState()[a.room] || {}).cond || 'R'; if (cond === 'D' && !a.dirtyOk) throw err(412, 'Room ' + a.room + ' is dirty. Check in anyway?'); const r = this.resSave(a, me, c); this.checkIn(r, me, c, { dirtyOk: true, dnrDone: true }); return ok({ id: r.id, conf: r.conf }); }
       case 'checkIn': { const r = this.getRes(a.id); if (a.room && a.room !== r.room) { this.resSave({ id: r.id, room: a.room }, me, c); Object.assign(r, this.getRes(r.id)); } this.checkIn(r, me, c, a); return ok(); }
+      case 'dnrAdd': { const e = { last: clip(a.last, 60), first: clip(a.first, 60), guestId: clip(a.guestId, 40), phone: clip(a.phone, 30), reason: clip(a.reason, 300) }; if (!e.last && !e.guestId) throw err(400, 'Type the last name or the guest ID.'); if (!e.reason) throw err(400, 'Type the reason.'); e.by = me.username; e.at = now(); e.bdate = c.bdate;
+        this.sql.exec('INSERT INTO dnr(data) VALUES(?)', JSON.stringify(e)); const id = this.one('SELECT MAX(id) n FROM dnr').n; this.log(me.username, 'do not rent add ' + (e.last || e.guestId)); return ok({ id }); }
+      case 'dnrRemove': { mgr(); const id = Number(a.id) || 0; if (!this.one('SELECT 1 x FROM dnr WHERE id=?', id)) throw err(404, 'That entry was not found.'); this.sql.exec('DELETE FROM dnr WHERE id=?', id); this.log(me.username, 'do not rent remove ' + id); return ok(); }
       case 'undoCheckIn': { const r = this.getRes(a.id); if (r.status !== 'inhouse') throw err(400, 'This guest is not checked in.'); if (this.one('SELECT 1 x FROM lines WHERE res=? AND code=?', r.id, 'RM')) throw err(400, 'Room charges were already posted, so the check-in cannot be undone. Check the guest out instead.'); r.status = 'reserved'; r.history.push({ at: now(), by: me.username, what: 'Check-in undone' }); this.putRes(r); return ok(); }
       case 'checkOut': {
         const r = this.getRes(a.id); if (r.status !== 'inhouse') throw err(400, 'This guest is not checked in.'); const bal = this.balance(r.id);
@@ -408,7 +429,7 @@ export class HotelCore {
         let subject, text;
         if (b.op === 'emailConf') { const cx = r.status === 'cancelled'; subject = (cx ? 'Cancellation' : 'Reservation confirmation') + ' ' + (cx ? r.cxlNo : r.conf) + ' · ' + c.name;
           text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\n' + (cx ? 'Your reservation at ' + c.name + ' has been cancelled.\n\nCancellation number: ' + r.cxlNo + '\nOriginal confirmation number: ' + r.conf + '\nDates: ' + r.arrive + ' to ' + r.depart + '\n'
-            : 'Thank you for choosing ' + c.name + '. Your reservation is confirmed.\n\nConfirmation number: ' + r.conf + '\nArrival: ' + r.arrive + ' (check-in from ' + c.checkinTime + ')\nDeparture: ' + r.depart + ' (check-out by ' + c.checkoutTime + ')\nRoom type: ' + tname + '\nGuests: ' + r.adults + ' adults, ' + (r.children || 0) + ' children\nRate: ' + m(this.nightRate(r, r.arrive)) + ' plus tax, per night' + (r.rates && new Set(Object.values(r.rates)).size > 1 ? ' (the rate changes by night)' : '') + '\nGuarantee: ' + (r.guarantee || '') + '\n\nWe look forward to your stay.\n') + foot; }
+            : 'Thank you for choosing ' + c.name + '. Your reservation is confirmed.\n\nConfirmation number: ' + r.conf + '\nArrival: ' + r.arrive + ' (check-in from ' + c.checkinTime + ')\nDeparture: ' + r.depart + ' (check-out by ' + c.checkoutTime + ')\nRoom type: ' + tname + '\nGuests: ' + r.adults + ' adults, ' + (r.children || 0) + ' children\nRate: ' + (r.suppressRate ? 'on file' : m(this.nightRate(r, r.arrive)) + ' plus tax, per night' + (r.rates && new Set(Object.values(r.rates)).size > 1 ? ' (the rate changes by night)' : '')) + '\nGuarantee: ' + (r.guarantee || '') + '\n\nWe look forward to your stay.\n') + foot; }
         else { const lines = this.rows('SELECT * FROM lines WHERE res=? ORDER BY id', r.id), pad = (x, n) => String(x).padEnd(n).slice(0, n); subject = 'Your folio · ' + c.name + ' · ' + r.conf;
           text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\nHere is your folio for room ' + (r.room || '') + ', ' + r.arrive + ' to ' + r.depart + ' (confirmation ' + r.conf + ').\n\n' + lines.map(l => pad(l.bdate, 12) + pad(l.descr, 28) + m(l.amount).padStart(10)).join('\n') + '\n' + pad('', 12) + pad('Balance', 28) + m(this.balance(r.id)).padStart(10) + '\n\nThank you for staying with us.\n' + foot; }
         r.history.push({ at: now(), by: me.username, what: (b.op === 'emailConf' ? 'E-mailed confirmation to ' : 'E-mailed folio to ') + to }); r.history = r.history.slice(-60); this.putRes(r);

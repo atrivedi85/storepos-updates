@@ -100,6 +100,35 @@ await t('package posts every night with the room; cashier shift counts the cash;
   const bd = (await st()).config.bdate; await okOp('nightAudit', { date: bd }); const f = await folio(pid); assert.ok(f.lines.some(l => l.descr === 'Miscellaneous' && l.comment === 'Package: Breakfast' && l.amount === 1200)); assert.ok(f.lines.some(l => l.code === 'RM' && l.amount === 8000));
   const n0 = site.mails.length; assert.equal((await okOp('emailConf', { id: pid })).to, 'pia@guest.com'); assert.match(site.mails.at(-1).text, /Confirmation number: \d+/); assert.equal(site.mails.at(-1).fromName, 'Alpha Inn'); await okOp('emailFolio', { id: pid }); assert.match(site.mails.at(-1).text, /Balance/); assert.equal(site.mails.length, n0 + 2); assert.equal((await op('emailConf', { id: id1 })).status, 400);
   assert.equal((await site.handle({ method: 'POST', path: '/internal/mail', body: { to: 'x@y.com', subject: 's', text: 't' }, cookie })).status, 404); });
+await t('crib, rollaway and suppress rate are saved; e-mailed confirmation says "Rate: on file"', async () => { const bd = (await st()).config.bdate, e = { last: 'Cribb', first: 'Cara', email: 'cara@guest.com', arrive: bd, depart: addDays(bd, 2), type: 'NK', rate: 9900, crib: true, rollaway: true, suppressRate: true };
+  const id = (await okOp('resSave', e)).id; let r = (await folio(id)).res; assert.deepEqual([r.crib, r.rollaway, r.suppressRate], [true, true, true]);
+  await okOp('emailConf', { id }); assert.match(site.mails.at(-1).text, /Rate: on file/); assert.ok(!/99\.00/.test(site.mails.at(-1).text));
+  await okOp('resSave', { id, crib: false, suppressRate: false }); r = (await folio(id)).res; assert.deepEqual([r.crib, r.rollaway, r.suppressRate], [false, true, false]);
+  await okOp('emailConf', { id }); assert.match(site.mails.at(-1).text, /Rate: 99\.00 plus tax/); assert.ok((await st()).res.find(x => x.id === id).rollaway); });
+await t('Do Not Rent: add needs a reason and a name or ID; new reservation and walk-in get 428 until dnrOk; history line; match by ID', async () => {
+  const bd = (await st()).config.bdate, n2 = addDays(bd, 1);
+  { const r = await ok('/account/userSave', { email: 'maid2@alpha.com', name: 'Mae Maid', role: 'hk' }); hk = (await ok('/auth/reset', { token: linkToken(r.json.link), password: 'maid2password1' }, { keep: true })).token; }
+  assert.equal((await op('dnrAdd', { last: 'Trouble', first: 'Tim' })).status, 400); assert.equal((await op('dnrAdd', { reason: 'Damage' })).status, 400); assert.equal((await op('dnrAdd', { last: 'Trouble', first: 'Tim', reason: 'Left a mess' }, { cookie: hk })).status, 403);
+  const add = await okOp('dnrAdd', { last: 'Trouble', first: 'Tim', guestId: 'D-123 456', phone: '555-0100', reason: 'Left the room damaged' }); assert.ok(add.id > 0);
+  let s = await st(); assert.equal(s.dnr.length, 1); assert.deepEqual([s.dnr[0].last, s.dnr[0].reason, s.dnr[0].by], ['Trouble', 'Left the room damaged', 'Ann Owner']);
+  let r = await op('resSave', { last: ' trouble ', first: 'TIM', arrive: bd, depart: n2, type: 'NK' }); assert.equal(r.status, 428); assert.match(r.json.error, /^DO NOT RENT: TROUBLE, TIM\. Reason: Left the room damaged\. Added by Ann Owner on \d+\/\d+\/\d{4}\. Continue anyway\?$/);
+  const before = (await st()).res.length; assert.equal((await op('resSave', { last: 'Trouble', first: 'Tim', arrive: bd, depart: n2, type: 'NK' })).status, 428); assert.equal((await st()).res.length, before);
+  r = await op('resSave', { last: 'Trouble', first: 'Tim', arrive: bd, depart: n2, type: 'NK', dnrOk: true }); assert.equal(r.status, 200); assert.ok((await folio(r.json.id)).res.history.some(h => h.what === 'Do Not Rent warning accepted'));
+  assert.equal((await op('resSave', { last: 'Trouble', first: 'Tom', arrive: bd, depart: n2, type: 'NK' })).status, 200);   // first name differs: no match
+  assert.equal((await op('resSave', { last: 'Trouble', arrive: bd, depart: n2, type: 'NK' })).status, 200);                  // no first name: no match by name
+  assert.equal((await op('resSave', { last: 'Other', first: 'Person', guestId: 'd123456', arrive: bd, depart: n2, type: 'NK' })).status, 428);   // ID, different punctuation and case
+  assert.equal((await op('resSave', { last: 'Other', first: 'Person', guestId: '---', arrive: bd, depart: n2, type: 'NK' })).status, 200);
+  const w = { last: 'Trouble', first: 'Tim', type: 'NQQ', room: '235', depart: n2 }; assert.equal((await op('walkIn', w)).status, 428); assert.equal((await op('walkIn', { ...w, room: '236', type: 'NK' })).status, 428);
+  const wi = await op('walkIn', { last: 'Trouble', first: 'Tim', type: 'NK', room: '236', depart: n2, dnrOk: true }); assert.equal(wi.status, 200, JSON.stringify(wi.json)); const wr = (await folio(wi.json.id)).res; assert.equal(wr.status, 'inhouse'); assert.equal(wr.history.filter(h => h.what === 'Do Not Rent warning accepted').length, 1);
+  // check-in of a reservation whose guest was listed afterwards
+  const lid = (await okOp('resSave', { last: 'Later', first: 'Lee', arrive: bd, depart: n2, type: 'NK', room: '234' })).id; await okOp('dnrAdd', { last: 'Later', first: 'Lee', reason: 'Skipped a bill' });
+  assert.equal((await op('checkIn', { id: lid })).status, 428); await okOp('checkIn', { id: lid, dnrOk: true }); assert.ok((await folio(lid)).res.history.some(h => h.what === 'Do Not Rent warning accepted'));
+  // desk can add but not remove; owner can; hk sees no list
+  assert.equal((await op('dnrAdd', { last: 'Deskadd', reason: 'Fighting' }, { cookie: desk })).status, 200); s = await st(); assert.equal(s.dnr.length, 3);
+  assert.equal((await op('dnrRemove', { id: add.id }, { cookie: desk })).status, 403); assert.equal((await op('dnrRemove', { id: add.id }, { cookie: hk })).status, 403); assert.equal((await op('dnrRemove', { id: 99999 })).status, 404);
+  assert.equal((await st(desk)).dnr.length, 3); const hs = await st(hk); assert.equal(hs.dnr, undefined); assert.ok(!JSON.stringify(hs).includes('Left the room damaged'));
+  assert.equal((await op('dnrRemove', { id: add.id })).status, 200); assert.equal((await st()).dnr.length, 2); assert.equal((await op('resSave', { last: 'Trouble', first: 'Tim', arrive: bd, depart: n2, type: 'NK' })).status, 200);
+  assert.equal((await op('dnrRemove', { id: (await st()).dnr[0].id }, { cookie: gm })).status, 200); });
 await t('KILL SWITCH: master turns Alpha off → everyone there is out and cannot sign in or reset; Beta keeps working', async () => { await ok('/master/status', { id: hotelA, status: 'off' }, { cookie: master });
   for (const c of [ownerA, gm, desk]) assert.equal((await call('GET', '/state', null, { cookie: c })).status, 401); const l = await call('POST', '/auth/login', { email: 'ann@alpha.com', password: 'annpassword1' }, { keep: true }); assert.equal(l.status, 403); assert.match(l.json.error, /turned off/);
   await ok('/auth/forgot', { email: 'ann@alpha.com' }, { cookie: '' }); assert.equal((await call('POST', '/auth/reset', { token: linkToken(site.mails.at(-1).text), password: 'sneakyback1' }, { keep: true })).status, 403);

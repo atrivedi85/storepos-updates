@@ -131,12 +131,12 @@ function paint(hk, nav) {
     menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest Profile'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
     menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), A('repGo', 'Night Audit', 'data-rep="stats"')]) +
     menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
-    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
   $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
     <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
     ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span></div></header>
-    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
+    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
@@ -260,6 +260,8 @@ function vFind() {
 
 /* ---------- Housekeeping ---------- */
 function service(no) { const g = inRoom(no); if (g) return g.depart <= B() ? 'Check Out' : 'Stay Over'; return cond(no) === 'D' ? 'Check Out' : 'None'; }
+const hkPreText = no => { const g = inRoom(no); return g ? [g.crib && 'Crib', g.rollaway && 'Rollaway'].filter(Boolean).join(' · ') : ''; };
+const hkPre = no => hkPreText(no) ? `<span class="hkpre">${hkPreText(no)}</span>` : '';   // read-only prefix in the Notes cell
 function vHk() {
   const floors = [...new Set(S.config.rooms.map(r => r.floor))].sort();
   const rooms = S.config.rooms.filter(r => !view.floor || r.floor === view.floor);
@@ -270,7 +272,7 @@ function vHk() {
   <div class="wrap"><table><tr><th>Room</th><th>Type</th><th>Room status</th><th>Condition</th><th>Service</th><th>Assigned to</th><th>Do not disturb</th><th>Notes</th></tr>
   ${rooms.map(rm => { const st = S.roomstate[rm.no] || {}; const occ = !!inRoom(rm.no); return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${isOOO(rm.no, B()) ? '<span class="badge r">Out of order</span>' : occ ? '<span class="badge g">Occupied</span>' : '<span class="badge s">Vacant</span>'}</td><td>${condBtns(rm.no)}</td><td>${service(rm.no)}</td>
     <td><select data-hk="hk" data-room="${esc(rm.no)}" style="min-height:34px;padding:4px 8px"><option value=""></option>${S.config.housekeepers.map(h => `<option ${st.hk === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></td>
-    <td><input type="checkbox" data-hk="dnd" data-room="${esc(rm.no)}" ${st.dnd ? 'checked' : ''}></td><td><input data-hk="note" data-room="${esc(rm.no)}" value="${esc(st.note || '')}" maxlength="200" style="min-height:34px;padding:4px 8px"></td></tr>`; }).join('')}</table></div>
+    <td><input type="checkbox" data-hk="dnd" data-room="${esc(rm.no)}" ${st.dnd ? 'checked' : ''}></td><td class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${esc(rm.no)}" value="${esc(st.note || '')}" maxlength="200" style="min-height:34px;padding:4px 8px"></td></tr>`; }).join('')}</table></div>
   ${S.config.housekeepers.length ? '' : '<p class="hint">To assign rooms, a manager adds the housekeepers\' names in Setup › Housekeepers.</p>'}`;
 }
 
@@ -290,9 +292,10 @@ function resForm(r, mode) {
   const f = (k, label, cls, extra) => `<label class="${cls || ''}">${label}<input id="r_${k}" value="${esc(r[k] == null ? '' : r[k])}" ${locked ? 'disabled' : ''} ${extra || ''}></label>`;
   const bal = S.bal[r.id] || 0;
   const A = (act, label) => `<a href="#" data-act="${act}">${label}</a>`;
-  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}`);
+  const listed = !isNew && dnrMatchC(r), dnrAct = isNew || locked && !listed ? '' : listed ? (boss() ? A('dnrRemoveRes', 'Remove from Do Not Rent List') : '') : A('dnrAddRes', 'Add to Do Not Rent List');
+  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}`) + dnrAct;
   const side = `<aside class="pside"><h3>Overview</h3><dl><dt>Status:</dt><dd class="big">${isNew ? 'New' : { reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>Guest Name:</dt><dd>${esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())}</dd>${r.groupId ? `<dt>Group Master:</dt><dd>${esc((S.groups.find(g => g.id === +r.groupId) || {}).name || '')}</dd>` : ''}<dt>Account Number:</dt><dd>${esc(r.conf || '')}</dd><dt>Balance:</dt><dd>${bal < 0 ? '(' + money(-bal) + ')' : money(bal)}</dd></dl><h3>Actions</h3><div class="alinks">${acts}</div></aside>`;
-  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain"><div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
+  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain">${dnrBanner(r)}<div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
   <div class="sec">Stay</div><div class="grid">
     <label class="c3">Arrival<input type="date" id="r_arrive" value="${r.arrive}" ${locked || mode === 'walkin' || r.status === 'inhouse' ? 'disabled' : ''}></label>
     <label class="c2">Nights<input type="number" id="r_nights" min="1" max="365" value="${n}" ${locked ? 'disabled' : ''}></label>
@@ -316,28 +319,156 @@ function resForm(r, mode) {
     <label class="c2">Card last 4<input id="r_cardLast4" maxlength="4" inputmode="numeric" value="${esc(r.cardLast4 || '')}" ${locked ? 'disabled' : ''}></label>
     <label>Source<select id="r_source" ${locked ? 'disabled' : ''}>${['Phone', 'Walk-In', 'Website', 'Travel agent', 'Company', 'Other'].map(x => `<option ${r.source === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <label class="chk c2"><input type="checkbox" id="r_taxExempt" ${r.taxExempt ? 'checked' : ''} ${locked ? 'disabled' : ''}>Tax exempt</label><label class="chk c2"><input type="checkbox" id="r_vip" ${r.vip ? 'checked' : ''} ${locked ? 'disabled' : ''}>VIP</label><label class="chk c2"><input type="checkbox" id="r_noPost" ${r.noPost ? 'checked' : ''} ${locked ? 'disabled' : ''}>No room charge</label>
+    ${[['crib', 'Crib'], ['rollaway', 'Rollaway'], ['suppressRate', 'Suppress Rate']].map(([k, l]) => `<label class="chk c2"><input type="checkbox" id="r_${k}" ${r[k] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${l}</label>`).join('')}
     <label class="c6">Special requests<input id="r_requests" maxlength="300" value="${esc(r.requests || '')}" ${locked ? 'disabled' : ''}></label><label class="c6">Notes<input id="r_notes" maxlength="1000" value="${esc(r.notes || '')}" ${locked ? 'disabled' : ''}></label></div>
   <p class="hint" style="margin:10px 0 0">Card numbers are never saved here, only the card type and last 4 digits. Run the card on your card terminal.</p>
   <div class="err" id="r_err"></div>
   <div class="mfoot"><button class="btn" data-act="closeModal">${locked ? 'Close' : 'Cancel'}</button>${locked ? '' : `<button class="btn ${mode === 'walkin' ? 'teal' : 'green'}" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</button>`}</div></div>${side}</div></div></div>`;
 }
 function readForm() {
-  const r = ED.r, v = k => { const el = $('#r_' + k); return el ? el.value : r[k]; };
-  for (const k of ['last', 'first', 'phone', 'email', 'addr1', 'city', 'state', 'zip', 'guestId', 'vehicle', 'guarantee', 'payType', 'cardType', 'cardLast4', 'source', 'requests', 'notes', 'arrive', 'depart', 'type', 'room']) r[k] = v(k);
-  r.adults = +v('adults') || 1; r.children = +v('children') || 0; r.groupId = +v('groupId') || 0; r.companyId = +v('companyId') || 0; r.pkg = v('pkg') || '';
-  if (r.rateManual) { const c = toCents(v('rate')); if (isNaN(c)) r.rateManual = false; else r.rate = c; }
-  for (const k of ['taxExempt', 'vip', 'noPost']) r[k] = $('#r_' + k).checked;
+  const r = ED.r, el = k => $('#r_' + k);   // only the fields on the screen are read; the rest keep their values
+  for (const k of ['last', 'first', 'phone', 'email', 'addr1', 'addr2', 'country', 'city', 'state', 'zip', 'guestId', 'vehicle', 'guarantee', 'payType', 'cardType', 'cardLast4', 'source', 'requests', 'notes', 'arrive', 'depart', 'type', 'room']) if (el(k)) r[k] = el(k).value;
+  if (el('adults')) r.adults = +el('adults').value || 1; if (el('children')) r.children = +el('children').value || 0;
+  if (el('groupId')) r.groupId = +el('groupId').value || 0; if (el('companyId')) r.companyId = +el('companyId').value || 0; if (el('pkg')) r.pkg = el('pkg').value || '';
+  if (el('rate') && r.rateManual) { const c = toCents(el('rate').value); if (isNaN(c)) r.rateManual = false; else r.rate = c; }
+  for (const k of ['taxExempt', 'vip', 'noPost', 'crib', 'rollaway', 'suppressRate']) if (el(k)) r[k] = el(k).checked;
 }
 let drawing = false;   // replacing the window can fire a field's "change" again; ignore that second call
-function drawRes() { if (drawing) return; drawing = true; try { $('#modal').innerHTML = resForm(ED.r, ED.mode); } finally { drawing = false; } }
-function openNew(mode, room, date) {
-  const rm = S.config.rooms.find(x => x.no === room), arrive = mode === 'walkin' ? B() : (date || B());
-  ED = { mode, r: { id: 0, status: 'reserved', arrive, depart: addDays(arrive, 1), type: rm ? rm.type : S.config.types[0].code, room: room || '', adults: 1, children: 0, rate: null, guarantee: mode === 'walkin' ? 'Cash deposit' : 'Credit card', source: mode === 'walkin' ? 'Walk-In' : 'Phone' } };
-  drawRes(); $('#r_last').focus();
+function drawRes() {
+  if (drawing) return; drawing = true;
+  try { $('#modal').innerHTML = ED.mode === 'edit' ? resForm(ED.r, ED.mode) : wizForm(); } finally { drawing = false; }
+  if (ED.mode !== 'edit' && ED.step === 3 && $('#r_last') && !$('#r_last').value) $('#r_last').focus();
 }
 async function openRes(id) { let r = S.res.find(x => x.id === +id); if (!r) { const f = await api('/folio?id=' + id); r = f.res; S.bal[r.id] = f.balance; } ED = { mode: 'edit', r: JSON.parse(JSON.stringify(r)) }; drawRes(); }
+
+/* ---------- Do Not Rent: does this guest match a list entry? (guest ID letters and digits, or last AND first name) ---------- */
+function dnrMatchC(r) {
+  const idn = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase(), nm = x => String(x || '').trim().toLowerCase();
+  return (S.dnr || []).find(e => (idn(e.guestId) && idn(e.guestId) === idn(r.guestId)) || (nm(e.last) && nm(e.first) && nm(e.last) === nm(r.last) && nm(e.first) === nm(r.first))) || null;
+}
+const dnrBanHtml = r => { const e = dnrMatchC(r); return e ? 'DO NOT RENT: ' + esc(e.reason) : ''; };
+const dnrBanner = r => `<div class="dnrban" id="dnrBan" ${dnrMatchC(r) ? '' : 'hidden'}>${dnrBanHtml(r)}</div>`;
+function dnrBanUpdate() {   // follows what is typed, without redrawing the page
+  const b = $('#dnrBan'); if (!b || !ED) return; const v = k => { const el = $('#r_' + k); return el ? el.value : ED.r[k]; };
+  const t = { last: v('last'), first: v('first'), guestId: v('guestId') }; b.innerHTML = dnrBanHtml(t); b.hidden = !dnrMatchC(t);
+}
+const dnrDate = e => { const d = e.bdate || new Date(e.at).toISOString().slice(0, 10); return +d.slice(5, 7) + '/' + +d.slice(8, 10) + '/' + d.slice(0, 4); };
+
+/* ---------- New reservation and Walk-In: a wizard in four steps (ED.step 1 to 4) ---------- */
+function stayCalc(r, type) {   // nights, nightly rates and the estimated total for a stay; `type` tries another room type
+  const n = Math.max(0, nights(r.arrive, r.depart)), taxPct = r.taxExempt ? 0 : S.config.taxes.filter(x => ((S.config.codes.find(k => k.code === 'RM') || {}).tax || []).includes(x.code)).reduce((s, x) => s + x.pct, 0);
+  const r2 = { ...r, type: type || r.type }, std = r.arrive < r.depart ? quote(r2) : [rateFor(r2.type, r.arrive)], manual = !!r.rateManual && r.rate != null, nightly = manual ? std.map(() => r.rate) : std;
+  const pk = r.pkg && (S.config.packages || []).find(x => x.code === r.pkg);
+  return { n, nightly, manual, pk, varies: new Set(nightly).size > 1, est: Math.round((nightly.reduce((a, b) => a + b, 0) + (pk ? pk.price * n : 0)) * (1 + taxPct / 100)) };
+}
+const rateHint = (r, c) => c.manual ? `Rate typed by hand: ${money(r.rate)} every night.` : c.varies ? 'The rate changes by night: ' + c.nightly.map((v, i) => dshort(addDays(r.arrive, i)).replace(/\/\d+$/, '') + ' ' + money(v)).join(', ') + '. Type a rate to charge one rate every night.' : 'Standard rate. Type a different rate to override it.';
+const grpOptHtml = r => `<option value="0">No group</option>` + S.groups.filter(g => g.status !== 'cancelled' && (g.id === +r.groupId || (g.arrive <= r.arrive && r.depart <= g.depart))).map(g => `<option value="${g.id}" ${g.id === +r.groupId ? 'selected' : ''}>${esc(g.name)}</option>`).join('');
+function startWiz(mode, r, chosen) { ED = { mode, step: 1, r, hi: chosen ? r.type : '', gs: [], gsq: '', gsby: 'name', gsDone: false }; drawRes(); }
+function openNew(mode, room, date) {
+  const rm = S.config.rooms.find(x => x.no === room), arrive = mode === 'walkin' ? B() : (date || B());
+  startWiz(mode, { id: 0, status: 'reserved', arrive, depart: addDays(arrive, 1), type: rm ? rm.type : S.config.types[0].code, room: room || '', adults: 1, children: 0, rate: null, country: 'United States', guarantee: mode === 'walkin' ? 'Cash deposit' : 'Credit card', source: mode === 'walkin' ? 'Walk-In' : 'Phone' }, !!rm);
+}
+function wizSide(step) {
+  const r = ED.r, c = stayCalc(r), tp = S.config.types.find(t => t.code === r.type), co = r.companyId && S.companies.find(x => x.id === +r.companyId), g = r.groupId && S.groups.find(x => x.id === +r.groupId);
+  const blk = (n, title, st, rows) => `<div class="wzb"><span class="wzn">${n}</span><b>${title}</b><button class="btn sm blue" data-act="wizGo" data-step="${st}">EDIT</button></div><dl>${rows.map(x => `<dt>${x[0]}:</dt><dd${x[2] ? ` id="${x[2]}"` : ''}>${x[1]}</dd>`).join('')}</dl>`;
+  const b1 = blk(1, 'Stay Info', 1, [['Arrival', dshort(r.arrive)], ['Nights', c.n], ['Departure', dshort(r.depart)], ['Rooms', 1], ['Adults', r.adults || 1], ['Children', r.children || 0], ['Rate Plan', c.pk ? esc(c.pk.name) : 'BAR'], ['Company', esc(co ? co.name : '') || 'None'], ['Group', esc(g ? g.name : '') || 'None']]);
+  const b2 = blk(2, 'Room &amp; Rate Info', 2, [['Room Type', esc(r.type) + (tp ? ' · ' + esc(tp.name) : '')], ['Rate', money(c.nightly[0] || 0) + (c.varies ? ' <span class="hint">varies</span>' : '')], ['Estimated Total Cost', money(c.est), 'wzEst'], ['Assigned Room', esc(r.room) || 'Not assigned']]);
+  const b3 = blk(3, 'Guest Info', 3, [['Name', esc(gname(r)) || '-'], ['Phone', esc(r.phone) || '-'], ['City / State', esc([r.city, r.state].filter(Boolean).join(', ')) || '-']]);
+  return b1 + (step >= 3 ? b2 : '') + (step >= 4 ? b3 : '');
+}
+function gsHtml() {
+  if (!ED.gsDone) return '';
+  return ED.gs.length ? ED.gs.map((g, i) => `<a href="#" class="gsrow" data-act="guestPick" data-i="${i}"><b>${esc(gname(g))}</b><span>${esc([g.city, g.state].filter(Boolean).join(', '))}${g.phone ? ' · ' + esc(g.phone) : ''}</span></a>`).join('') : '<div class="hint">No past guests found.</div>';
+}
+function wizForm() {
+  const r = ED.r, step = ED.step, walk = ED.mode === 'walkin', c = stayCalc(r, step === 2 ? (ED.hi || r.type) : null);
+  const titles = ['Stay Information', 'Room & Rate', 'Guest Information', 'Payment Information'];
+  const track = `<div class="wztrack"><b>${walk ? 'Walk-In' : 'New Reservation'}</b>` + ['Stay', 'Room & Rate', 'Guest', 'Payment'].map((x, i) => `<span class="${i + 1 === step ? 'on' : ''}">${i + 1} ${esc(x)}</span>`).join('') + '</div>';
+  const F = (k, label, extra) => `<label for="r_${k}">${label}</label><input id="r_${k}" value="${esc(r[k] == null ? '' : r[k])}" ${extra || ''}>`;
+  const CK = (k, label) => `<label for="r_${k}">${label}</label><input type="checkbox" id="r_${k}" ${r[k] ? 'checked' : ''}>`;
+  const SEL = (k, label, list) => `<label for="r_${k}">${label}</label><select id="r_${k}">${list.map(x => `<option ${r[k] === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`;
+  let main = '', side = '';
+  if (step === 1) {
+    const n = nights(r.arrive, r.depart);
+    main = `<p class="hint wzreq">*Required</p><div class="wzf">
+      <label for="r_arrive">*Arrival</label><input type="date" id="r_arrive" value="${esc(r.arrive)}" ${walk ? 'disabled' : ''}>
+      <label for="r_nights">*Nights</label><input type="number" id="r_nights" min="1" max="365" value="${n > 0 ? n : ''}">
+      <label for="r_depart">*Departure</label><input type="date" id="r_depart" value="${esc(r.depart)}">
+      <label for="wz_rooms">*Rooms</label><input id="wz_rooms" value="1" disabled>
+      <label for="r_adults">*Adults</label><input type="number" id="r_adults" min="1" value="${r.adults || 1}">
+      <label for="r_children">Children</label><input type="number" id="r_children" min="0" value="${r.children || 0}">
+      <label for="r_companyId">Company Profile Name</label><select id="r_companyId"><option value="0"></option>${S.companies.filter(x => !x.inactive || x.id === +r.companyId).sort((a, b) => a.name.localeCompare(b.name)).map(x => `<option value="${x.id}" ${x.id === +r.companyId ? 'selected' : ''}>${esc(x.name)}${x.directBill ? ' · direct bill' : ''}</option>`).join('')}</select>
+      <label for="r_groupId">Pickup Group</label><select id="r_groupId">${grpOptHtml(r)}</select>
+      <label>Rate Plan</label><div class="wzrp">BAR · Best Available Rate</div>
+      <label for="r_pkg">Package</label><select id="r_pkg"><option value="">No package</option>${(S.config.packages || []).map(k => `<option value="${esc(k.code)}" ${k.code === r.pkg ? 'selected' : ''}>${esc(k.name)} · ${money(k.price)} / night</option>`).join('')}</select></div>
+      <div class="err" id="r_err"></div><button class="btn blue wzbtn" data-act="wizNext">SEARCH AVAILABILITY</button>`;
+    side = `<h3>Guest Search</h3><div class="wzgs"><label for="gs_by">Search Guest By:</label><select id="gs_by"><option value="name" ${ED.gsby === 'name' ? 'selected' : ''}>Name</option><option value="phone" ${ED.gsby === 'phone' ? 'selected' : ''}>Phone</option></select><input id="gs_q" value="${esc(ED.gsq)}" autocomplete="off" aria-label="Guest search"><button class="btn blue" data-act="guestFind">FIND GUEST</button><div id="gs_res">${gsHtml()}</div></div>`;
+  } else if (step === 2) {
+    const hi = ED.hi, from = r.arrive, rooms = hi ? S.config.rooms.filter(x => x.type === hi && (x.no === r.room || roomFree(x.no, from, r.depart, 0))) : [];
+    main = `<div class="wrap"><table class="wzt"><tr><th>Type</th><th>Description</th><th class="num">Available</th><th class="num">Rate</th><th class="num">Estimated Total</th><th></th></tr>${S.config.types.map(t => { const av = Math.max(0, availOfType(t.code, from, r.depart, 0, r.groupId)), q = stayCalc({ ...r, rateManual: false }, t.code); return `<tr class="click ${t.code === hi ? 'hi' : ''}" data-act="wizHi" data-type="${esc(t.code)}"><td><b>${esc(t.code)}</b></td><td>${esc(t.name)}</td><td class="num">${av}</td><td class="num">${money(q.nightly[0] || 0)}${q.varies ? ' <span class="hint">varies</span>' : ''}</td><td class="num">${money(q.est)}</td><td class="num"><button class="btn sm blue" data-act="wizType" data-type="${esc(t.code)}" ${av < 1 ? 'disabled' : ''}>SELECT</button></td></tr>`; }).join('')}</table></div>
+      <p class="hint" style="margin:6px 0 0">Estimated Total is the room nights${c.pk ? ' and the package' : ''} plus tax. ${walk ? 'For a walk-in, click a room type, pick the room below, then SELECT.' : 'Click a row to see its rooms below.'}</p>
+      <div class="wzf" style="margin-top:12px"><label for="r_room">Assigned Room:</label><select id="r_room" ${hi ? '' : 'disabled'}><option value="">${hi ? (walk ? 'Pick a room' : 'Not assigned yet') : 'Click a room type above'}</option>${rooms.map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select>
+      <label for="r_rate">Rate / night</label><input id="r_rate" inputmode="decimal" value="${((c.nightly[0] || 0) / 100).toFixed(2)}"></div>
+      <p class="hint" style="margin:6px 0 0"><span id="rateHint">${rateHint(r, c)}</span> <a href="#" data-act="rateStd" id="rateLink" ${c.manual ? '' : 'hidden'}>Use the standard rate</a></p><div class="err" id="r_err"></div>${hi ? '<button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button>' : ''}`;
+    side = wizSide(2);
+  } else if (step === 3) {
+    main = `<div class="wz3"><div class="wzcol"><div class="wzf cmp">${F('last', '*Last Name', 'maxlength="60"')}${F('first', 'First Name', 'maxlength="60"')}${F('addr1', 'Address 1', 'maxlength="100"')}${F('addr2', 'Address 2', 'maxlength="100"')}${F('country', 'Country', 'maxlength="40"')}${F('zip', 'Postal Code', 'maxlength="15"')}${F('city', 'City', 'maxlength="60"')}${F('state', 'State', 'maxlength="30"')}${F('phone', 'Phone', 'maxlength="30" inputmode="tel"')}${F('email', 'E-mail', 'maxlength="100"')}${F('guestId', 'Guest ID', 'maxlength="40"')}${CK('taxExempt', 'Tax Exempt')}${F('vehicle', 'Vehicle ID', 'maxlength="40"')}${CK('vip', 'VIP')}</div>
+      <div class="err" id="r_err"></div><button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button></div>
+      <div class="wzcol"><h3>Notes and Special Requests</h3><div class="wzf cmp">${CK('crib', 'Crib')}${CK('rollaway', 'Rollaway')}${CK('suppressRate', 'Suppress Rate')}${CK('noPost', 'No room charge')}${F('requests', 'Special requests', 'maxlength="300"')}${F('notes', 'Notes', 'maxlength="1000"')}</div><button class="btn wzbtn" data-act="scanId">SCAN ID</button></div></div>`;
+    side = wizSide(3);
+  } else {
+    main = `<div class="wzf">${SEL('guarantee', 'Guarantee', ['Credit card', 'Cash deposit', 'Direct bill', '6 PM hold (no guarantee)'])}${SEL('payType', 'Pays with', ['', 'Card', 'Cash', 'Check', 'Direct bill'])}${SEL('cardType', 'Card type', ['', 'Visa', 'MC', 'Amex', 'Discover'])}
+      <label for="r_cardLast4">Card last 4</label><input id="r_cardLast4" maxlength="4" inputmode="numeric" value="${esc(r.cardLast4 || '')}">${SEL('source', 'Source', ['Phone', 'Walk-In', 'Website', 'Travel agent', 'Company', 'Other'])}</div>
+      <p class="hint" style="margin:10px 0 0">Card numbers are never saved here, only the card type and last 4 digits. Run the card on your card terminal.</p><div class="err" id="r_err"></div>
+      <button class="btn blue wzbtn" data-act="saveRes">${walk ? 'CHECK IN NOW' : 'BOOK RESERVATION'}</button>`;
+    side = wizSide(4);
+  }
+  return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain wz">${step >= 3 ? dnrBanner(r) : ''}<div class="mtitle">${titles[step - 1]}</div>${track}${main}</div><aside class="pside wz">${side}<h3>Actions</h3><div class="alinks"><a href="#" data-act="closeModal">Cancel</a></div></aside></div></div></div>`;
+}
+const wizErr = m => { const e = $('#r_err'); if (e) e.textContent = m; return false; };
+function wizNext() {
+  readForm(); const r = ED.r, okD = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(Date.parse(d + 'T00:00:00Z'));
+  if (ED.step === 1) {
+    if (!okD(r.arrive) || !okD(r.depart) || r.depart <= r.arrive) return wizErr('Check the dates: the departure must be after the arrival.');
+    if (r.arrive < B()) return wizErr('The arrival date is before today\'s business date (' + dshort(B()) + ').');
+    if (nights(r.arrive, r.depart) > 365) return wizErr('A stay can be at most 365 nights.');
+    if (r.room && !roomFree(r.room, r.arrive, r.depart, 0)) r.room = '';
+    ED.step = 2;
+  } else if (ED.step === 2) {
+    const type = ED.hi; if (!type) return wizErr('Pick a room type: click SELECT on a row.');
+    const rm = r.room && S.config.rooms.find(x => x.no === r.room); if (rm && rm.type !== type) r.room = '';
+    if (!r.room && availOfType(type, r.arrive, r.depart, 0, r.groupId) < 1) return wizErr('No ' + type + ' rooms are left for those dates. Pick another room type.');
+    r.type = type; ED.step = 3;
+  } else if (ED.step === 3) {
+    if (!String(r.last || '').trim()) return wizErr('Type the guest\'s last name.');
+    ED.step = 4;
+  }
+  drawRes();
+}
+async function guestFind() {
+  const by = $('#gs_by').value, raw = $('#gs_q').value.trim(); ED.gsby = by; ED.gsq = raw; const q = by === 'phone' ? raw.replace(/\D/g, '') : raw;
+  if (q.length < (by === 'phone' ? 3 : 2)) { ED.gs = []; ED.gsDone = false; $('#gs_res').innerHTML = `<div class="hint">Type at least ${by === 'phone' ? '3 digits of the phone number' : '2 letters of the name'}.</div>`; return; }
+  const found = (await api('/find?q=' + encodeURIComponent(q))).list, seen = new Set(), out = [];
+  for (const g of found) { const key = [g.last, g.first, g.phone, g.city].join('|').toLowerCase(); if (!seen.has(key)) { seen.add(key); out.push(g); } }
+  if (!ED) return; ED.gs = out.slice(0, 8); ED.gsDone = true; $('#gs_res').innerHTML = gsHtml();
+}
+function guestPick(i) {
+  const g = ED.gs[+i]; if (!g) return; readForm();
+  for (const k of ['last', 'first', 'addr1', 'addr2', 'country', 'zip', 'city', 'state', 'phone', 'email', 'guestId', 'vehicle']) if (g[k]) ED.r[k] = g[k];
+  if (g.companyId && S.companies.some(c => c.id === +g.companyId && !c.inactive)) ED.r.companyId = +g.companyId;
+  drawRes(); toast('Guest details copied. The dates were not changed.');
+}
+function wizChanged(id) {   // typing in the wizard never redraws the page, so a click on the next button is never lost
+  const r = ED.r, oldN = nights(r.arrive, r.depart); readForm();
+  if (id === 'r_nights') r.depart = addDays(r.arrive, Math.max(1, +$('#r_nights').value || 1));
+  if (id === 'r_arrive' && r.arrive) r.depart = addDays(r.arrive, Math.max(1, oldN));
+  if (id === 'r_rate') { const c = toCents($('#r_rate').value); r.rateManual = !isNaN(c); if (r.rateManual) r.rate = c; const c2 = stayCalc(r, ED.hi || r.type), h = $('#rateHint'); if (h) { h.textContent = rateHint(r, c2); $('#rateLink').hidden = !c2.manual; } }
+  if (ED.step === 1 && ['r_nights', 'r_arrive', 'r_depart'].includes(id)) { const n = nights(r.arrive, r.depart); $('#r_nights').value = n > 0 ? n : ''; $('#r_depart').value = r.depart; if (!(r.arrive < r.depart) || !S.groups.some(g => g.id === +r.groupId && g.arrive <= r.arrive && r.depart <= g.depart)) r.groupId = 0; $('#r_groupId').innerHTML = grpOptHtml(r); }
+  if (ED.step === 3 && id === 'r_taxExempt') { const e = $('#wzEst'); if (e) e.textContent = money(stayCalc(r).est); }
+}
 function resFieldChanged(id) {
-  if (!ED || !/^r_/.test(id)) return; const r = ED.r, old = { type: r.type, a: r.arrive, d: r.depart }; const oldN = nights(r.arrive, r.depart); readForm();
+  if (!ED || !/^r_/.test(id)) return; if (ED.mode !== 'edit') return wizChanged(id);
+  const r = ED.r, old = { type: r.type, a: r.arrive, d: r.depart }; const oldN = nights(r.arrive, r.depart); readForm();
   if (id === 'r_nights') r.depart = addDays(r.arrive, Math.max(1, +$('#r_nights').value || 1));
   if (id === 'r_arrive' && r.arrive) r.depart = addDays(r.arrive, oldN);
   if (id === 'r_rate') { const c = toCents($('#r_rate').value); r.rateManual = !isNaN(c); if (r.rateManual) r.rate = c; }
@@ -345,17 +476,26 @@ function resFieldChanged(id) {
   if (['r_nights', 'r_arrive', 'r_depart', 'r_type', 'r_taxExempt', 'r_rate', 'r_room', 'r_groupId', 'r_companyId', 'r_pkg'].includes(id)) { if (r.room && !(r.arrive < r.depart && (roomFree(r.room, r.status === 'inhouse' && B() > r.arrive ? B() : r.arrive, r.depart, r.id)))) r.room = ''; drawRes(); }
 }
 async function saveRes() {
-  readForm(); const r = ED.r, a = { ...r, rateManual: !!r.rateManual }; delete a.status; delete a.history; delete a.rates; if (!a.rateManual) delete a.rate;
-  const go = async dirtyOk => { if (ED.mode === 'walkin') return op('walkIn', { ...a, dirtyOk }); return op('resSave', a); };
+  readForm(); const r = ED.r, wiz = ED.mode !== 'edit';
+  if (wiz) {
+    if (!String(r.last || '').trim()) return wizErr('Type the guest\'s last name (click EDIT beside Guest Info).');
+    if (!(r.arrive < r.depart)) return wizErr('Check the dates: the departure must be after the arrival.');
+    if (ED.mode === 'walkin' && !r.room) return wizErr('Pick a room for the walk-in: click EDIT beside Room & Rate Info.');
+  }
+  const a = { ...r, rateManual: !!r.rateManual }; delete a.status; delete a.history; delete a.rates; if (!a.rateManual) delete a.rate;
+  const flags = {}, go = () => ED.mode === 'walkin' ? op('walkIn', { ...a, ...flags }) : op('resSave', { ...a, ...flags });
   try {
-    let res; try { res = await go(false); } catch (e) { if (e.status === 412 && confirm(e.message)) res = await go(true); else throw e; }
+    let res;
+    for (;;) {   // the server may ask first: dirty room (412), Do Not Rent guest (428). OK tries again with the answer; Cancel stays on the form.
+      try { res = await go(); break; } catch (e) { if (e.status === 412 && !flags.dirtyOk && confirm(e.message)) flags.dirtyOk = true; else if (e.status === 428 && !flags.dnrOk && confirm(e.message)) flags.dnrOk = true; else throw e; }
+    }
     $('#modal').innerHTML = ''; ED = null; await refresh(); toast(r.id ? 'Saved.' : (res.conf ? 'Booked. Confirmation # ' + res.conf : 'Saved.'));
-  } catch (e) { $('#r_err').textContent = e.message; }
+  } catch (e) { const el = $('#r_err'); if (el) el.textContent = e.message; }
 }
 async function resAction(act) {
   const r = ED.r, done = async msg => { await refresh(); toast(msg); const fresh = S.res.find(x => x.id === r.id); if (fresh) { ED.r = JSON.parse(JSON.stringify(fresh)); drawRes(); } else { $('#modal').innerHTML = ''; ED = null; } };
   try {
-    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); try { await op('checkIn', { id: r.id }); } catch (e) { if (e.status === 412 && confirm(e.message)) await op('checkIn', { id: r.id, dirtyOk: true }); else throw e; } await done('Checked in to room ' + r.room + '.'); }
+    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); const fl = {}; for (;;) { try { await op('checkIn', { id: r.id, ...fl }); break; } catch (e) { if (e.status === 412 && !fl.dirtyOk && confirm(e.message)) fl.dirtyOk = true; else if (e.status === 428 && !fl.dnrOk && confirm(e.message)) fl.dnrOk = true; else throw e; } } await done('Checked in to room ' + r.room + '.'); }
     else if (act === 'checkOut') { try { await op('checkOut', { id: r.id }); } catch (e) { if (e.status === 412 && boss() && confirm(e.message + '\n\nCheck out anyway and leave the balance on the folio?')) await op('checkOut', { id: r.id, force: true }); else if (e.status === 412) { toast(e.message, true); return openFolio(r.id); } else throw e; } await done('Checked out.'); }
     else if (act === 'undoCheckIn') { if (confirm('Undo the check-in for ' + gname(r) + '?')) { await op('undoCheckIn', { id: r.id }); await done('Check-in undone.'); } }
     else if (act === 'undoCheckOut') { await op('undoCheckOut', { id: r.id }); await done('Guest is back in house.'); }
@@ -399,8 +539,8 @@ async function postSave(kind) {
 /* ---------- printing ---------- */
 function printHtml(html) { $('#print').innerHTML = html; window.print(); }
 const letterHead = () => `<h1>${esc(S.config.name)}</h1><div>${esc(S.config.address)}${S.config.phone ? ' · ' + esc(S.config.phone) : ''}</div><hr>`;
-function printReg(r) { printHtml(letterHead() + `<h2>Guest Registration</h2><table><tr><td><b>Guest</b></td><td>${esc(gname(r))}</td><td><b>Conf. #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Address</b></td><td>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}</td><td><b>Phone</b></td><td>${esc(r.phone)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)}</td><td><b>Departure</b></td><td>${dlong(r.depart)}</td></tr><tr><td><b>Room</b></td><td>${esc(r.room || '')} (${esc(r.type)})</td><td><b>Rate</b></td><td>${money(r.rate)} plus tax, per night</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td><td><b>Vehicle</b></td><td>${esc(r.vehicle)}</td></tr><tr><td><b>Company</b></td><td>${esc(r.company)}</td><td><b>E-mail</b></td><td>${esc(r.email)}</td></tr></table><p>Check-out time is ${esc(S.config.checkoutTime)}.</p><p>${esc(S.config.regText)}</p><p style="margin-top:40px">Guest signature: ______________________________________ &nbsp; Date: ______________</p>`); }
-function printConf(r) { printHtml(letterHead() + `<h2>Reservation Confirmation</h2><p>Dear ${esc(r.first || '')} ${esc(r.last)},</p><p>Thank you for choosing ${esc(S.config.name)}. Your reservation is confirmed.</p><table><tr><td><b>Confirmation #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)} (check-in from ${esc(S.config.checkinTime)})</td></tr><tr><td><b>Departure</b></td><td>${dlong(r.depart)} (check-out by ${esc(S.config.checkoutTime)})</td></tr><tr><td><b>Room type</b></td><td>${esc((S.config.types.find(t => t.code === r.type) || {}).name || r.type)}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td></tr><tr><td><b>Rate</b></td><td>${money(r.rate)} plus tax, per night</td></tr><tr><td><b>Guarantee</b></td><td>${esc(r.guarantee || '')}</td></tr></table><p>We look forward to your stay.</p>`); }
+function printReg(r) { printHtml(letterHead() + `<h2>Guest Registration</h2><table><tr><td><b>Guest</b></td><td>${esc(gname(r))}</td><td><b>Conf. #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Address</b></td><td>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}</td><td><b>Phone</b></td><td>${esc(r.phone)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)}</td><td><b>Departure</b></td><td>${dlong(r.depart)}</td></tr><tr><td><b>Room</b></td><td>${esc(r.room || '')} (${esc(r.type)})</td><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td><td><b>Vehicle</b></td><td>${esc(r.vehicle)}</td></tr><tr><td><b>Company</b></td><td>${esc(r.company)}</td><td><b>E-mail</b></td><td>${esc(r.email)}</td></tr></table><p>Check-out time is ${esc(S.config.checkoutTime)}.</p><p>${esc(S.config.regText)}</p><p style="margin-top:40px">Guest signature: ______________________________________ &nbsp; Date: ______________</p>`); }
+function printConf(r) { printHtml(letterHead() + `<h2>Reservation Confirmation</h2><p>Dear ${esc(r.first || '')} ${esc(r.last)},</p><p>Thank you for choosing ${esc(S.config.name)}. Your reservation is confirmed.</p><table><tr><td><b>Confirmation #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)} (check-in from ${esc(S.config.checkinTime)})</td></tr><tr><td><b>Departure</b></td><td>${dlong(r.depart)} (check-out by ${esc(S.config.checkoutTime)})</td></tr><tr><td><b>Room type</b></td><td>${esc((S.config.types.find(t => t.code === r.type) || {}).name || r.type)}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td></tr><tr><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guarantee</b></td><td>${esc(r.guarantee || '')}</td></tr></table><p>We look forward to your stay.</p>`); }
 function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Folio</h2><p><b>${esc(gname(r))}</b><br>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}<br>Room ${esc(r.room)} · ${dshort(r.arrive)} to ${dshort(r.depart)} · Conf. # ${esc(r.conf)}${r.company ? '<br>' + esc(r.company) : ''}</p>` + folioTable(FO) + '<p style="margin-top:30px">Guest signature: ______________________________________</p>'); }
 
 /* ---------- Reports ---------- */
@@ -587,7 +727,7 @@ async function drawReport() {
   try { const r = await buildReport(); out.innerHTML = r.html; out.dataset.title = r.title; }
   catch (e) { out.innerHTML = sheet(repTitle(), `<div class="err">${esc(e.message)}</div>`); }
 }
-const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc(st.note || '')}</td><td>☐</td></tr>`; }).join('')}</table>`;
+const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc([hkPreText(rm.no), st.note].filter(Boolean).join(' · '))}</td><td>☐</td></tr>`; }).join('')}</table>`;
 async function nightAudit() {
   const s = S.stats;
   if (!confirm(`Run the night audit for ${dlong(B())}?\n\n• Posts tonight's room charge and tax to ${s.sold} in-house rooms\n• Marks ${s.arrivalsLeft} arrivals that did not check in as no shows\n• Extends ${s.dueOut} guests who were due out but are still checked in\n• Moves the business date to ${dlong(addDays(B(), 1))}\n\nThis cannot be undone.`)) return;
@@ -633,6 +773,14 @@ function grpDraw() {
 }
 const grpMembers = () => `<table><tr><th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th><th>Type</th><th>Room</th><th class="num">Rate</th><th class="num">Balance</th><th>Conf. #</th></tr>${GR.members.sort(byName).map(r => `<tr class="click" data-act="openRes" data-id="${r.id}"><td><b>${esc(gname(r))}</b></td><td>${statusBadge(r)}</td><td>${dshort(r.arrive)}</td><td>${dshort(r.depart)}</td><td>${esc(r.type)}</td><td>${esc(r.room)}</td><td class="num">${money(r.rate)}</td><td class="num">${money(r.bal)}</td><td>${esc(r.conf)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">No reservations in this group yet.</td></tr>'}</table>`;
 
+/* ---------- Do Not Rent List screen ---------- */
+function vDnr() {
+  const q = view.q.trim().toUpperCase(), all = S.dnr || [], list = all.filter(e => !q || [e.last, e.first, e.guestId, e.phone, e.reason, e.by].join(' ').toUpperCase().includes(q));
+  return `<h1 class="pgt-c">Do Not Rent List</h1>${all.length ? '' : '<div class="lst-empty">Nobody is on the Do Not Rent list.</div>'}
+  <div class="lst-bar"><span>Entries: <b>${list.length}</b></span><button class="btn sm green" data-act="dnrNew">+ Add</button><button class="btn sm" data-act="dnrCsv">Export .CSV</button><span class="flex"></span><label class="lst-q">Quick Search: <input id="q" value="${esc(view.q)}"></label></div>
+  <div class="wrap"><table class="lst"><tr><th>Name</th><th>Guest ID</th><th>Phone</th><th>Reason</th><th>Added By</th><th>Date</th><th></th></tr>${list.map(e => `<tr><td><b>${esc(gname(e).toUpperCase())}</b></td><td>${esc(e.guestId)}</td><td>${esc(e.phone)}</td><td>${esc(e.reason)}</td><td>${esc(e.by)}</td><td>${esc(dnrDate(e))}</td><td>${boss() ? `<button class="btn sm red" data-act="dnrDel" data-id="${e.id}">Remove</button>` : ''}</td></tr>`).join('')}</table></div>`;
+}
+
 /* ---------- Cashier shift ---------- */
 async function shiftBox() {
   if (!S.shift) { $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle">Open my cashier shift</div><div class="grid"><label class="c12">Cash in the drawer now<input id="sh_cash" inputmode="decimal" value="0.00"></label></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="shiftOpen">Open shift</button></div></div></div>`; $('#sh_cash').select(); return; }
@@ -642,7 +790,22 @@ async function shiftBox() {
 const shiftTable = (x, openCash) => `<div class="wrap"><table><tr><th>Payment type</th><th class="num">Count</th><th class="num">Total</th></tr>${x.by.map(b => `<tr><td>${esc(b.name)}</td><td class="num">${b.cnt}</td><td class="num">${money(b.total)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">No payments taken yet.</td></tr>'}<tr><td colspan="2" class="num">Opening cash</td><td class="num">${money(openCash)}</td></tr><tr><td colspan="2" class="num">Cash taken in</td><td class="num">${money(x.cashIn)}</td></tr><tr><td colspan="2" class="num"><b>Cash that should be in the drawer</b></td><td class="num"><b>${money(x.expected)}</b></td></tr></table></div>`;
 
 /* ---------- Scan ID: a 2D barcode scanner reads the back of a driver's license and types it here ---------- */
-function scanBox() { readForm(); $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="scan"><div class="mbox sm"><div class="mtitle">Scan ID</div><p class="hint">Click in the box, then scan the barcode on the <b>back</b> of the driver's license or state ID with your 2D barcode scanner.</p><textarea id="scanTxt" rows="5" autocomplete="off" spellcheck="false" style="font-size:12px"></textarea><div class="err" id="scanErr"></div><div class="mfoot"><button class="btn" data-act="scanCancel">Cancel</button><button class="btn green" data-act="scanUse">Fill in the guest</button></div></div></div>`); $('#scanTxt').focus(); }
+const scanState = { manual: false, t: 0 };
+function scanBox() {
+  readForm(); if ($('#scan')) return; scanState.manual = false;
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="scanov" id="scan"><div class="scanbox"><div class="scantxt">SCANNING PLEASE WAIT…</div><div class="scanbar"><i></i></div><div class="err scanerr" id="scanErr"></div>
+    <textarea id="scanTxt" class="scancap" rows="5" autocomplete="off" spellcheck="false" aria-label="Scanned ID text"></textarea>
+    <div id="scanManual" hidden><div class="mfoot" style="margin-top:6px"><button class="btn green" data-act="scanUse">Fill in the guest</button></div></div>
+    <div class="scanlinks"><a href="#" data-act="scanCancel">Cancel</a><a href="#" data-act="scanType" id="scanTypeLink">Type or paste instead</a></div></div></div>`);
+  $('#scanTxt').focus();
+}
+function scanClose() { clearTimeout(scanState.t); const b = $('#scan'); if (b) b.remove(); }
+function scanFill(g) { scanClose(); if (!ED) return; Object.assign(ED.r, Object.fromEntries(Object.entries(g).filter(x => x[1]))); drawRes(); }   // guest fields only: the stay is not touched
+function scanRead() {   // 400 ms after the last character from the scanner
+  const t = $('#scanTxt'); if (!t || scanState.manual || !t.value.trim()) return;
+  const g = parseLicense(t.value); if (g.last) return scanFill(g);
+  $('#scanErr').textContent = 'That did not read as an ID barcode. Scan the large barcode on the back of the card.'; t.value = '';
+}
 function parseLicense(t) {   // AAMVA format used by US and Canadian licenses
   const get = code => { const m = new RegExp('(?:^|[\\n\\r\\x1e]|DL|ID)' + code + '([^\\n\\r\\x1e]*)').exec(t); return m ? m[1].trim() : ''; };
   const tidy = x => x.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
@@ -716,14 +879,27 @@ document.addEventListener('click', async e => {
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
   if (a === 'openRes') return run(() => openRes(el.dataset.id));
-  if (a === 'closeModal') { $('#modal').innerHTML = ''; ED = null; FO = null; CO = null; GR = null; return; }
+  if (a === 'closeModal') { clearTimeout(scanState.t); $('#modal').innerHTML = ''; ED = null; FO = null; CO = null; GR = null; return; }
   if (a === 'closeHist') { $('#hist').remove(); return; }
   if (a === 'saveRes') return saveRes();
   if (['checkIn', 'checkOut', 'undoCheckIn', 'undoCheckOut', 'cancelRes', 'noShow', 'reinstate', 'folio', 'viewChanges', 'printReg', 'printConf'].includes(a)) return resAction(a);
   if (a === 'rateStd') { readForm(); ED.r.rateManual = false; return drawRes(); }
   if (a === 'scanId') return scanBox();
-  if (a === 'scanCancel') { $('#scan').remove(); return; }
-  if (a === 'scanUse') { const g = parseLicense($('#scanTxt').value); if (!g.last) { $('#scanErr').textContent = 'That did not read as a license barcode. Scan the big barcode on the back of the card.'; return; } Object.assign(ED.r, Object.fromEntries(Object.entries(g).filter(x => x[1]))); return drawRes(); }
+  if (a === 'scanCancel') return scanClose();
+  if (a === 'scanType') { scanState.manual = true; clearTimeout(scanState.t); $('#scanTxt').classList.remove('scancap'); $('#scanManual').hidden = false; el.hidden = true; $('#scanTxt').focus(); return; }
+  if (a === 'scanUse') { const g = parseLicense($('#scanTxt').value); if (!g.last) { $('#scanErr').textContent = 'That did not read as an ID barcode. Scan the large barcode on the back of the card.'; return; } return scanFill(g); }
+  if (a === 'wizNext') return wizNext();
+  if (a === 'wizGo') { readForm(); ED.step = +el.dataset.step; return drawRes(); }
+  if (a === 'wizHi') { readForm(); ED.hi = el.dataset.type; const rm = ED.r.room && S.config.rooms.find(x => x.no === ED.r.room); if (rm && rm.type !== ED.hi) ED.r.room = ''; return drawRes(); }
+  if (a === 'wizType') { readForm(); ED.hi = el.dataset.type; return wizNext(); }
+  if (a === 'guestFind') return run(guestFind);
+  if (a === 'guestPick') return guestPick(el.dataset.i);
+  if (a === 'dnrAddRes') return run(async () => { readForm(); const r = ED.r, reason = prompt('Add ' + gname(r) + ' to the Do Not Rent list.\nReason:', ''); if (reason === null) return; await op('dnrAdd', { last: r.last, first: r.first, guestId: r.guestId, phone: r.phone, reason }); await refresh(); if (ED) drawRes(); toast('Added to the Do Not Rent list.'); });
+  if (a === 'dnrRemoveRes') return run(async () => { readForm(); const e0 = dnrMatchC(ED.r); if (!e0 || !confirm('Remove ' + gname(ED.r) + ' from the Do Not Rent list?')) return; await op('dnrRemove', { id: e0.id }); await refresh(); if (ED) drawRes(); toast('Removed from the Do Not Rent list.'); });
+  if (a === 'dnrNew') { $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle">Add to the Do Not Rent list</div><div class="grid"><label class="c6">Last name<input id="dn_last" maxlength="60"></label><label class="c6">First name<input id="dn_first" maxlength="60"></label><label class="c6">Guest ID<input id="dn_guestId" maxlength="40"></label><label class="c6">Phone<input id="dn_phone" maxlength="30"></label><label class="c12">Reason *<input id="dn_reason" maxlength="300"></label></div><div class="err" id="dn_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn red" data-act="dnrSave">Add to the list</button></div></div></div>`; $('#dn_last').focus(); return; }
+  if (a === 'dnrSave') { try { await op('dnrAdd', Object.fromEntries(['last', 'first', 'guestId', 'phone', 'reason'].map(k => [k, $('#dn_' + k).value]))); $('#modal').innerHTML = ''; await refresh(); toast('Added to the Do Not Rent list.'); } catch (x) { $('#dn_err').textContent = x.message; } return; }
+  if (a === 'dnrDel') return run(async () => { const e0 = (S.dnr || []).find(x => x.id === +el.dataset.id); if (!e0 || !confirm('Remove ' + gname(e0) + ' from the Do Not Rent list?')) return; await op('dnrRemove', { id: e0.id }); await refresh(); toast('Removed.'); });
+  if (a === 'dnrCsv') return downloadCsv('do-not-rent-list-' + B() + '.csv', [['Last name', 'First name', 'Guest ID', 'Phone', 'Reason', 'Added by', 'Date']].concat((S.dnr || []).map(e => [e.last, e.first, e.guestId, e.phone, e.reason, e.by, dnrDate(e)])));
   if (a === 'emailFolio') return run(async () => { const to = prompt('Send the folio to this e-mail address:', FO.res.email || ''); if (to) { const x = await op('emailFolio', { id: FO.res.id, to }); toast('Folio e-mailed to ' + x.to + '.'); } });
   if (a === 'shift') return run(shiftBox);
   if (a === 'shiftOpen') return run(async () => { await op('shiftOpen', { cash: toCents($('#sh_cash').value) || 0 }); $('#modal').innerHTML = ''; await refresh(); toast('Shift opened.'); });
@@ -738,7 +914,7 @@ document.addEventListener('click', async e => {
   if (a === 'grpNew') return run(() => grpOpen(0));
   if (a === 'grpOpen') return run(() => grpOpen(el.dataset.id));
   if (a === 'grpSave' || a === 'grpStatus') { try { const g = GR.group, v = k => $('#g_' + k).value, blocks = {}, rates = {}; document.querySelectorAll('[data-gb]').forEach(i => blocks[i.dataset.gb] = i.value); document.querySelectorAll('[data-gr]').forEach(i => rates[i.dataset.gr] = i.value.trim() ? toCents(i.value) : ''); if (a === 'grpStatus' && el.dataset.to === 'cancelled' && !confirm('Cancel this group? Its unsold rooms go back on sale. Reservations already made stay as they are.')) return; const r = await op('groupSave', { id: g.id || 0, name: v('name'), contact: v('contact'), phone: v('phone'), email: v('email'), notes: v('notes'), arrive: v('arrive'), depart: v('depart'), cutoff: v('cutoff'), companyId: +v('companyId') || 0, blocks, rates, ...(a === 'grpStatus' ? { status: el.dataset.to } : {}) }); await refresh(); await grpOpen(r.id); toast('Saved.'); } catch (x) { $('#g_err').textContent = x.message; } return; }
-  if (a === 'grpAddRes') { const g = GR.group, t = S.config.types.find(t => (g.blocks || {})[t.code]) || S.config.types[0]; const arrive = g.arrive > B() ? g.arrive : B(); ED = { mode: 'new', r: { id: 0, status: 'reserved', arrive, depart: g.depart > arrive ? g.depart : addDays(arrive, 1), type: t.code, room: '', adults: 1, children: 0, rate: null, guarantee: 'Credit card', source: 'Phone', groupId: g.id, companyId: g.companyId || 0 } }; drawRes(); $('#r_last').focus(); return; }
+  if (a === 'grpAddRes') { const g = GR.group, t = S.config.types.find(t => (g.blocks || {})[t.code]) || S.config.types[0]; const arrive = g.arrive > B() ? g.arrive : B(); startWiz('new', { id: 0, status: 'reserved', arrive, depart: g.depart > arrive ? g.depart : addDays(arrive, 1), type: t.code, room: '', adults: 1, children: 0, rate: null, country: 'United States', guarantee: 'Credit card', source: 'Phone', groupId: g.id, companyId: g.companyId || 0 }, true); return; }
   if (a === 'grpPrint') return printHtml(letterHead() + `<h2>Rooming list: ${esc(GR.group.name)}</h2><p>${dlong(GR.group.arrive)} to ${dlong(GR.group.depart)}</p>` + grpMembers());
   if (a === 'postOpen') return postOpen(el.dataset.kind);
   if (a === 'postCancel') { $('#postBox').innerHTML = ''; return; }
@@ -781,14 +957,16 @@ document.addEventListener('change', e => {
   if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('input', e => { if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('focusout', e => { if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
+  if (e.key === 'Enter' && e.target.id === 'gs_q') return run(guestFind);
   if (e.key === 'Enter' && e.target.id === 'listDate' && e.target.value) { view.listDate = e.target.value; return render(); }
   if (e.key === 'Enter' && e.target.id === 'roomJump') { const no = e.target.value.trim(); if (!no) return; const g = S.res.find(r => r.status === 'inhouse' && String(r.room).toLowerCase() === no.toLowerCase()); if (!g) return toast('Nobody is checked in to room ' + no, true); e.target.value = ''; return run(() => openRes(g.id)); }
-  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
+  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#scan')) scanClose(); else if ($('#hist')) $('#hist').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.
 setInterval(() => { if (S && !M && !$('#modal').innerHTML && document.visibilityState === 'visible' && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) refresh().catch(e => { if (e.status === 401 || e.status === 403) { S = null; showLogin(e.status === 403 ? e.message : ''); } }); }, 20000);

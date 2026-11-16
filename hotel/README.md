@@ -61,9 +61,38 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
   make the front desk open a shift before taking payments. Report: Cashier Shifts.
 - **Guest e-mails**: E-mail Confirmation (also for a cancellation) and E-mail Folio. `hotel-core.js` writes the message, `hotel.js`
   hands it to the directory, which sends it from the master's e-mail account with the hotel's name (300 a day per hotel).
-- **Scan ID**: in the reservation window. Any 2D barcode scanner in keyboard mode reads the PDF417 on the back of a US/Canadian
+- **Scan ID**: in the reservation wizard and window (see below). Any 2D barcode scanner in keyboard mode reads the PDF417 on the back of a US/Canadian
   license (AAMVA); `parseLicense` fills name, address and license number. The birth date is not kept.
 - **Not built: key encoder.** It needs the lock brand's own PMS interface, so it waits on knowing the lock system.
+
+## Reservation wizard, Scan ID, Crib / Rollaway / Suppress Rate, Do Not Rent (added Nov 16, 2026)
+
+- **Reservation wizard** (Create › Reservation, Create › Walk-In, a tape chart click, and "+ Reservation in this group"): four steps in the full-page
+  box, one state object `ED = {mode, r, step}` (`mode` is `new` or `walkin`). The existing `r_...` field ids keep their meaning; values survive moving between steps
+  and typing never redraws the page (so a click on the next button is never lost). The server is not called until the last button.
+  1. **Stay Information**: *Arrival (fixed to the business date for a walk-in), *Nights, *Departure, *Rooms (always 1), *Adults, Children, Company, Pickup Group
+     (groups that cover the dates), Rate Plan (BAR, or a package). **SEARCH AVAILABILITY** (needs a departure after the arrival). On the right, **Guest Search**:
+     Name or Phone, FIND GUEST (the `/find` API, up to 8 past guests); a click copies name, address, phone, e-mail, guest ID, vehicle and company, never the dates.
+  2. **Room & Rate**: every room type with rooms available for the dates (respecting the group's block), first-night rate ("varies" when it changes), estimated total
+     (nights × nightly rates + package, plus tax) and SELECT (off at 0 available). Click a row to see its free rooms in **Assigned Room**; **Rate / night** keeps the
+     typed-rate override and "Use the standard rate". A room or group preset highlights its row and shows CONTINUE.
+  3. **Guest Information**: guest fields (only Last Name is required), "Notes and Special Requests" (Crib, Rollaway, Suppress Rate, No room charge, requests, notes, SCAN ID).
+  4. **Payment Information**: guarantee, pays with, card type and last 4, source; **BOOK RESERVATION** (or **CHECK IN NOW** for a walk-in). A walk-in needs a room.
+  The right panel lists "1 Stay Info", "2 Room & Rate Info", "3 Guest Info" with EDIT buttons that jump back. Messages go in `#r_err`.
+  The server may answer 412 (room is dirty) or 428 (Do Not Rent); OK sends the same request again with `dirtyOk` / `dnrOk`, Cancel stays on the form.
+- **Scan ID** (on the guest step and on the existing-reservation page): a light-blue "SCANNING PLEASE WAIT…" box with a moving stripe. An invisible focused textarea
+  catches the scanner's keys; 400 ms after the last character `parseLicense()` runs. A last name fills the guest fields (never the stay) and closes the box; anything
+  else shows "That did not read as an ID barcode…" and keeps waiting. "Cancel" closes it; "Type or paste instead" shows the textarea and a "Fill in the guest" button.
+- **Crib, Rollaway, Suppress Rate**: booleans on the reservation (`resSave`). With Suppress Rate on, the registration card, the confirmation letter and the e-mailed
+  confirmation say "Rate: on file" instead of the amount. The Housekeeping screen (and its check-off list) shows "Crib" / "Rollaway" in front of the Notes text of a room whose
+  in-house guest has them (read-only).
+- **Do Not Rent list** (`dnr` table; Manage › Do Not Rent List): name, guest ID, phone, reason, who and when. Owner, manager and front desk add (a reason and a last name or
+  guest ID are needed); only owner and manager remove; housekeeping gets no list at all. **A match** is the same guest ID (letters and digits only, any case, both not empty)
+  or the same last name AND first name (trimmed, any case, both not empty). Making a new reservation, a walk-in or a check-in for a match answers **428** with
+  "DO NOT RENT: LAST, FIRST. Reason: … Added by … on M/D/YYYY. Continue anyway?"; the same request with `dnrOk: true` goes through and adds the history line
+  "Do Not Rent warning accepted". The wizard's guest step and the existing-reservation page show a red "DO NOT RENT: reason" banner while the typed or saved name / guest ID
+  matches. The reservation page has "Add to Do Not Rent List" (asks for the reason) and, for owner and manager, "Remove from Do Not Rent List". The list screen has Quick Search,
+  "+ Add" and "Export .CSV".
 
 ## Reports (document layout)
 

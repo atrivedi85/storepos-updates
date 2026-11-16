@@ -231,3 +231,41 @@ th.sortable:hover{color:#0a59c9}
   #print .sheet table.det td,#print .sheet table.det th{padding-left:4px;padding-right:4px}
   #print .sheet .sh-title{font-size:20px}
 }
+
+/* ===== Reservation wizard, Scan ID box, Do Not Rent ===== */
+.pgmain.wz .mtitle{font-size:30px;font-weight:300;margin-bottom:4px}
+.wztrack{display:flex;gap:6px 16px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--mut);margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.wztrack b{color:var(--ink);margin-right:6px}.wztrack span.on{color:var(--blue);font-weight:700}
+.wzreq{margin:0 0 10px}
+.wzf{display:grid;grid-template-columns:190px minmax(0,320px);gap:9px 14px;align-items:center}
+.wzf>label{text-align:right;font-weight:600;color:#444;font-size:14.5px}
+.wzf input[type=checkbox]{width:20px;height:20px;justify-self:start}
+.wzf.cmp{grid-template-columns:120px minmax(0,1fr);gap:6px 10px}
+.wzf.cmp>label{font-size:14px}.wzf.cmp input:not([type=checkbox]),.wzf.cmp select{min-height:34px;padding:5px 9px}
+.wzrp{font-weight:600}
+.wzbtn{margin-top:14px;min-width:200px}
+.wz3{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:28px;align-items:start}
+.wz3 h3{font-weight:300;font-size:24px;margin:0 0 10px}
+.wzt{width:100%}
+.wzt tr.hi td{background:#dbe8ff}
+.wzt td .btn.sm[disabled]{opacity:.4;cursor:not-allowed}
+.pside.wz{width:310px}
+.pside.wz dl{margin-bottom:14px;gap:5px 10px}
+.wzb{display:flex;align-items:center;gap:8px;margin:2px 0 6px}.wzb b{flex:1;font-size:16px}
+.wzn{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;font-size:13px;align-items:center;justify-content:center}
+.wzgs{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.wzgs>label{font-size:14px;font-weight:600;color:#444}
+.gsrow{display:flex;flex-direction:column;padding:7px 8px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);font-size:14px;border-radius:6px}
+.gsrow:hover{background:#eaf2ff}.gsrow span{color:var(--mut);font-size:13px}
+.dnrban{background:#d93a3a;color:#fff;font-weight:700;font-size:17px;padding:10px 16px;border-radius:6px;margin:0 0 12px}
+.dnrban[hidden]{display:none}
+.scanov{position:fixed;inset:0;background:rgba(5,12,25,.25);display:flex;align-items:center;justify-content:center;z-index:80}
+.scanbox{background:#d3e8ff;border:2px solid #7fb2ee;border-radius:10px;padding:26px 40px 16px;width:min(520px,92vw);text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35);position:relative}
+.scantxt{font-size:22px;font-weight:700;letter-spacing:.04em;color:#17407a}
+.scanbar{height:14px;border-radius:7px;margin:16px 0 8px;background:repeating-linear-gradient(135deg,#1f5fbf 0 14px,#8db9f0 14px 28px);background-size:40px 40px;animation:scanmove .7s linear infinite}
+@keyframes scanmove{from{background-position:0 0}to{background-position:40px 0}}
+.scanerr{min-height:0;font-size:14px}
+.scancap{position:absolute;left:0;top:0;width:1px;height:1px;min-height:0;opacity:0;padding:0;border:0;resize:none;overflow:hidden}
+.scanbox textarea:not(.scancap){margin-top:8px;font-size:12px}
+.scanlinks{display:flex;gap:22px;justify-content:center;margin-top:10px;font-size:13px}.scanlinks a{color:#1f4fa0}
+.hknote{display:flex;align-items:center;gap:8px}.hkpre{font-weight:700;color:var(--red);white-space:nowrap}
+@media (max-width:860px){.wz3{grid-template-columns:1fr}.wzf{grid-template-columns:1fr}.wzf>label{text-align:left}.pside.wz{width:auto}}
