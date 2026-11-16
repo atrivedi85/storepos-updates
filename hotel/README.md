@@ -127,6 +127,37 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
    Do not disturb switch, notes) with a sticky filter row (floor, "Dirty only"); the housekeeping login's header is one bar (hotel name, date, Logout). Home tiles, lists, tape chart and the wizard fit a
    390px screen (tables scroll inside their own box).
 
+## Rewards program (added Nov 16, 2026)
+
+A guest rewards program each hotel runs for its own guests. Off until the owner or a manager turns it on in **Setup › Rewards**. While it is off, none of its
+rows, columns, menu items or reports show, and the server refuses enrolling, linking, adjusting and redeeming.
+
+- **Settings** (config key `rewards`, saved with `configSave`, owner/manager only): `enabled`, `name` (default "Guest Rewards"), `earn` (`nights` or `revenue`),
+  `perNight` (100), `perDollar` (10), `pointValue` (cents per point when redeemed, 1), `minRedeem` (1000), `tiers` (1 to 6 of `{name, min, message <= 200, amenity <= 80}`; default Member 0,
+  Silver 2000, Gold 6000, Platinum 15000). Checks: the numbers are whole and 0 or more, tier names are different and not empty, tier minimums are different, the first tier starts at 0
+  (tiers are sorted by `min`). Longer messages are cut, not refused. Turning it on (or saving posting codes while it is on) adds the posting code `RW` "Rewards Redemption" (type GFTCRD) if it is missing.
+  The Setup tab has simple fields and one line per tier: `name, minimum points, welcome amenity, message` (the message may contain commas).
+- **Members** (table `members`): `number` (`R` + 6 digits, from R100001), `last`, `first`, `phone`, `email`, `guestId`, `joined` (business date), `points` (balance), `earned` (lifetime),
+  `nights`, `revenue` (cents), `stays`, `log` (last 100 `{at, bdate, by, what, points, res?}`). Tier = the highest tier whose `min` is at most `earned`.
+- **Ops**: `memberSave` {id?, last, first, phone, email, guestId} (last name needed; refused when another member has the same guest ID, or the same last + first + phone digits);
+  `memberAdjust` {id, points (+/-), reason} (owner/manager; reason needed; the balance cannot go below 0; changes `points` only, not `earned`, so it never changes the tier);
+  `memberLink` {res, member} and `memberUnlink` {res} set or clear `memberId` / `memberNo` on a reservation (`resSave` also takes `memberId`; 0 clears it). `checkIn` takes `amenityGiven: true`
+  (stored on the reservation with a history line). `GET /member?id=` gives `{member (with tier), tier, tierInfo, next, log}`; `GET /members?q=` searches number, name, phone (up to 100).
+  `state()` carries `rewards` and, for owner, manager and desk (not housekeeping) while the program is on, `members`: `[{id, number, last, first, phone, guestId, points, earned, tier, nights, stays, revenue, joined}]` (newest 2000).
+  `GET /report?name=rewards` gives all members (best lifetime points first), per-tier totals and the value of all outstanding points.
+- **Earning** (at `checkOut`, once per reservation): a night counts when the net Room Charge (RM) lines of that business date are above zero; revenue is the net sum of RM lines (never below 0).
+  `nights` mode: nights x `perNight`. `revenue` mode: whole dollars of revenue x `perDollar`. Adds to `points` and `earned`, `nights`, `revenue`, `stays` + 1, logs "Stay <conf>: +N points" and keeps
+  `rwEarned {points, nights, revenue}` on the reservation. `undoCheckOut` takes exactly that back (never below 0, log "Check-out undone: −N points") and clears `rwEarned`.
+- **Redeeming**: Folio › Post Payment › "Rewards Redemption" (listed only when the guest's member has at least `minRedeem` points and the balance can take at least that many). `post` with code `RW`,
+  `kind: 'payment'` and `points`: needs the reservation's member, `points` at least `minRedeem`, at most the member's points, and `points x pointValue` at most the folio balance. It posts a payment of
+  `points x pointValue` cents (comment "<points> points, member <number>"), subtracts the points and logs "Redeemed N points on <conf>". Redeemed points do not earn (only RM lines earn).
+- **Screens**: "Rewards Program:" row on wizard step 3 and the reservation page (matching member by guest ID, name or phone, "Use this member", or "Select Program / Enroll" with search and "Enroll <name>");
+  Actions "Rewards Member" and "Remove from Rewards"; tier, message and "Welcome amenity given" box in the check-in "Guest notes" window; "Rewards" column on Arrivals, In House and the In House List report;
+  Manage › Rewards Members (`data-nav="members"`) with the member window and, for owner and manager, "Adjust points"; reports "Rewards Program Members" and "Rewards Program Statistics" (Front Desk Reports).
+- **Worked example** (defaults, `earn: nights`): Ann is a member (R100001, 0 points). She stays 2 nights at 80.00 and checks out: 2 nights x 100 = **200 points** (Member). Later stays bring her lifetime points to 2,010: she is **Silver**.
+  The manager adds 1,500 points for a service mistake (balance 3,510). On a new stay her folio balance is 88.19: she redeems 3,000 points (`pointValue` 1) = a payment of **30.00**, balance 58.19, points left 510.
+  With `earn: revenue`, a night of 81.00 net room revenue earns floor(8100 / 100) = 81 dollars x 10 = **810 points**. An adjustment of 10.00 on the same date makes it 71 x 10 = 710.
+
 ## Reports (document layout)
 
 - **Sheet**: every report is drawn by `sheet(title, bodyHtml, opts)` in `app.js` on a white "paper" (max 1000px, Arial 12.5px, black on white, light grey page).

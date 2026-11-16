@@ -37,6 +37,19 @@ function starterConfig(template) {
   return { name: 'My Hotel', address: '', phone: '', bdate: '', types, rooms, taxes, codes, housekeepers: [], nextConf: 10001, checkoutTime: '11:00', checkinTime: '15:00', regText: 'I agree to pay all charges for this stay. The hotel is not responsible for valuables left in the room.' };
 }
 
+/* The guest rewards program each hotel runs for its own guests (config key `rewards`). Off until the owner turns it on in Setup. */
+function defaultRewards() {
+  return { enabled: false, name: 'Guest Rewards', earn: 'nights', perNight: 100, perDollar: 10, pointValue: 1, minRedeem: 1000, tiers: [
+    { name: 'Member', min: 0, message: 'Welcome back. Thank you for being a member.', amenity: '' },
+    { name: 'Silver', min: 2000, message: 'Silver member. Thank the guest for staying with us again.', amenity: 'Bottled water' },
+    { name: 'Gold', min: 6000, message: 'Gold member. Greet the guest by name and offer a late check-out if we can.', amenity: 'Snack basket' },
+    { name: 'Platinum', min: 15000, message: 'Platinum member. Our most loyal guest: offer a room upgrade if one is free.', amenity: 'Fruit and a handwritten note' }] };
+}
+const NUMKEYS = [['perNight', 'Points per night'], ['perDollar', 'Points per dollar'], ['pointValue', 'Point value (cents)'], ['minRedeem', 'Minimum points to redeem']];
+const digitsOnly = x => String(x || '').replace(/\D/g, '');
+const idNorm = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+const nameNorm = x => String(x || '').trim().toLowerCase();
+
 export class HotelCore {
   constructor(sql) {
     this.sql = sql;
@@ -51,13 +64,14 @@ export class HotelCore {
       'CREATE TABLE IF NOT EXISTS grps(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS shifts(id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, open_at INTEGER, close_at INTEGER, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS dnr(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS members(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, user TEXT, line TEXT)']) this.sql.exec(q);
   }
   rows(q, ...p) { return this.sql.exec(q, ...p).toArray(); }
   one(q, ...p) { const r = this.rows(q, ...p); return r.length ? r[0] : null; }
   kv(k, d) { const r = this.one('SELECT v FROM kv WHERE k=?', k); return r ? JSON.parse(r.v) : d; }
   setKv(k, v) { this.sql.exec('INSERT OR REPLACE INTO kv(k,v) VALUES(?,?)', k, JSON.stringify(v)); }
-  cfg() { const c = this.kv('config', null) || starterConfig(); c.packages = c.packages || []; c.rateRules = c.rateRules || []; return c; }
+  cfg() { const c = this.kv('config', null) || starterConfig(); c.packages = c.packages || []; c.rateRules = c.rateRules || []; c.rewards = { ...defaultRewards(), ...(c.rewards || {}) }; return c; }
   log(user, line) { this.sql.exec('INSERT INTO log(at,user,line) VALUES(?,?,?)', now(), user || '', String(line).slice(0, 300)); this.sql.exec('DELETE FROM log WHERE id < (SELECT MAX(id) - 20000 FROM log)'); }
 
   /* ---------- companies, groups, rates ---------- */
@@ -80,6 +94,89 @@ export class HotelCore {
     let n = 0;
     for (const g of grps) { if (g.id === exceptGroup || g.status === 'cancelled' || !(g.arrive <= d && d < g.depart) || this.groupReleased(c, g, d)) continue; const blk = (g.blocks || {})[type] || 0; if (!blk) continue; n += Math.max(0, blk - act.filter(r => r.groupId === g.id && r.type === type && r.arrive <= d && d < r.depart).length); }
     return n;
+  }
+
+  /* ---------- guest rewards program ---------- */
+  member(id) { const r = this.one('SELECT id, data FROM members WHERE id=?', Number(id) || 0); return r ? { ...JSON.parse(r.data), id: r.id } : null; }
+  members() { return this.rows('SELECT id, data FROM members ORDER BY id').map(r => ({ ...JSON.parse(r.data), id: r.id })); }
+  putMember(m) { const { id, ...d } = m; this.sql.exec('UPDATE members SET data=? WHERE id=?', JSON.stringify(d), id); }
+  tierOf(rw, earned) { let t = rw.tiers[0]; for (const x of rw.tiers) if (x.min <= earned && x.min >= t.min) t = x; return t; }
+  rwOn(c) { return !!(c.rewards && c.rewards.enabled); }
+  rwNeedOn(c) { if (!this.rwOn(c)) throw err(400, 'The rewards program is not turned on. Turn it on in Setup > Rewards.'); }
+  slimMember(m, rw) { return { id: m.id, number: m.number, last: m.last, first: m.first, phone: m.phone, guestId: m.guestId, points: m.points, earned: m.earned, tier: this.tierOf(rw, m.earned).name, nights: m.nights, stays: m.stays, revenue: m.revenue, joined: m.joined }; }
+  memberLog(m, me, c, what, points, res) { m.log.push({ at: now(), bdate: c.bdate, by: me.username, what: clip(what, 200), points, ...(res ? { res } : {}) }); m.log = m.log.slice(-100); }
+  // A member found by the same guest ID, the same last + first name, or the same phone (7 or more digits).
+  memberFind(g, exceptId) {
+    const id = idNorm(g.guestId), last = nameNorm(g.last), first = nameNorm(g.first), ph = digitsOnly(g.phone);
+    return this.members().find(m => m.id !== exceptId && ((id && idNorm(m.guestId) === id) || (last && first && nameNorm(m.last) === last && nameNorm(m.first) === first) || (ph.length >= 7 && digitsOnly(m.phone).slice(-10) === ph.slice(-10)))) || null;
+  }
+  memberSave(a, me, c) {
+    this.rwNeedOn(c); const m = a.id ? this.member(a.id) : { number: '', joined: c.bdate, points: 0, earned: 0, nights: 0, revenue: 0, stays: 0, log: [] };
+    if (a.id && !m) throw err(404, 'That member was not found.');
+    for (const [k, n] of [['last', 60], ['first', 60], ['phone', 30], ['email', 100], ['guestId', 40]]) if (k in a || !a.id) m[k] = clip(a[k], n);
+    if (!m.last) throw err(400, 'Type the member\'s last name.');
+    const gid = idNorm(m.guestId), ph = digitsOnly(m.phone);
+    const dup = this.members().find(x => x.id !== m.id && ((gid && idNorm(x.guestId) === gid) || (nameNorm(x.last) === nameNorm(m.last) && nameNorm(x.first) === nameNorm(m.first) && digitsOnly(x.phone) === ph)));
+    if (dup) throw err(409, 'That guest is already a member: ' + dup.number + ' ' + dup.last + (dup.first ? ', ' + dup.first : '') + '. Search for them instead (a different person with the same name needs a phone number or guest ID).');
+    if (!a.id) { const n = this.kv('memberNext', 100001); m.number = 'R' + n; this.setKv('memberNext', n + 1); this.memberLog(m, me, c, 'Enrolled', 0); this.sql.exec('INSERT INTO members(data) VALUES(?)', JSON.stringify(m)); m.id = this.one('SELECT MAX(id) n FROM members').n; this.log(me.username, 'rewards enroll ' + m.number); }
+    else { this.putMember(m); this.log(me.username, 'rewards member changed ' + m.number); }
+    return m;
+  }
+  memberAdjust(a, me, c) {
+    this.rwNeedOn(c); const m = this.member(a.id); if (!m) throw err(404, 'That member was not found.');
+    const pts = Number(a.points), why = clip(a.reason, 200); if (!Number.isInteger(pts) || pts === 0 || Math.abs(pts) > 1e7) throw err(400, 'Type the points to add or take off, a whole number (for example 500 or -200).');
+    if (!why) throw err(400, 'Type the reason for the adjustment.'); if (m.points + pts < 0) throw err(400, 'The balance cannot go below 0. ' + m.number + ' has ' + m.points + ' points.');
+    m.points += pts; this.memberLog(m, me, c, 'Adjustment: ' + why, pts); this.putMember(m); this.log(me.username, 'rewards adjust ' + m.number + ' ' + pts); return m;
+  }
+  linkMember(r, mid, me, c) {   // sets or clears the member on a reservation (the caller saves it)
+    if (!mid) { if (r.memberId) r.history.push({ at: now(), by: me.username, what: 'Removed from rewards (' + r.memberNo + ')' }); delete r.memberId; delete r.memberNo; return; }
+    if (Number(mid) === r.memberId) return; this.rwNeedOn(c); const m = this.member(mid); if (!m) throw err(404, 'That rewards member was not found.');
+    r.memberId = m.id; r.memberNo = m.number; r.history.push({ at: now(), by: me.username, what: 'Rewards member ' + m.number + ' linked' });
+  }
+  // Check-out: points for the nights (or the room revenue) on the folio. A night counts when its room charges net above zero.
+  rwEarn(r, me, c) {
+    const rw = c.rewards; if (!rw.enabled || !r.memberId || r.rwEarned) return; const m = this.member(r.memberId); if (!m) return;
+    const byDay = {}; for (const l of this.rows("SELECT bdate, SUM(amount) n FROM lines WHERE res=? AND code='RM' GROUP BY bdate", r.id)) byDay[l.bdate] = l.n;
+    const nights = Object.values(byDay).filter(n => n > 0).length, revenue = Math.max(0, Object.values(byDay).reduce((a, b) => a + b, 0));
+    const points = rw.earn === 'revenue' ? Math.floor(revenue / 100) * rw.perDollar : nights * rw.perNight;
+    m.points += points; m.earned += points; m.nights += nights; m.revenue += revenue; m.stays += 1; r.rwEarned = { points, nights, revenue };
+    this.memberLog(m, me, c, 'Stay ' + r.conf + ': +' + points + ' points', points, r.id); this.putMember(m);
+    r.history.push({ at: now(), by: me.username, what: 'Rewards: +' + points + ' points to ' + m.number });
+  }
+  rwUndo(r, me, c) {
+    const e = r.rwEarned; if (!e) return; const m = this.member(r.memberId); delete r.rwEarned; if (!m) return;
+    const take = Math.min(m.points, e.points); m.points -= take; m.earned = Math.max(0, m.earned - e.points); m.nights = Math.max(0, m.nights - e.nights); m.revenue = Math.max(0, m.revenue - e.revenue); m.stays = Math.max(0, m.stays - 1);
+    this.memberLog(m, me, c, 'Check-out undone: −' + take + ' points', -take, r.id); this.putMember(m);
+  }
+  redeem(a, me, c, r, k) {
+    this.rwNeedOn(c); const rw = c.rewards; if (a.kind !== 'payment') throw err(400, 'Rewards Redemption is a payment. Use Post Payment.');
+    if (!r.memberId) throw err(400, 'This reservation has no rewards member. Add the guest to the program first.'); const m = this.member(r.memberId); if (!m) throw err(404, 'That rewards member was not found.');
+    const pts = Number(a.points); if (!Number.isInteger(pts) || pts <= 0) throw err(400, 'Type the points to redeem, a whole number.');
+    if (rw.pointValue < 1) throw err(400, 'Points are not worth anything yet. Set the point value in Setup > Rewards.');
+    if (pts < rw.minRedeem) throw err(400, 'The least that can be redeemed is ' + rw.minRedeem + ' points.'); if (pts > m.points) throw err(400, m.number + ' has only ' + m.points + ' points.');
+    const value = pts * rw.pointValue, bal = this.balance(r.id); if (value > bal) throw err(400, 'That is worth ' + (value / 100).toFixed(2) + ', more than the folio balance of ' + (bal / 100).toFixed(2) + '.');
+    this.addLine(r.id, c, k.code, -value, pts + ' points, member ' + m.number, me.username); m.points -= pts; this.memberLog(m, me, c, 'Redeemed ' + pts + ' points on ' + r.conf, -pts, r.id); this.putMember(m);
+    this.log(me.username, 'rewards redeem ' + m.number + ' ' + pts); return { balance: this.balance(r.id), points: m.points, value };
+  }
+  // Setup > Rewards: checks the typed settings and returns the clean object.
+  cleanRewards(n, old) {
+    const o = { ...old }; if (!n || typeof n !== 'object') throw err(400, 'The rewards settings must be an object.');
+    if ('enabled' in n) o.enabled = !!n.enabled; if ('name' in n) o.name = clip(n.name, 40) || 'Guest Rewards';
+    if ('earn' in n) { if (!['nights', 'revenue'].includes(n.earn)) throw err(400, 'Earn points by nights or by revenue.'); o.earn = n.earn; }
+    for (const [k, label] of NUMKEYS) if (k in n) { const v = typeof n[k] === 'string' && n[k].trim() === '' ? NaN : Number(n[k]); if (!Number.isInteger(v) || v < 0 || v > 1e7) throw err(400, label + ' must be a whole number, 0 or more.'); o[k] = v; }
+    if ('tiers' in n) {
+      if (!Array.isArray(n.tiers) || !n.tiers.length) throw err(400, 'Keep at least one tier.'); if (n.tiers.length > 6) throw err(400, 'At most 6 tiers.');
+      const tiers = n.tiers.map(t => { const min = typeof t.min === 'string' && t.min.trim() === '' ? NaN : Number(t.min); if (!Number.isInteger(min) || min < 0 || min > 1e8) throw err(400, 'Each tier\'s minimum points must be a whole number, 0 or more.'); return { name: clip(t && t.name, 30), min, message: clip(t.message, 200), amenity: clip(t.amenity, 80) }; }).sort((a, b) => a.min - b.min);
+      if (tiers.some(t => !t.name)) throw err(400, 'Every tier needs a name.'); if (new Set(tiers.map(t => t.name.toLowerCase())).size !== tiers.length) throw err(400, 'Tier names must be different.');
+      if (new Set(tiers.map(t => t.min)).size !== tiers.length) throw err(400, 'Tier minimums must be different.'); if (tiers[0].min !== 0) throw err(400, 'The first tier must start at 0 points.'); o.tiers = tiers;
+    }
+    return o;
+  }
+  rewardsReport(c) {
+    const rw = c.rewards, ms = this.members().sort((a, b) => b.earned - a.earned || a.number.localeCompare(b.number)), tiers = rw.tiers.map(t => ({ name: t.name, min: t.min, members: 0, points: 0, earned: 0, nights: 0, revenue: 0 }));
+    const rows = ms.map(m => { const tn = this.tierOf(rw, m.earned).name, t = tiers.find(x => x.name === tn); t.members++; t.points += m.points; t.earned += m.earned; t.nights += m.nights; t.revenue += m.revenue; return { number: m.number, name: m.last + (m.first ? ', ' + m.first : ''), tier: tn, points: m.points, earned: m.earned, nights: m.nights, stays: m.stays, revenue: m.revenue, joined: m.joined }; });
+    const sum = k => rows.reduce((s, x) => s + x[k], 0);
+    return { rows, tiers, totals: { members: rows.length, points: sum('points'), earned: sum('earned'), nights: sum('nights'), stays: sum('stays'), revenue: sum('revenue') }, pointValue: rw.pointValue, outstandingValue: sum('points') * rw.pointValue };
   }
 
   /* ---------- Do Not Rent list ---------- */
@@ -158,6 +255,7 @@ export class HotelCore {
       r.rates = rates; r.rateManual = false; r.rate = rates[r.arrive > c.bdate || rates[c.bdate] == null ? r.arrive : c.bdate];
     }
     if (r.rate == null) r.rate = t.rate; if (r.rate < 0) throw err(400, 'The rate cannot be negative.');
+    if ('memberId' in a) this.linkMember(r, Number(a.memberId) || 0, me, c);
     const dnrSeen = isNew && this.dnrCheck(r, a);
     if (isNew) { r.id = (this.one('SELECT COALESCE(MAX(id),0) n FROM res').n) + 1; r.conf = String(c.nextConf++); this.setKv('config', c); }
     const after = JSON.stringify([r.arrive, r.depart, r.type, r.room, r.rate]);
@@ -181,6 +279,7 @@ export class HotelCore {
     if (cond === 'D' && !a.dirtyOk) throw err(412, 'Room ' + r.room + ' is dirty. Check in anyway?');
     if (dnrSeen) r.history.push({ at: now(), by: me.username, what: 'Do Not Rent warning accepted' });
     r.status = 'inhouse'; r.ciAt = now(); r.ciBy = me.username; r.history.push({ at: now(), by: me.username, what: 'Checked in to ' + r.room });
+    if (a.amenityGiven) { const m = r.memberId && this.member(r.memberId), am = m ? this.tierOf(c.rewards, m.earned).amenity : ''; r.amenityGiven = true; r.history.push({ at: now(), by: me.username, what: 'Welcome amenity given' + (am ? ': ' + am : '') }); }
     this.putRes(r); this.log(me.username, 'check in ' + r.conf + ' room ' + r.room); return r;
   }
 
@@ -206,6 +305,7 @@ export class HotelCore {
   }
   post(a, me, c) {
     const r = this.getRes(a.res); const k = c.codes.find(x => x.code === a.code); if (!k) throw err(400, 'Pick what to post.');
+    if (k.code === 'RW') return this.redeem(a, me, c, r, k);
     const amt = cents(a.amount); if (!(amt > 0)) throw err(400, 'Type an amount above zero.'); if (amt > 5000000) throw err(400, 'That amount is too large.');
     const pay = PAY_TYPES.includes(k.type) || k.type === 'ADMIN', boss = ['owner', 'manager'].includes(me.role);
     if (r.status === 'cancelled' || r.status === 'noshow') { if (!pay && !['NS', 'CXL'].includes(k.code)) throw err(400, 'Only a no-show or cancellation charge, or a payment, can be posted here.'); }
@@ -238,8 +338,8 @@ export class HotelCore {
     const bal = {}; for (const x of this.rows("SELECT res, SUM(amount) n FROM lines WHERE res IN (SELECT id FROM res WHERE status IN ('reserved','inhouse') OR depart>=?) GROUP BY res", addDays(c.bdate || '2000-01-01', -3))) bal[x.res] = x.n;
     const slim = r => { const { history, ...x } = r; return x; };
     const arBal = {}; for (const x of this.rows('SELECT company, SUM(amount) n FROM ar GROUP BY company')) arBal[x.company] = x.n;
-    const hk = me.role === 'hk';
-    return { me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, ...(hk ? {} : { dnr: this.dnrList() }), stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
+    const hk = me.role === 'hk', rwShow = !hk && c.rewards.enabled;
+    return { rewards: c.rewards, ...(rwShow ? { members: this.members().slice(-2000).map(m => this.slimMember(m, c.rewards)) } : { members: [] }), me: { email: me.email, name: me.name, role: me.role, master: !!me.master }, companies: hk ? [] : this.companies(), arBal: hk ? {} : arBal, groups: hk ? [] : this.groups().filter(g => g.depart >= addDays(c.bdate || '2000-01-01', -3)), shift: hk ? null : this.openShift({ username: clip(me.name || me.email, 60) }), config: c, roomstate: this.roomState(), res: act.concat(recent).map(slim), blocks: blks, bal, ...(hk ? {} : { dnr: this.dnrList() }), stats: c.bdate ? this.stats(c, act, blks) : null, at: now() };
   }
   /* ---------- recurring charges (a reservation's own list and its group's list) ---------- */
   // Checks a list of {code, amount, comment, from, to}. A charge code is a posting code of type ROOM or MISC. Dates are optional; `def` supplies the defaults.
@@ -317,6 +417,7 @@ export class HotelCore {
     }
     if (q.name === 'shifts') return { from, to, rows: this.rows('SELECT * FROM shifts WHERE open_at>=? AND open_at<? ORDER BY id DESC LIMIT 500', Date.parse(from + 'T00:00:00Z') - 864e5, Date.parse(to + 'T00:00:00Z') + 2 * 864e5).map(x => ({ id: x.id, user: x.user, openAt: x.open_at, closeAt: x.close_at, ...JSON.parse(x.data) })) };
     if (q.name === 'grouppickup') { const act = this.rows("SELECT data FROM res WHERE status IN ('reserved','inhouse','out')").map(x => JSON.parse(x.data)); return { rows: this.groups().filter(g => g.depart >= from).map(g => { const blk = Object.values(g.blocks || {}).reduce((s, n) => s + (n || 0), 0), mem = act.filter(r => r.groupId === g.id); return { id: g.id, name: g.name, arrive: g.arrive, depart: g.depart, cutoff: g.cutoff || '', cutoffDays: g.cutoffDays == null ? null : g.cutoffDays, blocked: blk, picked: mem.length, left: Math.max(0, blk - mem.length), revenue: mem.reduce((s, r) => { let t = 0; for (let d = r.arrive; d < r.depart; d = addDays(d, 1)) t += this.nightRate(r, d); return s + t; }, 0), status: g.status || 'active' }; }) }; }
+    if (q.name === 'rewards') return this.rewardsReport(c);
     if (q.name === 'closeout2') return this.closeout2(q, c);
     if (q.name === 'shift2') return this.shift2(q, c);
     if (q.name === 'stats2') return this.stats2(q, c);
@@ -414,6 +515,11 @@ export class HotelCore {
       return { status: 200, json: { list } };
     }
     if (p === '/guest') { desk(); return { status: 200, json: this.guestHistory(req.query) }; }
+    if (p === '/member') { desk(); const m = this.member(req.query.id); if (!m) throw err(404, 'That member was not found.'); const rw = c.rewards, t = this.tierOf(rw, m.earned), nx = rw.tiers.find(x => x.min > m.earned) || null;
+      return { status: 200, json: { member: { ...m, tier: t.name }, tier: t.name, tierInfo: t, next: nx ? { name: nx.name, min: nx.min, need: nx.min - m.earned } : null, log: m.log } }; }
+    if (p === '/members') { desk(); const q = clip(req.query.q, 60).toLowerCase(), dg = digitsOnly(q), all = this.members();
+      const hit = m => !q || m.number.toLowerCase().includes(q) || (m.last + ' ' + m.first).toLowerCase().includes(q) || (m.first + ' ' + m.last).toLowerCase().includes(q) || (m.last + ', ' + m.first).toLowerCase().includes(q) || (dg.length >= 3 && digitsOnly(m.phone).includes(dg));
+      return { status: 200, json: { list: all.filter(hit).sort((a, b) => a.last.localeCompare(b.last) || a.first.localeCompare(b.first)).slice(0, 100).map(m => this.slimMember(m, c.rewards)) } }; }
     if (p === '/company') { desk(); const co = this.company(req.query.id); if (!co) throw err(404, 'That company was not found.'); return { status: 200, json: { company: co, ledger: this.rows('SELECT * FROM ar WHERE company=? ORDER BY id DESC LIMIT 1000', co.id), balance: this.arBalance(co.id) } }; }
     if (p === '/group') { desk(); const g = this.group(req.query.id); if (!g) throw err(404, 'That group was not found.'); return { status: 200, json: { group: g, members: this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)).filter(r => r.groupId === g.id).map(({ history, ...r }) => ({ ...r, bal: this.balance(r.id) })) } }; }
     if (p === '/report') { desk(); return { status: 200, json: this.report(req.query, c) }; }
@@ -436,13 +542,17 @@ export class HotelCore {
         const r = this.getRes(a.id); if (r.status !== 'inhouse') throw err(400, 'This guest is not checked in.'); const bal = this.balance(r.id);
         if (bal !== 0 && !(a.force && boss)) throw err(412, 'The folio balance is ' + (bal / 100).toFixed(2) + '. Post a payment (or a refund) to bring it to zero before checking out.' + (boss ? ' A manager can check out anyway.' : ''));
         r.status = 'out'; r.coAt = now(); r.coBy = me.username; if (r.depart > c.bdate) { r.origDepart = r.depart; r.depart = c.bdate > r.arrive ? c.bdate : addDays(r.arrive, 1); }
-        r.history.push({ at: now(), by: me.username, what: 'Checked out, balance ' + (bal / 100).toFixed(2) }); this.putRes(r); this.setCond([r.room], { cond: 'D', dnd: false }); this.log(me.username, 'check out ' + r.conf); return ok();
+        r.history.push({ at: now(), by: me.username, what: 'Checked out, balance ' + (bal / 100).toFixed(2) }); this.rwEarn(r, me, c); this.putRes(r); this.setCond([r.room], { cond: 'D', dnd: false }); this.log(me.username, 'check out ' + r.conf); return ok();
       }
-      case 'undoCheckOut': { const r = this.getRes(a.id); if (r.status !== 'out') throw err(400, 'This guest is not checked out.'); if (r.depart < c.bdate) throw err(400, 'This stay ended before today, so it cannot be reopened.'); if (r.depart <= c.bdate) r.depart = addDays(c.bdate, 1); const pr = this.roomProblem(c, r.room, c.bdate, r.depart, r.id); if (pr) throw err(409, pr); r.status = 'inhouse'; r.history.push({ at: now(), by: me.username, what: 'Check-out undone' }); this.putRes(r); return ok(); }
+      case 'undoCheckOut': { const r = this.getRes(a.id); if (r.status !== 'out') throw err(400, 'This guest is not checked out.'); if (r.depart < c.bdate) throw err(400, 'This stay ended before today, so it cannot be reopened.'); if (r.depart <= c.bdate) r.depart = addDays(c.bdate, 1); const pr = this.roomProblem(c, r.room, c.bdate, r.depart, r.id); if (pr) throw err(409, pr); r.status = 'inhouse'; r.history.push({ at: now(), by: me.username, what: 'Check-out undone' }); this.rwUndo(r, me, c); this.putRes(r); return ok(); }
       case 'cancel': { const r = this.getRes(a.id); if (r.status !== 'reserved') throw err(400, 'Only a reservation that is not checked in can be cancelled.'); r.status = 'cancelled'; r.cxlAt = now(); r.cxlNo = 'X' + r.conf; r.cxlReason = clip(a.reason, 200); r.history.push({ at: now(), by: me.username, what: 'Cancelled' + (r.cxlReason ? ': ' + r.cxlReason : '') }); this.putRes(r); this.log(me.username, 'cancel ' + r.conf); return ok({ cxlNo: r.cxlNo }); }
       case 'reinstate': { const r = this.getRes(a.id); if (!['cancelled', 'noshow'].includes(r.status)) throw err(400, 'This reservation is not cancelled.'); if (r.depart <= c.bdate) throw err(400, 'The stay dates have passed.'); if (r.arrive < c.bdate) r.arrive = c.bdate; r.status = 'reserved'; if (r.room && this.roomProblem(c, r.room, r.arrive, r.depart, r.id)) r.room = ''; if (!r.room && this.availOfType(c, r.type, r.arrive, r.depart, r.id) < 1) throw err(409, 'No ' + r.type + ' rooms are left for those dates.'); r.history.push({ at: now(), by: me.username, what: 'Reinstated' }); this.putRes(r); return ok(); }
       case 'noShow': { const r = this.getRes(a.id); if (r.status !== 'reserved' || r.arrive > c.bdate) throw err(400, 'Only today\'s arrivals can be marked as a no show.'); r.status = 'noshow'; r.history.push({ at: now(), by: me.username, what: 'No show' }); this.putRes(r); return ok(); }
       case 'post': return ok(this.post(a, me, c));
+      case 'memberSave': { const m = this.memberSave(a, me, c); return ok({ id: m.id, number: m.number }); }
+      case 'memberAdjust': { mgr(); const m = this.memberAdjust(a, me, c); return ok({ points: m.points }); }
+      case 'memberLink': { const r = this.getRes(a.res); if (!ACTIVE.includes(r.status)) throw err(400, 'This reservation is ' + r.status + '.'); if (!Number(a.member)) throw err(400, 'Pick a member.'); this.linkMember(r, Number(a.member), me, c); this.putRes(r); return ok({ memberId: r.memberId, memberNo: r.memberNo }); }
+      case 'memberUnlink': { const r = this.getRes(a.res); if (!ACTIVE.includes(r.status)) throw err(400, 'This reservation is ' + r.status + '.'); this.linkMember(r, 0, me, c); this.putRes(r); return ok(); }
       case 'companySave': {
         const co = a.id ? this.company(a.id) : {}; if (a.id && !co) throw err(404, 'That company was not found.');
         for (const [k, n] of [['name', 80], ['contact', 80], ['phone', 30], ['email', 100], ['address', 200], ['corpId', 30], ['notes', 500]]) if (k in a) co[k] = clip(a[k], n);
@@ -542,6 +652,8 @@ export class HotelCore {
         if ('requireShift' in n) c.requireShift = !!n.requireShift;
         if ('quickLinks' in n) { if (n.quickLinks == null || (Array.isArray(n.quickLinks) && !n.quickLinks.length)) delete c.quickLinks; else { if (!Array.isArray(n.quickLinks)) throw err(400, 'The quick links must be a list.'); const keys = [...new Set(n.quickLinks.map(x => clip(x, 30)).filter(x => /^[a-z0-9_]+$/i.test(x)))]; if (keys.length > 14) throw err(400, 'At most 14 quick links.'); c.quickLinks = keys; } }
         if (Array.isArray(n.housekeepers)) c.housekeepers = n.housekeepers.map(x => clip(x, 40)).filter(Boolean).slice(0, 40);
+        if ('rewards' in n) c.rewards = this.cleanRewards(n.rewards, c.rewards);
+        if (c.rewards.enabled && !c.codes.some(k => k.code === 'RW')) c.codes.push({ code: 'RW', name: 'Rewards Redemption', type: 'GFTCRD', tax: [] });
         this.setKv('config', c); this.log(me.username, 'changed setup'); return ok();
       }
     }

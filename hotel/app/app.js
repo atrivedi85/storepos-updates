@@ -117,6 +117,7 @@ function render() {
   const hk = S.me.role === 'hk'; if (hk) view.name = 'hk';
   const nav = NAV.filter(n => hk ? n[0] === 'hk' : n[0] !== 'setup' || boss());
   if (!boss() && view.name === 'setup') view.name = 'home';
+  if (view.name === 'members' && !rwOn()) view.name = 'home';
   const keep = $('main') ? $('main').scrollTop : 0, keepX = $('main') ? $('main').scrollLeft : 0, focusId = document.activeElement && document.activeElement.id;
   drawing = true; try { paint(hk, nav); } finally { drawing = false; }
   $('main').scrollTop = keep; $('main').scrollLeft = keepX;
@@ -134,12 +135,12 @@ function paint(hk, nav) {
     menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest Profile'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
     menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), A('repGo', 'Night Audit', 'data-rep="stats"')]) +
     menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
-    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), rwOn() && N('members', 'Rewards Members'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
   $('#app').innerHTML = `<header class="${hk ? 'hkbar' : ''}"><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
     <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
     ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span>${hk ? '<button type="button" class="btn sm hklogout" data-act="logout">Logout</button>' : ''}</div></header>
-    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
+    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, members: vMembers, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
@@ -239,6 +240,7 @@ const LC = {
   arrive: { head: 'Arrival', val: r => r.arrive || '', cell: r => dshort(r.arrive) },
   depart: { head: 'Departure', val: r => r.depart || '', cell: r => dshort(r.depart) },
   pay: { head: 'Payment Type', val: r => r.payType || '', cell: r => esc(r.payType) },
+  rewards: { head: 'Rewards', val: r => rwTierOf(r), cell: r => esc(rwTierOf(r)) },
   bal: { head: 'Balance', kind: 'num', val: r => S.bal[r.id] || 0, cell: r => balTxt(S.bal[r.id] || 0) },
 };
 // o: {title (escaped), empty, rows, cols (keys of LC), sort {col, dir} (the default), dateRow (optional HTML)}.
@@ -259,12 +261,13 @@ function listScreen(o) {
 // The date row above Arrivals and Departures: ◀ [date] ▶ UPDATE. Enter in the date box also applies it.
 const listDateRow = (label, day) => `<div class="lst-date"><span class="lst-lbl">${label}</span><button class="btn sm" data-act="listDateStep" data-n="-1" title="Previous day">◀</button><input type="date" id="listDate" value="${esc(day)}" style="width:180px"><button class="btn sm" data-act="listDateStep" data-n="1" title="Next day">▶</button><button class="btn sm blue" data-act="listDateGo">UPDATE</button></div>`;
 // The business date shows what is due now; any other date shows the bookings for that date.
+const withRw = cols => rwOn() ? cols.flatMap(k => k === 'guest' ? ['guest', 'rewards'] : [k]) : cols;
 const vArrivals = () => {
   const day = view.listDate || B(), today = day === B();
   const rows = S.res.filter(r => today ? r.status === 'reserved' && r.arrive <= B() : r.arrive === day && ['reserved', 'inhouse', 'out'].includes(r.status));
-  return listScreen({ title: 'Arrivals: ' + esc(dmdy(day)), empty: 'No scheduled arrivals found.', rows, cols: ['guest', 'city', 'zip', 'gtd', 'nights', 'room', 'type', 'cond', 'rate', 'company', 'group', 'conf'], sort: { col: 'guest', dir: 'asc' }, dateRow: listDateRow('Arrival Date:', day) });
+  return listScreen({ title: 'Arrivals: ' + esc(dmdy(day)), empty: 'No scheduled arrivals found.', rows, cols: withRw(['guest', 'city', 'zip', 'gtd', 'nights', 'room', 'type', 'cond', 'rate', 'company', 'group', 'conf']), sort: { col: 'guest', dir: 'asc' }, dateRow: listDateRow('Arrival Date:', day) });
 };
-const vInHouse = () => listScreen({ title: 'In House List', empty: 'Nobody is checked in.', rows: S.res.filter(r => r.status === 'inhouse'), cols: ['room', 'guest', 'city', 'zip', 'type', 'cond', 'rate', 'arrive', 'depart', 'company', 'group', 'pay', 'bal'], sort: { col: 'room', dir: 'asc' } });
+const vInHouse = () => listScreen({ title: 'In House List', empty: 'Nobody is checked in.', rows: S.res.filter(r => r.status === 'inhouse'), cols: withRw(['room', 'guest', 'city', 'zip', 'type', 'cond', 'rate', 'arrive', 'depart', 'company', 'group', 'pay', 'bal']), sort: { col: 'room', dir: 'asc' } });
 const vDepartures = () => {
   const day = view.listDate || B(), today = day === B();
   const rows = S.res.filter(r => today ? r.status === 'inhouse' && r.depart <= B() : r.depart === day && ['reserved', 'inhouse', 'out'].includes(r.status));
@@ -319,7 +322,7 @@ function resForm(r, mode) {
   const bal = S.bal[r.id] || 0;
   const A = (act, label) => `<a href="#" data-act="${act}">${label}</a>`;
   const listed = !isNew && dnrMatchC(r), dnrAct = isNew || locked && !listed ? '' : listed ? (boss() ? A('dnrRemoveRes', 'Remove from Do Not Rent List') : '') : A('dnrAddRes', 'Add to Do Not Rent List');
-  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}${A('recurring', 'Recurring Charges').replace('<a ', '<a data-src="ed" ')}`) + dnrAct;
+  const acts = `<a href="#" data-act="closeModal">${isNew ? 'Cancel' : 'Back'}</a>` + (locked ? '' : `<a href="#" data-act="saveRes">${mode === 'walkin' ? 'Check In Now' : isNew ? 'Book Reservation' : 'Save Changes'}</a>`) + (isNew ? '' : `${A('folio', 'Guest Folio')}${r.status === 'reserved' ? A('checkIn', 'Check In') + A('cancelRes', 'Cancel Reservation') + (r.arrive <= B() ? A('noShow', 'No Show') : '') : ''}${r.status === 'inhouse' ? A('checkOut', 'Check Out') + A('undoCheckIn', 'Undo Check In') : ''}${r.status === 'out' ? A('undoCheckOut', 'Undo Check Out') : ''}${['cancelled', 'noshow'].includes(r.status) ? A('reinstate', 'Reinstate') : ''}${A('printReg', 'Print Registration Card')}${A('printConf', 'Print Confirmation')}${A('emailConf', 'E-mail Confirmation')}${A('viewChanges', 'View Changes')}${A('recurring', 'Recurring Charges').replace('<a ', '<a data-src="ed" ')}`) + (rwOn() && !isNew && (!locked || r.memberId) ? A('rwMember', 'Rewards Member') + (r.memberId && !locked ? A('rwRemove', 'Remove from Rewards') : '') : '') + dnrAct;
   const side = `<aside class="pside"><h3>Overview</h3><dl><dt>Status:</dt><dd class="big">${isNew ? 'New' : { reserved: 'Reserved', inhouse: 'In House', out: 'Checked Out', cancelled: 'Cancelled', noshow: 'No Show' }[r.status]}</dd><dt>Guest Name:</dt><dd>${esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())}</dd>${r.groupId ? `<dt>Group Master:</dt><dd>${esc((S.groups.find(g => g.id === +r.groupId) || {}).name || '')}</dd>` : ''}<dt>Account Number:</dt><dd>${esc(r.conf || '')}</dd><dt>Balance:</dt><dd>${bal < 0 ? '(' + money(-bal) + ')' : money(bal)}</dd></dl><h3>Actions</h3><div class="alinks">${acts}</div></aside>`;
   return `<div class="mback"><div class="mbox page"><div class="pg"><div class="pgmain">${dnrBanner(r)}${histBanner()}<div class="mtitle">${isNew ? (mode === 'walkin' ? 'Walk-In' : 'Create Reservation') : 'Reservation Information: ' + esc(((r.first || '') + ' ' + (r.last || '')).trim().toUpperCase())} ${isNew ? '' : statusBadge(r)}</div>
   <div class="sec">Stay</div><div class="grid">
@@ -337,7 +340,7 @@ function resForm(r, mode) {
     <label>Package<select id="r_pkg" ${locked ? 'disabled' : ''}><option value="">No package</option>${(S.config.packages || []).map(k => `<option value="${esc(k.code)}" ${k.code === r.pkg ? 'selected' : ''}>${esc(k.name)} · ${money(k.price)} / night</option>`).join('')}</select></label></div>
   <p class="hint" style="margin:6px 0 0">${manual ? `Rate typed by hand: ${money(r.rate)} every night. <a href="#" data-act="rateStd">Use the standard rate</a>` : varies ? 'The rate changes by night: ' + nightly.map((v, i) => dshort(addDays(r.arrive, i)).replace(/\/\d+$/, '') + ' ' + money(v)).join(', ') + '. Type a rate to charge one rate every night.' : 'Standard rate. Type a different rate to override it.'}</p>
   <div class="sec">Guest ${locked ? '' : '<button class="btn sm" data-act="scanId" style="float:right;margin-top:-8px">Scan ID</button>'}</div><div class="grid">${f('last', 'Last name *', '', 'maxlength="60"')}${f('first', 'First name', '', 'maxlength="60"')}${f('phone', 'Phone', '', 'maxlength="30" inputmode="tel"')}${f('email', 'E-mail', 'c8', 'maxlength="100"')}
-    ${f('addr1', 'Address', 'c6', 'maxlength="100"')}${f('city', 'City', 'c3', 'maxlength="60"')}${f('state', 'State', 'c2', 'maxlength="30"')}${f('zip', 'Postal code', 'c2', 'maxlength="15"')}${f('guestId', 'Guest ID (license #)', '', 'maxlength="40"')}${f('vehicle', 'Vehicle / plate', '', 'maxlength="40"')}</div>
+    ${f('addr1', 'Address', 'c6', 'maxlength="100"')}${f('city', 'City', 'c3', 'maxlength="60"')}${f('state', 'State', 'c2', 'maxlength="30"')}${f('zip', 'Postal code', 'c2', 'maxlength="15"')}${f('guestId', 'Guest ID (license #)', '', 'maxlength="40"')}${f('vehicle', 'Vehicle / plate', '', 'maxlength="40"')}</div>${rwRow()}
   <div class="sec">Payment and notes</div><div class="grid">
     <label>Guarantee<select id="r_guarantee" ${locked ? 'disabled' : ''}>${['Credit card', 'Cash deposit', 'Direct bill', '6 PM hold (no guarantee)'].map(x => `<option ${r.guarantee === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <label class="c3">Pays with<select id="r_payType" ${locked ? 'disabled' : ''}>${['', 'Card', 'Cash', 'Check', 'Direct bill'].map(x => `<option ${r.payType === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
@@ -439,7 +442,7 @@ function wizForm() {
       <p class="hint" style="margin:6px 0 0"><span id="rateHint">${rateHint(r, c)}</span> <a href="#" data-act="rateStd" id="rateLink" ${c.manual ? '' : 'hidden'}>Use the standard rate</a></p><div class="err" id="r_err"></div>${hi ? '<button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button>' : ''}`;
     side = wizSide(2);
   } else if (step === 3) {
-    main = `<div class="wz3"><div class="wzcol"><div class="wzf cmp">${F('last', '*Last Name', 'maxlength="60"')}${F('first', 'First Name', 'maxlength="60"')}${F('addr1', 'Address 1', 'maxlength="100"')}${F('addr2', 'Address 2', 'maxlength="100"')}${F('country', 'Country', 'maxlength="40"')}${F('zip', 'Postal Code', 'maxlength="15"')}${F('city', 'City', 'maxlength="60"')}${F('state', 'State', 'maxlength="30"')}${F('phone', 'Phone', 'maxlength="30" inputmode="tel"')}${F('email', 'E-mail', 'maxlength="100"')}${F('guestId', 'Guest ID', 'maxlength="40"')}${CK('taxExempt', 'Tax Exempt')}${F('vehicle', 'Vehicle ID', 'maxlength="40"')}${CK('vip', 'VIP')}</div>
+    main = `<div class="wz3"><div class="wzcol"><div class="wzf cmp">${F('last', '*Last Name', 'maxlength="60"')}${F('first', 'First Name', 'maxlength="60"')}${F('addr1', 'Address 1', 'maxlength="100"')}${F('addr2', 'Address 2', 'maxlength="100"')}${F('country', 'Country', 'maxlength="40"')}${F('zip', 'Postal Code', 'maxlength="15"')}${F('city', 'City', 'maxlength="60"')}${F('state', 'State', 'maxlength="30"')}${F('phone', 'Phone', 'maxlength="30" inputmode="tel"')}${F('email', 'E-mail', 'maxlength="100"')}${F('guestId', 'Guest ID', 'maxlength="40"')}${CK('taxExempt', 'Tax Exempt')}${F('vehicle', 'Vehicle ID', 'maxlength="40"')}${CK('vip', 'VIP')}</div>${rwRow()}
       <div class="err" id="r_err"></div><button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button></div>
       <div class="wzcol"><h3>Notes and Special Requests</h3><div class="wzf cmp">${CK('crib', 'Crib')}${CK('rollaway', 'Rollaway')}${CK('suppressRate', 'Suppress Rate')}${CK('noPost', 'No room charge')}${F('requests', 'Special requests', 'maxlength="300"')}${F('notes', 'Notes', 'maxlength="1000"')}</div><button class="btn wzbtn" data-act="scanId">SCAN ID</button></div></div>`;
     side = wizSide(3);
@@ -522,7 +525,7 @@ async function saveRes() {
 async function resAction(act) {
   const r = ED.r, done = async msg => { await refresh(); toast(msg); const fresh = S.res.find(x => x.id === r.id); if (fresh) { ED.r = JSON.parse(JSON.stringify(fresh)); drawRes(); } else { $('#modal').innerHTML = ''; ED = null; } };
   try {
-    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); if (r.notes || r.requests) { const yes = await askBox('Guest notes', `<div class="gnotes">${r.requests ? `<p><b>Special requests</b><br>${esc(r.requests)}</p>` : ''}${r.notes ? `<p><b>Notes</b><br>${esc(r.notes)}</p>` : ''}</div>`, 'Continue check-in'); if (!yes) return; } await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); const fl = {}; for (;;) { try { await op('checkIn', { id: r.id, ...fl }); break; } catch (e) { if (e.status === 412 && !fl.dirtyOk && confirm(e.message)) fl.dirtyOk = true; else if (e.status === 428 && !fl.dnrOk && confirm(e.message)) fl.dnrOk = true; else throw e; } } await done('Checked in to room ' + r.room + '.'); }
+    if (act === 'checkIn') { readForm(); if (!r.room) throw new Error('Pick a room first.'); const rwm = rwOn() && r.memberId ? rwMem(r.memberId) : null; ciAmen = false; if (r.notes || r.requests || rwm) { const yes = await askBox('Guest notes', ((r.notes || r.requests) ? `<div class="gnotes">${r.requests ? `<p><b>Special requests</b><br>${esc(r.requests)}</p>` : ''}${r.notes ? `<p><b>Notes</b><br>${esc(r.notes)}</p>` : ''}</div>` : '') + (rwm ? rwCheckInHtml(rwm) : ''), 'Continue check-in'); if (!yes) return; } await op('resSave', (({ status, history, rates, ...a }) => { a.rateManual = !!a.rateManual; if (!a.rateManual) delete a.rate; return a; })(r)); const fl = {}; for (;;) { try { await op('checkIn', { id: r.id, ...fl, ...(ciAmen ? { amenityGiven: true } : {}) }); break; } catch (e) { if (e.status === 412 && !fl.dirtyOk && confirm(e.message)) fl.dirtyOk = true; else if (e.status === 428 && !fl.dnrOk && confirm(e.message)) fl.dnrOk = true; else throw e; } } await done('Checked in to room ' + r.room + '.'); }
     else if (act === 'checkOut') { try { await op('checkOut', { id: r.id }); } catch (e) { if (e.status === 412 && boss() && confirm(e.message + '\n\nCheck out anyway and leave the balance on the folio?')) await op('checkOut', { id: r.id, force: true }); else if (e.status === 412) { toast(e.message, true); return openFolio(r.id); } else throw e; } await done('Checked out.'); }
     else if (act === 'undoCheckIn') { if (confirm('Undo the check-in for ' + gname(r) + '?')) { await op('undoCheckIn', { id: r.id }); await done('Check-in undone.'); } }
     else if (act === 'undoCheckOut') { await op('undoCheckOut', { id: r.id }); await done('Guest is back in house.'); }
@@ -548,11 +551,13 @@ function drawFolio() {
     <h3>Actions</h3><div class="alinks">${L('folioBack', 'Back')}${L('postOpen', 'Post Charge', 'data-kind="charge"')}${L('postOpen', 'Post Payment', 'data-kind="payment"')}${L('postOpen', 'Post Adjustment', 'data-kind="adjust"')}${L('printFolio', 'Print')}${L('emailFolio', 'Email Folio')}${L('recurring', 'Recurring Charges', 'data-src="fo"')}${r.status === 'inhouse' ? L('folioCheckOut', 'Check Out') : ''}${L('closeModal', 'Close')}</div></aside></div></div></div>`;
 }
 function postOpen(kind) {
-  const pay = ['CASH', 'CRED', 'AREC', 'GFTCRD'], codes = S.config.codes.filter(k => kind === 'payment' ? pay.includes(k.type) : !pay.includes(k.type) && k.type !== 'ADMIN');
-  const bal = FO.balance;
+  const bal = FO.balance, pay = ['CASH', 'CRED', 'AREC', 'GFTCRD'], rwm = kind === 'payment' && rwOn() && FO.res.memberId ? rwMem(FO.res.memberId) : null, rwc = S.rewards, pv = rwc.pointValue;
+  const canRw = !!rwm && pv >= 1 && rwm.points >= rwc.minRedeem && Math.floor(bal / pv) >= rwc.minRedeem, rwDef = canRw ? Math.min(rwm.points, Math.floor(bal / pv)) : 0;
+  const codes = S.config.codes.filter(k => k.code === 'RW' ? canRw : kind === 'payment' ? pay.includes(k.type) : !pay.includes(k.type) && k.type !== 'ADMIN');
   $('#postBox').innerHTML = `<div class="card" style="margin-bottom:10px"><b>${{ charge: 'Post a charge', payment: 'Post a payment', adjust: 'Post an adjustment (takes a charge off)' }[kind]}</b><div class="grid" style="margin-top:8px">
     <label>${kind === 'payment' ? 'Payment type' : 'Charge'}<select id="p_code">${codes.map(k => `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('')}</select></label>
-    <label class="c3">Amount<input id="p_amt" inputmode="decimal" value="${kind === 'payment' && bal > 0 ? (bal / 100).toFixed(2) : ''}"></label>
+    <label class="c3" id="p_amtWrap">Amount<input id="p_amt" inputmode="decimal" value="${kind === 'payment' && bal > 0 ? (bal / 100).toFixed(2) : ''}"></label>
+    ${canRw ? `<label class="c3" id="p_ptsWrap" hidden>Points to redeem<input id="p_pts" inputmode="numeric" value="${rwDef}" data-max="${rwDef}"></label><span class="hint rwval" id="p_ptsVal" hidden></span>` : ''}
     ${kind === 'payment' ? '<label class="c2">Card last 4<input id="p_last4" maxlength="4" inputmode="numeric"></label>' : ''}
     <label class="${kind === 'payment' ? 'c3' : 'c6'}">${kind === 'adjust' ? 'Reason *' : 'Comment'}<input id="p_note" maxlength="150"></label></div>
     <p class="hint" style="margin:8px 0 0">${kind === 'charge' ? 'Taxes are added automatically.' : kind === 'adjust' ? 'The taxes on that amount come off too.' : 'Run the card on your terminal first. "Guest Refund" and "Cash Paid Out" give money back.'}</p>
@@ -560,7 +565,8 @@ function postOpen(kind) {
   $('#p_amt').focus();
 }
 async function postSave(kind) {
-  await run(async () => { const amount = toCents($('#p_amt').value); if (!(amount > 0)) throw new Error('Type an amount above zero.'); await op('post', { res: FO.res.id, kind, code: $('#p_code').value, amount, comment: $('#p_note').value, last4: $('#p_last4') ? $('#p_last4').value : '' }); FO = await api('/folio?id=' + FO.res.id); drawFolio(); refresh(); toast('Posted.'); });
+  await run(async () => { if ($('#p_code').value === 'RW') { const points = parseInt($('#p_pts').value, 10); if (!(points > 0)) throw new Error('Type the points to redeem.'); await op('post', { res: FO.res.id, kind, code: 'RW', points, comment: $('#p_note').value }); FO = await api('/folio?id=' + FO.res.id); drawFolio(); await refresh(); return toast('Redeemed ' + points.toLocaleString('en-US') + ' points.'); }
+    const amount = toCents($('#p_amt').value); if (!(amount > 0)) throw new Error('Type an amount above zero.'); await op('post', { res: FO.res.id, kind, code: $('#p_code').value, amount, comment: $('#p_note').value, last4: $('#p_last4') ? $('#p_last4').value : '' }); FO = await api('/folio?id=' + FO.res.id); drawFolio(); refresh(); toast('Posted.'); });
 }
 
 /* ---------- printing ---------- */
@@ -572,7 +578,7 @@ function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Fo
 
 /* ---------- Reports ---------- */
 const REPORTS = [['arrivals', 'Arrival List'], ['departures', 'Departure List'], ['inhouse', 'In House List'], ['vacant', 'Vacant Room List'], ['hkcheck', 'Housekeeping Check-off List'], ['ledger', 'Guest Ledger (balances)'], ['future', 'Future Availability (14 days)'],
-  ['activity', 'Reservation Activity Report'], ['stats', 'Hotel Statistics'], ['closeout', 'Final Transaction Closeout'], ['shift', 'Shift Reconciliation'], ['journal', 'Hotel Journal Detail'], ['cancel', 'Cancellation List'], ['noshow', 'No Show Report'], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts']];
+  ['activity', 'Reservation Activity Report'], ['stats', 'Hotel Statistics'], ['closeout', 'Final Transaction Closeout'], ['shift', 'Shift Reconciliation'], ['journal', 'Hotel Journal Detail'], ['cancel', 'Cancellation List'], ['noshow', 'No Show Report'], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts'], ['rwmembers', 'Rewards Program Members'], ['rwstats', 'Rewards Program Statistics']];
 const REPORT_CATS = [
   ['TOP 10 LIST', [['Shift Reconciliation', 'shift'], ['Vacant Room List', 'vacant'], ['Housekeeping Check-off List', 'hkcheck'], ['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['In House List', 'inhouse'], ['Reservation Activity Report', 'activity']]],
   ['Emergency Reports', [['Account Balance Report', 'ledger'], ['Arrival List', 'arrivals'], ['Departure List', 'departures'], ['In House List', 'inhouse'], ['Vacant Room List', 'vacant']]],
@@ -582,7 +588,9 @@ const REPORT_CATS = [
   ['Reservation Reports', [['Reservation Activity Report', 'activity'], ['10 Day Availability', 'future'], ['No Show Report', 'noshow']]],
   ['Group Reports', [['Group Pickup Summary', 'grouppickup']]],
   ['Accounts Receivable Reports', [['Accounts Receivable Aging Report', 'araging']]]];
+const repCats = () => REPORT_CATS.map(c => c[0] === 'Front Desk Reports' && rwOn() ? [c[0], c[1].concat([['Rewards Program Members', 'rwmembers'], ['Rewards Program Statistics', 'rwstats']])] : c);
 const REPORT_INFO = {
+  rwmembers: 'Every rewards member with tier, points, lifetime points, nights, stays and room revenue, best guests first.', rwstats: 'For each tier: members, points outstanding, lifetime points, nights and revenue, and what all the outstanding points are worth.',
   arrivals: 'Guests with a reservation due to arrive who have not checked in yet.', departures: 'In-house guests due to leave today or earlier, with their balances.',
   inhouse: 'Every guest checked in right now, with room, dates, rate and balance.', vacant: 'Rooms that are empty tonight, with their housekeeping condition.',
   hkcheck: 'A room-by-room sheet for housekeepers to check off as each room is done.', ledger: 'Every stay that has a balance owing or a credit, with the total.',
@@ -648,10 +656,10 @@ function vReports() {
     return `<div class="rbtns left"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="printRep">PRINT</button></div>
     <div id="repOut"><div class="hint">Loading…</div></div>`;
   }
-  const col = view.repCol || {}, allOff = REPORT_CATS.every(c => col[c[0]]);
+  const col = view.repCol || {}, cats = repCats(), allOff = cats.every(c => col[c[0]]);
   return `<h1 class="rtitle">Reports</h1><div class="rsearch"><label for="repSearch">Search:</label><br><input type="text" id="repSearch" value="${esc(view.repQ || '')}" autocomplete="off"></div><hr class="dash">
   <div class="rtop"><button class="btn blue" data-act="repAll">${allOff ? 'EXPAND ALL' : 'COLLAPSE ALL'}</button></div>
-  <div class="rcols">${REPORT_CATS.map(c => `<div class="rcat ${col[c[0]] ? 'off' : ''}"><div class="rch" data-act="repCat" data-cat="${esc(c[0])}"><span class="tri">${col[c[0]] ? '▶' : '▼'}</span>${esc(c[0])}</div>${c[1].map(r => `<a class="rlink" href="#" data-act="rep" data-rep="${r[1]}" data-label="${esc(r[0])}">${esc(r[0])}</a>`).join('')}</div>`).join('')}</div>`;
+  <div class="rcols">${cats.map(c => `<div class="rcat ${col[c[0]] ? 'off' : ''}"><div class="rch" data-act="repCat" data-cat="${esc(c[0])}"><span class="tri">${col[c[0]] ? '▶' : '▼'}</span>${esc(c[0])}</div>${c[1].map(r => `<a class="rlink" href="#" data-act="rep" data-rep="${r[1]}" data-label="${esc(r[0])}">${esc(r[0])}</a>`).join('')}</div>`).join('')}</div>`;
 }
 
 /* The report sheet: every report is drawn on this "paper" (title, header line, body, footer). PRINT prints exactly this. */
@@ -693,7 +701,8 @@ async function buildReport() {
     const gtd = g => /credit/i.test(g || '') ? 'CC' : /cash/i.test(g || '') ? 'CA' : /direct/i.test(g || '') ? 'DB' : /6 ?pm/i.test(g || '') ? '6PM' : '';
     const l = S.res.filter(r => r.status === 'inhouse' && (!opt.type || r.type === opt.type)).sort(opt.sort === 'room' ? sortRoom : opt.sort === 'account' ? (a, b) => String(a.conf).localeCompare(String(b.conf), 'en', { numeric: true }) : byName);
     const guest = r => { const g = r.groupId && (S.groups || []).find(x => x.id === +r.groupId); return `<b>${esc(gname(r))}</b>` + [r.company, g && g.name, r.vehicle].filter(Boolean).map(x => `<div class="sub">${esc(x)}</div>`).join(''); };
-    h = T(['Room', 'Account', 'VIP', 'Guest Name', 'Notes', 'Arrive', 'Depart', 'Adults/ Children', 'Room Type', 'Package', '#Rate', 'GTD', 'Source', '#Balance'], l.map(r => [esc(r.room), esc(r.conf), r.vip ? 'VIP' : '', guest(r), `<div class="note">${esc(r.notes)}</div>`, dshort(r.arrive), dshort(r.depart), (r.adults || 0) + '/' + (r.children || 0), esc(r.type), esc(r.pkg), money(rateOf(r)), gtd(r.guarantee), esc(r.source), money(S.bal[r.id] || 0)]), 'inh')
+    const rwc = rwOn(), ins = (a, v) => { if (rwc) a.splice(4, 0, v); return a; };
+    h = T(ins(['Room', 'Account', 'VIP', 'Guest Name', 'Notes', 'Arrive', 'Depart', 'Adults/ Children', 'Room Type', 'Package', '#Rate', 'GTD', 'Source', '#Balance'], 'Rewards'), l.map(r => ins([esc(r.room), esc(r.conf), r.vip ? 'VIP' : '', guest(r), `<div class="note">${esc(r.notes)}</div>`, dshort(r.arrive), dshort(r.depart), (r.adults || 0) + '/' + (r.children || 0), esc(r.type), esc(r.pkg), money(rateOf(r)), gtd(r.guarantee), esc(r.source), money(S.bal[r.id] || 0)], esc(rwTierOf(r)))), 'inh')
       + `<div class="sh-total">Total Guests: ${l.reduce((s, r) => s + (r.adults || 0) + (r.children || 0), 0)} &nbsp; &nbsp;Total Rooms: ${l.length}</div>`;
   }
   else if (view.rep === 'vacant') {
@@ -733,6 +742,11 @@ async function buildReport() {
     h = T(['', '#' + (R.from === R.to ? mdy(R.from) : mdy(R.from) + ' - ' + mdy(R.to)), '#PTD', '#Last Year PTD', '#YTD', '#Last YTD'], rows, 'st');
     csv = [csv[0]].concat(rows.filter(r => !/class="ssec"/.test(r)).map(r => { const d = document.createElement('table'); d.innerHTML = r; return [...d.querySelectorAll('td')].map(td => td.textContent); }));
     if (R.includesToday) h += '<div class="sh-note">Includes the open business date (today so far).</div>';
+  }
+  else if (view.rep === 'rwmembers' || view.rep === 'rwstats') {
+    const R = await api('/report?name=rewards'), n = x => Number(x).toLocaleString('en-US'), tt = R.totals;
+    if (view.rep === 'rwmembers') h = T(['Member #', 'Name', 'Tier', '#Points', '#Lifetime Points', '#Nights', '#Stays', '#Revenue', 'Joined'], R.rows.map(x => [esc(x.number), esc(x.name), esc(x.tier), n(x.points), n(x.earned), n(x.nights), n(x.stays), money(x.revenue), dshort(x.joined)]).concat([tot('Totals (' + n(tt.members) + (tt.members === 1 ? ' member)' : ' members)'), [n(tt.points), n(tt.earned), n(tt.nights), n(tt.stays), money(tt.revenue), ''], 3)])) + `<div class="sh-total">Total Members: ${n(tt.members)}</div>`;
+    else h = T(['Tier', '#Members', '#Points Outstanding', '#Lifetime Points', '#Nights', '#Revenue'], R.tiers.map(x => [esc(x.name) + ' <span class="sub">from ' + n(x.min) + ' points</span>', n(x.members), n(x.points), n(x.earned), n(x.nights), money(x.revenue)]).concat([tot('Total:', [n(tt.members), n(tt.points), n(tt.earned), n(tt.nights), money(tt.revenue)])])) + `<div class="sh-total">Points outstanding: ${n(tt.points)} &nbsp; Value of all outstanding points: ${money(R.outstandingValue)} (each point is worth ${R.pointValue} cent${R.pointValue === 1 ? '' : 's'} when redeemed)</div>`;
   }
   else if (view.rep === 'activity') {
     const R = await api2('activity', `&sort=${encodeURIComponent(opt.sort || 'arrive')}&type=${encodeURIComponent(opt.type || '')}&tz=${encodeURIComponent((Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || '')}`);
@@ -845,7 +859,7 @@ function parseLicense(t) {   // AAMVA format used by US and Canadian licenses
 }
 
 /* ---------- Setup (managers) ---------- */
-const SETUP = [['property', 'Property'], ['types', 'Room types and rates'], ['rooms', 'Rooms'], ['taxes', 'Taxes'], ['codes', 'Posting codes'], ['rates', 'Rates by date'], ['packages', 'Packages'], ['hks', 'Housekeepers'], ['users', 'Logins'], ['ooo', 'Out of order rooms']];
+const SETUP = [['property', 'Property'], ['types', 'Room types and rates'], ['rooms', 'Rooms'], ['taxes', 'Taxes'], ['codes', 'Posting codes'], ['rates', 'Rates by date'], ['packages', 'Packages'], ['hks', 'Housekeepers'], ['rewards', 'Rewards'], ['users', 'Logins'], ['ooo', 'Out of order rooms']];
 function vSetup() {
   const c = S.config; let body = '';
   const save = '<div class="mfoot" style="justify-content:flex-start"><button class="btn green" data-act="setupSave">Save</button></div>';
@@ -856,6 +870,14 @@ function vSetup() {
   else if (view.setup === 'codes') body = `<p class="hint">One line per code: code, name, type, taxes that apply (separated by spaces). Types: ROOM and MISC are charges; CASH, CRED, AREC and GFTCRD are payments; ADMIN is for write-offs. Keep RM (the night audit posts it).</p><textarea id="s_codes" rows="20" class="card" style="font-family:Consolas,monospace">${esc(c.codes.map(k => `${k.code}, ${k.name}, ${k.type}, ${(k.tax || []).join(' ')}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'rates') body = `<p class="hint">Rates that change by date. One line each: name, from, through, days, room type, rate. Dates as YYYY-MM-DD. Days: <b>all</b>, or any of Sun Mon Tue Wed Thu Fri Sat. Room type: a code, or * for every type. When two lines cover the same night, the lower line wins. Nights with no line use the room type's normal rate.<br>Example: Derby weekend, 2027-05-01, 2027-05-02, all, *, 189.00 &nbsp;·&nbsp; Summer weekends, 2027-06-01, 2027-08-31, Fri Sat, NQQ, 109.00</p><textarea id="s_rates" rows="12" class="card" style="font-family:Consolas,monospace">${esc((c.rateRules || []).map(k => `${k.name}, ${k.from}, ${k.to}, ${k.days && k.days.length ? k.days.map(d => DOW[d]).join(' ') : 'all'}, ${k.type}, ${(k.rate / 100).toFixed(2)}`).join('\n'))}</textarea>${save}`;
   else if (view.setup === 'packages') body = `<p class="hint">Extras sold with the room and charged every night by the night audit. One line each: code, name, price per night, posting code (leave blank for MS, Miscellaneous). Taxes follow the posting code.<br>Example: BKF, Breakfast for two, 18.00, MS</p><textarea id="s_packages" rows="8" class="card" style="font-family:Consolas,monospace">${esc((c.packages || []).map(k => `${k.code}, ${k.name}, ${(k.price / 100).toFixed(2)}, ${k.charge}`).join('\n'))}</textarea>${save}`;
+  else if (view.setup === 'rewards') { const w = S.rewards; body = `<p class="hint">A guest rewards program the hotel runs for its own guests. Members earn points when they check out, and spend them on the folio (Post Payment, Rewards Redemption). The posting code RW is added for you.</p><div class="grid card">
+    <label class="chk c12"><input type="checkbox" id="s_rw_enabled" ${w.enabled ? 'checked' : ''}>Run the rewards program at this hotel</label>
+    <label class="c6">Program name<input id="s_rw_name" maxlength="40" value="${esc(w.name)}"></label>
+    <label class="c6">Points are earned by<select id="s_rw_earn"><option value="nights" ${w.earn === 'nights' ? 'selected' : ''}>Paid nights</option><option value="revenue" ${w.earn === 'revenue' ? 'selected' : ''}>Room revenue</option></select></label>
+    <label class="c3">Points per paid night<input id="s_rw_perNight" inputmode="numeric" value="${w.perNight}"></label><label class="c3">Points per dollar of room revenue<input id="s_rw_perDollar" inputmode="numeric" value="${w.perDollar}"></label>
+    <label class="c3">Point value when redeemed (cents)<input id="s_rw_pointValue" inputmode="numeric" value="${w.pointValue}"></label><label class="c3">Least points to redeem<input id="s_rw_minRedeem" inputmode="numeric" value="${w.minRedeem}"></label>
+    <label class="c12">Tiers (up to 6). One line each: name, minimum lifetime points, welcome amenity, message for the desk. The first tier starts at 0.<textarea id="s_rw_tiers" rows="7" style="font-family:Consolas,monospace">${esc(w.tiers.map(t => `${t.name}, ${t.min}, ${t.amenity}, ${t.message}`).join('\n'))}</textarea></label></div>
+    <p class="hint">Now: 1 point is worth ${w.pointValue} cent${w.pointValue === 1 ? '' : 's'}; ${w.earn === 'nights' ? w.perNight + ' points for each paid night' : w.perDollar + ' points for each whole dollar of room revenue'}. The message is shown to the desk at check-in (200 characters at most); the amenity is up to 80.</p>${save}`; }
   else if (view.setup === 'hks') body = `<p class="hint">One housekeeper's name per line.</p><textarea id="s_hks" rows="8" class="card">${esc(c.housekeepers.join('\n'))}</textarea>${save}`;
   else if (view.setup === 'users') body = `<p class="hint">Everyone signs in with their own e-mail address. A new person gets a link to choose their password, and can reset it later with "Forgot your password?" on the sign-in page.</p><div id="usersBox" class="hint">Loading…</div><h2>Add or change a login</h2><div class="grid card"><label>E-mail address<input id="u_email" type="email" autocapitalize="off" maxlength="120"></label><label class="c3">Name<input id="u_name" maxlength="80"></label><label class="c3">Role<select id="u_role"></select></label><label class="chk c2"><input type="checkbox" id="u_disabled">Turned off</label><label class="c12" style="flex-direction:row;gap:8px"><button class="btn green" data-act="userSave">Save login</button><button class="btn" data-act="userInvite">Send a new password link</button></label></div>`;
   else if (view.setup === 'ooo') body = `<div class="bar"><button class="btn red" data-act="blockNew">Take a room out of order…</button></div><div class="wrap"><table><tr><th>Room</th><th>From</th><th>Through</th><th>Reason</th><th></th></tr>${S.blocks.map(b => `<tr><td><b>${esc(b.room)}</b></td><td>${dshort(b.start)}</td><td>${dshort(b.end)}</td><td>${esc(b.reason)}</td><td><button class="btn sm" data-act="blockRemove" data-id="${b.id}">Put back in order</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No rooms are out of order.</td></tr>'}</table></div>`;
@@ -873,6 +895,8 @@ async function setupSave() {
   if (view.setup === 'rooms') c.rooms = lines('s_rooms').map(p => ({ no: p[0], type: p[1] || '', floor: p[2] || p[0][0] }));
   if (view.setup === 'taxes') c.taxes = lines('s_taxes').map(p => ({ code: p[0], name: p[1] || p[0], pct: parseFloat(p[2]) || 0 }));
   if (view.setup === 'codes') c.codes = lines('s_codes').map(p => ({ code: p[0], name: p[1] || p[0], type: p[2] || 'MISC', tax: (p[3] || '').split(/\s+/).filter(Boolean).map(x => x.toUpperCase()) }));
+  if (view.setup === 'rewards') c.rewards = { enabled: $('#s_rw_enabled').checked, name: $('#s_rw_name').value, earn: $('#s_rw_earn').value, perNight: $('#s_rw_perNight').value, perDollar: $('#s_rw_perDollar').value, pointValue: $('#s_rw_pointValue').value, minRedeem: $('#s_rw_minRedeem').value,
+    tiers: $('#s_rw_tiers').value.split('\n').filter(l => l.trim()).map(l => { const p = l.split(','); return { name: (p[0] || '').trim(), min: (p[1] || '').trim(), amenity: (p[2] || '').trim(), message: p.slice(3).join(',').trim() }; }) };
   if (view.setup === 'hks') c.housekeepers = $('#s_hks').value.split('\n').map(x => x.trim()).filter(Boolean);
   await run(async () => { await op('configSave', { config: c }); await refresh(); toast('Saved.'); });
 }
@@ -1026,6 +1050,85 @@ async function impGo() {
   });
 }
 
+/* ---------- Guest rewards: the row on the guest pages, the member window, the Rewards Members screen ---------- */
+const rwOn = () => !!(S && S.rewards && S.rewards.enabled) && S.me.role !== 'hk';
+const rwMem = id => (S.members || []).find(m => m.id === +id);
+const rwTierOf = r => { const m = r.memberId && rwMem(r.memberId); return m ? m.tier : ''; };
+const rwTier = name => ((S.rewards || {}).tiers || []).find(t => t.name === name) || {};
+const pts = n => Number(n || 0).toLocaleString('en-US');
+const rwText = m => `Member ${esc(m.number)} · ${esc(m.tier)} · ${pts(m.points)} points`;
+function rwPostVal() { const v = $('#p_ptsVal'), n = parseInt($('#p_pts').value, 10) || 0; if (v) v.textContent = n > 0 ? 'Worth ' + money(n * S.rewards.pointValue) + ' off the balance (' + pts(n) + ' points x ' + S.rewards.pointValue + ' cent' + (S.rewards.pointValue === 1 ? '' : 's') + ')' : ''; }
+function rwPostToggle() { const rw = $('#p_code').value === 'RW', w = $('#p_ptsWrap'); if (!w) return; w.hidden = !rw; $('#p_ptsVal').hidden = !rw; $('#p_amtWrap').hidden = rw; if ($('#p_last4')) $('#p_last4').parentElement.hidden = rw; if (rw) rwPostVal(); }
+let ciAmen = false;   // "Welcome amenity given" ticked in the check-in window
+function rwCheckInHtml(m) { const t = rwTier(m.tier); return `<div class="rwbox"><p><b>${esc(S.rewards.name)}: ${esc(m.number)} · ${esc(m.tier)}</b> · ${pts(m.points)} points</p>${t.message ? `<p class="rwmsg">${esc(t.message)}</p>` : ''}${t.amenity ? `<label class="chk"><input type="checkbox" id="ci_amen">Welcome amenity given: ${esc(t.amenity)}</label>` : ''}</div>`; }
+function rwMatch(g) {   // a member with the same guest ID, the same last + first name, or the same phone (7 or more digits)
+  const idn = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase(), nm = x => String(x || '').trim().toLowerCase(), dg = x => String(x || '').replace(/\D/g, ''), id = idn(g.guestId), ph = dg(g.phone);
+  return (S.members || []).find(m => (id && idn(m.guestId) === id) || (nm(g.last) && nm(g.first) && nm(m.last) === nm(g.last) && nm(m.first) === nm(g.first)) || (ph.length >= 7 && dg(m.phone).slice(-10) === ph.slice(-10))) || null;
+}
+function rwGuest(live) { const v = k => { const el = live && $('#r_' + k); return el ? el.value : (ED.r[k] || ''); }; return { last: v('last'), first: v('first'), phone: v('phone'), email: v('email'), guestId: v('guestId') }; }
+function rwRowInner(live) {
+  const r = ED.r, locked = ED.mode === 'edit' && !['reserved', 'inhouse'].includes(r.status), m = r.memberId ? rwMem(r.memberId) : null;
+  if (m) return `<b>${rwText(m)}</b>${locked ? '' : ' <a href="#" data-act="rwRemove">Remove</a>'}`;
+  if (locked) return '<span class="hint">Not a member</span>';
+  const f = rwMatch(rwGuest(live)); if (f) return `${rwText(f)} <a href="#" data-act="rwUse" data-id="${f.id}">Use this member</a> <a href="#" data-act="rwPick">Other</a>`;
+  return '<a href="#" data-act="rwPick">Select Program / Enroll</a>';
+}
+const rwRow = () => rwOn() ? `<div class="rwrow"><span class="rwlbl">Rewards Program:</span><span id="rwRow">${rwRowInner(false)}</span></div>` : '';
+function rwRowUpdate() { const el = $('#rwRow'); if (el && ED && rwOn()) el.innerHTML = rwRowInner(true); }
+async function rwLink(id) {
+  readForm(); if (ED.mode === 'edit') await op('memberLink', { res: ED.r.id, member: +id }); await refresh(); const m = rwMem(id);
+  ED.r.memberId = +id; ED.r.memberNo = m ? m.number : ''; const w = $('#rwwin'); if (w) w.remove(); drawRes(); toast('Linked to ' + (m ? m.number : 'the member') + '.');
+}
+async function rwUnlink() { readForm(); if (ED.mode === 'edit') { await op('memberUnlink', { res: ED.r.id }); await refresh(); } delete ED.r.memberId; delete ED.r.memberNo; drawRes(); toast('Removed from rewards.'); }
+async function rwSearchDraw(q) {
+  q = q.trim().toLowerCase(); const dg = q.replace(/\D/g, ''); let l;
+  if ((S.members || []).length >= 2000) l = (await api('/members?q=' + encodeURIComponent(q))).list;
+  else l = S.members.filter(m => !q || [m.number, m.last + ' ' + m.first, m.first + ' ' + m.last, m.last + ', ' + m.first].some(x => x.toLowerCase().includes(q)) || (dg.length >= 3 && String(m.phone || '').replace(/\D/g, '').includes(dg)));
+  const box = $('#rw_res'); if (box) box.innerHTML = l.slice(0, 8).map(m => `<a href="#" class="gsrow" data-act="rwChoose" data-id="${m.id}"><b>${esc(m.number)} ${esc(m.last)}${m.first ? ', ' + esc(m.first) : ''}</b><span>${esc(m.tier)} · ${pts(m.points)} points${m.phone ? ' · ' + esc(m.phone) : ''}</span></a>`).join('') || '<div class="hint">No member found. Enroll this guest below.</div>';
+}
+function rwPick() {
+  readForm(); const g = rwGuest(false), old = $('#rwwin'); if (old) old.remove(); const nm = (g.last.trim() + (g.first.trim() ? ', ' + g.first.trim() : ''));
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="rwwin"><div class="mbox sm"><div class="mtitle thin">${esc(S.rewards.name)}</div><label>Find a member<input id="rw_q" placeholder="Member #, name or phone" autocomplete="off" value="${esc(g.last.trim())}"></label><div id="rw_res" class="rwres"></div>
+    <div class="err" id="rw_err"></div><div class="mfoot"><button class="btn" data-act="rwClose">Cancel</button>${g.last.trim() ? `<button class="btn green" data-act="rwEnroll">Enroll ${esc(nm)}</button>` : ''}</div></div></div>`);
+  rwSearchDraw(g.last); $('#rw_q').focus();
+}
+async function rwEnroll() {
+  readForm(); const g = rwGuest(false); try { const x = await op('memberSave', { last: g.last, first: g.first, phone: g.phone, email: g.email, guestId: g.guestId }); await rwLink(x.id); } catch (e) { const el = $('#rw_err'); if (el) el.textContent = e.message; else toast(e.message, true); }
+}
+let MB = null;   // the member window: { member, tierInfo, next }
+async function memOpen(id) { MB = id ? await api('/member?id=' + id) : { member: { last: '', first: '', phone: '', email: '', guestId: '', log: [] } }; memDraw(); }
+function memDraw() {
+  const m = MB.member, n = !m.id, old = $('#memwin'); if (old) old.remove();
+  const f = (k, label, cls, x) => `<label class="${cls || ''}">${label}<input id="mem_${k}" value="${esc(m[k] || '')}" ${x || ''}></label>`, sg = v => (v > 0 ? '+' : v < 0 ? '\u2212' : '') + pts(Math.abs(v));
+  const sum = n ? '' : `<div class="rwstat"><div><b>${esc(MB.tier)}</b><span>Tier</span></div><div><b>${pts(m.points)}</b><span>Points</span></div><div><b>${pts(m.earned)}</b><span>Lifetime points</span></div><div><b>${pts(m.nights)}</b><span>Nights</span></div><div><b>${pts(m.stays)}</b><span>Stays</span></div><div><b>${money(m.revenue)}</b><span>Room revenue</span></div></div>
+    <p class="hint">Joined ${esc(dshort(m.joined))}. ${MB.next ? pts(MB.next.need) + ' more lifetime points to ' + esc(MB.next.name) + '.' : 'Top tier.'}${MB.tierInfo && MB.tierInfo.amenity ? ' Welcome amenity: ' + esc(MB.tierInfo.amenity) + '.' : ''}</p>`;
+  $('#modal').insertAdjacentHTML('beforeend', `<div class="mback" id="memwin"><div class="mbox wide"><div class="mtitle thin">${esc(S.rewards.name)}: ${n ? 'New member' : esc(m.number)}</div>${sum}
+    <div class="grid">${f('last', 'Last name *', 'c6', 'maxlength="60"')}${f('first', 'First name', 'c3', 'maxlength="60"')}${f('phone', 'Phone', 'c3', 'maxlength="30"')}${f('email', 'E-mail', 'c6', 'maxlength="100"')}${f('guestId', 'Guest ID', 'c6', 'maxlength="40"')}</div>
+    <div class="err" id="mem_err"></div>
+    ${n ? '' : `<div class="sec">Points history</div><div class="wrap" style="max-height:26vh"><table id="memLog"><tr><th>Date</th><th>By</th><th>What</th><th class="num">Points</th></tr>${m.log.slice().reverse().map(l => `<tr><td>${dshort(l.bdate)}</td><td>${esc(l.by)}</td><td>${esc(l.what)}</td><td class="num">${l.points ? sg(l.points) : ''}</td></tr>`).join('')}</table></div>
+    ${boss() ? `<div class="grid rwadj"><label class="c3">Adjust points (+ or -)<input id="mem_pts" inputmode="numeric" placeholder="500 or -200"></label><label class="c6">Reason *<input id="mem_why" maxlength="200"></label><label class="c3" style="justify-content:flex-end"><button class="btn blue" data-act="memAdjust">Adjust points</button></label></div>` : ''}`}
+    <div class="mfoot"><button class="btn" data-act="memClose">Close</button><button class="btn green" data-act="memSave">${n ? 'Enroll member' : 'Save details'}</button></div></div></div>`);
+  const first = $('#mem_last'); if (first && n) first.focus();
+}
+async function memSave() {
+  const m = MB.member, v = k => $('#mem_' + k).value;
+  try { const x = await op('memberSave', { id: m.id || 0, last: v('last'), first: v('first'), phone: v('phone'), email: v('email'), guestId: v('guestId') }); await refresh(); await memOpen(x.id); toast(m.id ? 'Saved.' : 'Enrolled as ' + x.number + '.'); } catch (e) { const el = $('#mem_err'); if (el) el.textContent = e.message; }
+}
+async function memAdjust() {
+  const m = MB.member; try { await op('memberAdjust', { id: m.id, points: $('#mem_pts').value.trim() === '' ? 0 : Number($('#mem_pts').value), reason: $('#mem_why').value }); await refresh(); await memOpen(m.id); toast('Points adjusted.'); } catch (e) { const el = $('#mem_err'); if (el) el.textContent = e.message; }
+}
+function vMembers() {
+  const q = view.q.trim().toLowerCase(), dg = q.replace(/\D/g, ''), s = view.memSort || { col: 'number', dir: 'asc' };
+  const COLS = [['number', 'Member #'], ['name', 'Name'], ['phone', 'Phone'], ['tier', 'Tier'], ['points', 'Points', 1], ['earned', 'Lifetime Points', 1], ['nights', 'Nights', 1], ['stays', 'Stays', 1], ['joined', 'Joined']];
+  const all = S.members || [], nameOf = m => m.last + (m.first ? ', ' + m.first : '');
+  let list = all.filter(m => !q || [m.number, nameOf(m), m.first + ' ' + m.last].some(x => x.toLowerCase().includes(q)) || (dg.length >= 3 && String(m.phone || '').replace(/\D/g, '').includes(dg)));
+  const val = m => s.col === 'name' ? nameOf(m) : s.col === 'tier' ? m.earned : m[s.col] == null ? '' : m[s.col], num = COLS.find(c => c[0] === s.col)[2] || s.col === 'tier';
+  list = list.slice().sort((a, b) => { const c = num ? val(a) - val(b) : String(val(a)).localeCompare(String(val(b)), 'en', { numeric: true }); return s.dir === 'desc' ? -c : c; });
+  const th = c => `<th class="sortable${c[2] ? ' num' : ''}" data-act="memSort" data-col="${c[0]}">${c[1]} <span class="sarr${s.col === c[0] ? ' on' : ''}">${s.col === c[0] ? (s.dir === 'desc' ? '▼' : '▲') : '⇅'}</span></th>`;
+  return `<h1 class="pgt-c">Rewards Members</h1>${all.length ? '' : '<div class="lst-empty">Nobody is enrolled yet.</div>'}<div class="lst-bar"><span>Members: <b>${list.length}</b></span><button class="btn sm green" data-act="memNew">+ Member</button><span class="flex"></span><label class="lst-q">Quick Search: <input id="q" value="${esc(view.q)}"></label></div>
+  <div class="wrap"><table class="lst"><tr>${COLS.map(th).join('')}</tr>${list.map(m => `<tr class="click" data-act="memOpen" data-id="${m.id}"><td><b>${esc(m.number)}</b></td><td>${esc(nameOf(m))}</td><td>${esc(m.phone)}</td><td>${esc(m.tier)}</td><td class="num">${pts(m.points)}</td><td class="num">${pts(m.earned)}</td><td class="num">${pts(m.nights)}</td><td class="num">${pts(m.stays)}</td><td>${dshort(m.joined)}</td></tr>`).join('')}</table></div>`;
+}
+
 /* ---------- clicks and typing ---------- */
 document.addEventListener('click', async e => {
   const mb = e.target.closest('.menu>button'); if (mb) { mb.focus(); return; }
@@ -1113,7 +1216,7 @@ document.addEventListener('click', async e => {
     view.repStage = 'result'; render(); });
   if (a === 'repBack') { if (view.repStage === 'result') view.repStage = 'options'; else { view.repStage = 'list'; view.rep = ''; } return render(); }
   if (a === 'repCat') { view.repCol = view.repCol || {}; view.repCol[el.dataset.cat] = !view.repCol[el.dataset.cat]; return render(); }
-  if (a === 'repAll') { const off = !REPORT_CATS.every(c => (view.repCol || {})[c[0]]); view.repCol = {}; if (off) REPORT_CATS.forEach(c => view.repCol[c[0]] = true); return render(); }
+  if (a === 'repAll') { const off = !repCats().every(c => (view.repCol || {})[c[0]]); view.repCol = {}; if (off) repCats().forEach(c => view.repCol[c[0]] = true); return render(); }
   if (a === 'printRep') return printHtml($('#repOut').innerHTML);
   if (a === 'nightAudit') return nightAudit();
   if (a === 'setupTab') { view.setup = el.dataset.tab; return render(); }
@@ -1142,7 +1245,19 @@ document.addEventListener('click', async e => {
   if (a === 'qlSave') { if (!QL.length) { $('#ql_err').textContent = 'Keep at least one link, or use Reset to default.'; return; } return run(async () => { await op('configSave', { config: { quickLinks: QL } }); $('#modal').innerHTML = ''; QL = null; await refresh(); toast('Quick links saved.'); }); }
   if (a === 'qlReset') return run(async () => { await op('configSave', { config: { quickLinks: [] } }); $('#modal').innerHTML = ''; QL = null; await refresh(); toast('Quick links are back to the default.'); });
   if (a === 'histOpen') return histOpen();
-  if (a === 'askYes') return askDone(true);
+  if (a === 'rwMember') return run(async () => { readForm(); if (ED.r.memberId) return memOpen(ED.r.memberId); rwPick(); });
+  if (a === 'rwPick') return rwPick();
+  if (a === 'rwClose') { const w = $('#rwwin'); if (w) w.remove(); return; }
+  if (a === 'rwUse' || a === 'rwChoose') return run(() => rwLink(el.dataset.id));
+  if (a === 'rwEnroll') return rwEnroll();
+  if (a === 'rwRemove') return run(rwUnlink);
+  if (a === 'memNew') return run(() => memOpen(0));
+  if (a === 'memOpen') return run(() => memOpen(el.dataset.id));
+  if (a === 'memClose') { const w = $('#memwin'); if (w) w.remove(); return; }
+  if (a === 'memSave') return memSave();
+  if (a === 'memAdjust') return memAdjust();
+  if (a === 'memSort') { const c = el.dataset.col, s = view.memSort || { col: 'number', dir: 'asc' }; view.memSort = s.col === c && s.dir === 'asc' ? { col: c, dir: 'desc' } : { col: c, dir: 'asc' }; return render(); }
+  if (a === 'askYes') { ciAmen = !!($('#ci_amen') && $('#ci_amen').checked); return askDone(true); }
   if (a === 'askNo') return askDone(false);
   if (a === 'impOpen') return impOpen();
   if (a === 'impClose') { const w = $('#imp'); if (w) w.remove(); return; }
@@ -1156,11 +1271,12 @@ document.addEventListener('change', e => {
   if (t.id === 'tapeFloor' || t.id === 'hkFloor') { view.floor = t.value; return render(); }
   if (t.id === 'hkDirty') { view.hkDirty = t.checked; return render(); }
   if (t.id === 'optDate') { view.optDate = t.value; return; }
+  if (t.id === 'p_code') return rwPostToggle();
   if (/^b_(from|to|floor)$/.test(t.id)) return blockSync();
   if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('input', e => { if (e.target.id === 'rw_q') rwSearchDraw(e.target.value); if (e.target.id === 'p_pts') rwPostVal(); if (ED && ['r_last', 'r_first', 'r_guestId', 'r_phone'].includes(e.target.id)) rwRowUpdate(); if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
 document.addEventListener('focusout', e => { if (ED && ['r_last', 'r_first', 'r_phone', 'r_guestId'].includes(e.target.id)) histLoad(); if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
@@ -1169,7 +1285,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'gs_q') return run(guestFind);
   if (e.key === 'Enter' && e.target.id === 'listDate' && e.target.value) { view.listDate = e.target.value; return render(); }
   if (e.key === 'Enter' && e.target.id === 'roomJump') { const no = e.target.value.trim(); if (!no) return; const g = S.res.find(r => r.status === 'inhouse' && String(r.room).toLowerCase() === no.toLowerCase()); if (!g) return toast('Nobody is checked in to room ' + no, true); e.target.value = ''; return run(() => openRes(g.id)); }
-  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#ask')) askDone(false); else if ($('#scan')) scanClose(); else if ($('#rcwin')) $('#rcwin').remove(); else if ($('#hist')) $('#hist').remove(); else if ($('#imp')) $('#imp').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
+  if (e.key === 'Escape' && $('#modal').innerHTML && !$('#linkTxt')) { if ($('#ask')) askDone(false); else if ($('#memwin')) $('#memwin').remove(); else if ($('#rwwin')) $('#rwwin').remove(); else if ($('#scan')) scanClose(); else if ($('#rcwin')) $('#rcwin').remove(); else if ($('#hist')) $('#hist').remove(); else if ($('#imp')) $('#imp').remove(); else { $('#modal').innerHTML = ''; ED = null; FO = null; } }
 });
 // Keep every front-desk screen current: other computers' changes show up within 20 seconds.
 setInterval(() => { if (S && !M && !$('#modal').innerHTML && document.visibilityState === 'visible' && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) refresh().catch(e => { if (e.status === 401 || e.status === 403) { S = null; showLogin(e.status === 403 ? e.message : ''); } }); }, 20000);

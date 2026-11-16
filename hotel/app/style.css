@@ -356,3 +356,14 @@ input[type=radio]{width:20px;height:20px;min-height:0;padding:0;vertical-align:m
   header.hkbar .bdate{padding:0;font-size:15px}header.hkbar .bdate::before{display:none}
   header.hkbar .hklogout{display:inline-flex;background:#3a3a3a;color:#fff;min-height:40px;margin:0}
 }
+
+/* guest rewards */
+[hidden].c3,.grid label[hidden]{display:none!important}
+.rwrow{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:10px 0 4px;padding:8px 12px;background:#f3f6fb;border:1px solid #d3deef;border-radius:6px;font-size:15px}
+.rwlbl{font-weight:600;color:#14325f}.rwrow a{color:#0a59c9;white-space:nowrap}
+.rwbox{background:#eef5ff;border:1px solid #9ec0f2;border-radius:6px;padding:4px 14px;margin-top:10px}.rwbox p{margin:8px 0}.rwmsg{font-style:italic;color:#233a5c}
+.rwbox .chk{display:flex;gap:8px;align-items:center;margin:8px 0}
+.rwres{max-height:260px;overflow:auto;margin:8px 0}
+.rwstat{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 6px}.rwstat div{flex:1 1 110px;background:#f3f6fb;border:1px solid #d3deef;border-radius:6px;padding:8px 10px;text-align:center}
+.rwstat b{display:block;font-size:22px;font-weight:600}.rwstat span{color:#666;font-size:13px}
+.rwadj{margin-top:10px;align-items:end}.rwval{grid-column:1/-1;margin:0}
