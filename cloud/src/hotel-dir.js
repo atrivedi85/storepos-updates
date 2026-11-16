@@ -180,7 +180,7 @@ export class DirectoryCore {
     if (me.role !== 'master') throw err(403, 'Only the master account can do that.');
     if (p === '/master/hotels') {
       const cnt = {}; for (const r of this.rows("SELECT hotel, COUNT(*) n FROM d_users WHERE hotel<>'' GROUP BY hotel")) cnt[r.hotel] = r.n;
-      const hotels = this.rows('SELECT data FROM d_hotels').map(x => JSON.parse(x.data)).sort((a, b) => a.name.localeCompare(b.name)).map(h => { const o = this.user(h.ownerEmail); return { ...h, users: cnt[h.id] || 0, ownerName: o ? o.name : '', ownerSignedIn: !!(o && o.lastLogin) }; });
+      const hotels = this.rows('SELECT data FROM d_hotels').map(x => JSON.parse(x.data)).sort((a, b) => a.name.localeCompare(b.name)).map(h => { const o = h.ownerEmail ? this.user(h.ownerEmail) : null; return { ...h, users: cnt[h.id] || 0, ownerName: o ? o.name : '', ownerSignedIn: !!(o && o.lastLogin) }; });
       const m = this.kv('mail', null) || {};
       return { status: 200, json: { hotels, mail: { host: m.host || 'smtp.gmail.com', port: m.port || 465, user: m.user || '', fromName: m.fromName || 'Hotel Desk', hasPass: !!m.pass } } };
     }
@@ -189,7 +189,9 @@ export class DirectoryCore {
       const name = clip(b.name, 80); if (!name) throw err(400, 'Type the hotel\'s name.');
       if (b.paidThrough && !/^\d{4}-\d{2}-\d{2}$/.test(b.paidThrough)) throw err(400, 'Check the paid-through date.');
       let owner = null, out = {};
-      if (isNew) {
+      if (isNew && b.test) {   // a practice hotel with no owner login: the master uses it through "Open"
+        h = { id: nc.randomBytes(9).toString('hex'), status: 'active', created: now(), template: 'ky55', tz: clip(b.tz, 40) || 'America/New_York', ownerEmail: '', test: true };
+      } else if (isNew) {
         const email = normEmail(b.ownerEmail); if (!validEmail(email)) throw err(400, 'Type the owner\'s e-mail address.');
         if (this.user(email)) throw err(409, 'That e-mail address already has a Hotel Desk login. Use a different e-mail address for this owner.');
         h = { id: nc.randomBytes(9).toString('hex'), status: 'active', created: now(), template: b.template === 'ky55' ? 'ky55' : 'blank', tz: clip(b.tz, 40) || 'America/New_York', ownerEmail: email };
@@ -205,7 +207,7 @@ export class DirectoryCore {
       if (b.status === 'off') this.sql.exec('DELETE FROM d_sessions WHERE email IN (SELECT email FROM d_users WHERE hotel=?)', h.id);   // everyone at that hotel is signed out at once
       this.log(me.email, 'turned ' + h.name + ' ' + b.status); return ok();
     }
-    if (p === '/master/ownerInvite' && POST) { const h = this.hotel(b.id), u = h && this.user(h.ownerEmail); if (!u) throw err(404, 'That hotel\'s owner login was not found.'); return ok(await this.invite(u, req.origin, me.name)); }
+    if (p === '/master/ownerInvite' && POST) { const h = this.hotel(b.id), u = h && h.ownerEmail && this.user(h.ownerEmail); if (!u) throw err(404, 'This hotel has no owner login.'); return ok(await this.invite(u, req.origin, me.name)); }
     if (p === '/master/open' && POST) { if (!this.hotel(b.id)) throw err(404, 'That hotel was not found.'); this.sql.exec('UPDATE d_sessions SET as_hotel=? WHERE h=?', b.id, s.key); return ok(); }
     if (p === '/master/close' && POST) { this.sql.exec("UPDATE d_sessions SET as_hotel='' WHERE h=?", s.key); return ok(); }
     if (p === '/master/mail' && POST) {
