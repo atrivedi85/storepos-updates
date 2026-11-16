@@ -9,11 +9,12 @@ the hotel's old system did, in the Store POS look.
 
 ## Layout (Nov 16, 2026)
 
-The screens follow the layout the front desk already knows from its old system: one menu bar (Home, Find, View, Create, Manage,
-Run, each a drop-down), quick-link tiles and a dark numbers band on Home, a Quick Statistics page, the tape chart with
-Room # / Type / Condition columns and a side panel (legend, unassigned reservations), and the reservation and folio screens as a
-page with **Overview** and **Actions** on the right. The name, logo and artwork are our own.
-Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()` helper and scopes tab/report buttons to `main`.
+The header is a dark bar: our icon and hotel name, then Home, Find, View, Create, Manage, Run (thin dividers). A menu opens on hover,
+click or focus: its title turns into a white tab and the links drop down in a white panel. On the right: the person's name (drop-down with
+My password / Logout), the business date, the find box and, for the master, "All hotels". A line under the bar shows the hotel name on every screen.
+**Reports** is a searchable page of collapsible categories in 3 columns. Click a report for its options page (description, Start/End Date
+when it takes dates), then SUBMIT for the result with BACK and PRINT (`view.repStage` = list / options / result; menu links with `repGo` jump to the result).
+Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()` helper and reaches a report with `runRep()` (link, SUBMIT). The name, logo and artwork are our own.
 
 ## What it does
 

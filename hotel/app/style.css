@@ -71,19 +71,29 @@ tr.click{cursor:pointer}tr.click:hover td{background:#eaf2ff}
 @media print{html,body{background:#fff;height:auto}#app,#modal,#toast{display:none!important}#print{display:block;color:#000;font-size:12.5px;padding:8px}#print th{background:#fff;color:#000;border-bottom:2px solid #000;position:static}#print td{border-bottom:1px solid #ccc;padding:4px 8px}#print h1{font-size:19px}}
 
 /* ===== Layout like the front desk is used to: one menu bar, quick-link tiles, dark numbers band, side panels ===== */
-header{background:#2b2b2b;padding:0 12px;gap:10px;flex-wrap:nowrap;min-height:58px}
-header .brand{font-size:17px;white-space:nowrap}
-header nav.menus{display:flex;flex-wrap:nowrap;gap:0;flex:1;align-items:stretch;align-self:stretch}
-header nav.menus>button,header .menu>button{background:none;border-radius:0;color:#fff;font-weight:500;font-size:17px;padding:0 18px;height:100%;min-height:58px;border-right:1px solid #555}
-header nav.menus>button.on{background:#0a7cff}
-header .menu{position:relative}
-header .menu:hover>button,header .menu:focus-within>button{background:#0a7cff}
-header .menu .drop{display:none;position:absolute;top:100%;left:0;background:#fff;min-width:240px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:40;border-radius:0 0 8px 8px;padding:6px 0}
+header{background:#262626;padding:0 0 0 16px;gap:0;flex-wrap:nowrap;height:78px;min-height:78px;align-items:stretch}
+header .brand{font-size:18px;white-space:nowrap;margin-right:18px;align-self:center}
+header nav.menus{display:flex;flex-wrap:nowrap;gap:0;flex:1;align-items:stretch}
+header nav.menus>button,header .menu>button{background:none;border-radius:0;color:#fff;font-weight:400;font-size:18px;padding:0 24px;height:100%;min-height:78px;border:0;display:flex;align-items:center;gap:8px;white-space:nowrap}
+header nav.menus>button.on{background:none;box-shadow:inset 0 -4px 0 #0a7cff}
+header nav.menus>*+*,header .hright .menu,header .hright .bdate{position:relative}
+header nav.menus>*+*::before,header .hright .menu::before,header .hright .bdate::before{content:"";position:absolute;left:0;top:50%;height:28px;margin-top:-14px;width:1px;background:#666}
+header .menu:hover::before,header .menu:focus-within::before{display:none}
+header .menu{position:relative;display:flex;align-items:stretch}
+header .menu:hover>button,header .menu:focus-within>button{background:#fff;color:#262626}
+header .menu .drop{display:none;position:absolute;top:100%;left:0;background:#fff;min-width:210px;box-shadow:0 10px 24px rgba(0,0,0,.28);z-index:40;padding:22px 30px}
 header .menu:hover .drop,header .menu:focus-within .drop{display:block}
-header .menu .drop a{display:block;padding:10px 18px;color:#14213d;text-decoration:none;font-size:15.5px}
-header .menu .drop a:hover{background:#e8f1fd;color:#0a59c9}
-header .find{width:200px;background:#3a3a3a;border-color:#555}
-header .who{white-space:nowrap;color:#ddd}header .who b{display:inline;margin-right:6px}header .who a{color:#8fc0ff}
+header.nohover .menu:not(:focus-within) .drop{display:none}
+header.nohover .menu:not(:focus-within)>button{background:none;color:#fff}
+header .menu .drop a{display:block;padding:0;line-height:30px;color:#0a7cff;text-decoration:none;font-size:17px;white-space:nowrap}
+header .menu .drop a:hover{text-decoration:underline;background:none}
+header .hright{display:flex;align-items:stretch;gap:0;padding-right:14px}
+header .hright>.btn{align-self:center;margin-right:12px}
+header .find{width:160px;align-self:center;margin:0 14px 0 0;background:#3a3a3a;border-color:#555;min-height:36px}
+header .menu.user>button{padding:0 18px;font-size:17px}header .menu.user .drop{left:auto;right:0;min-width:180px}
+header .bdate{color:#fff;font-size:17px;padding:0 18px 0 22px;display:flex;align-items:center;white-space:nowrap}
+header .ico{flex-shrink:0}
+.hline{display:flex;align-items:center;gap:8px;font-size:16px;color:#262626;margin:0 0 14px}
 main{background:#fff;padding:16px 20px}
 h1{font-weight:300;font-size:34px;margin:4px 0 14px}h1.pgt{text-align:right}
 th{background:#f4f6f9;color:#555;border-bottom:1px dashed #333;font-weight:500;font-size:14.5px}
@@ -127,5 +137,21 @@ th{background:#f4f6f9;color:#555;border-bottom:1px dashed #333;font-weight:500;f
 .pside dl{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;margin:0 0 18px;align-items:baseline}.pside dt{color:var(--mut);font-size:14px}.pside dd{margin:0;font-weight:500}.pside dd.big{font-size:22px;font-weight:400}
 .alinks a{display:block;padding:5px 0;color:#0a59c9;text-decoration:none;font-size:15.5px}.alinks a:hover{text-decoration:underline}
 .sec{color:#333;font-weight:400;font-size:20px;border-bottom:1px solid var(--line)}
-@media (max-width:860px){.pg{flex-direction:column}.pside{width:auto;border-left:0;border-top:1px solid var(--line)}.tapewrap{flex-direction:column}.tside{width:auto;border-left:0;padding-left:0;max-height:none}header{flex-wrap:wrap}header nav.menus{flex-wrap:wrap;flex-basis:100%;order:5}header nav.menus>button,header .menu>button{min-height:44px;padding:0 12px;font-size:15px}}
+@media (max-width:860px){.pg{flex-direction:column}.pside{width:auto;border-left:0;border-top:1px solid var(--line)}.tapewrap{flex-direction:column}.tside{width:auto;border-left:0;padding-left:0;max-height:none}header{flex-wrap:wrap;height:auto}header nav.menus{flex-wrap:wrap;flex-basis:100%;order:5}header nav.menus>button,header .menu>button{min-height:44px;padding:0 12px;font-size:15px}}
 @media print{.pside{display:none}}
+
+/* ===== Reports: list, options, result ===== */
+h1.rtitle{font-weight:300;font-size:44px;text-align:center;margin:10px 0 12px}
+.rdesc{text-align:center;color:#444;font-size:17px;margin:0 0 26px}
+.rsearch{text-align:center;font-size:17px}.rsearch input{width:480px;max-width:90%;margin-top:6px}
+hr.dash{border:0;border-top:1px dashed #888;margin:20px 0}
+.rtop{margin-bottom:18px}
+.rform{display:flex;flex-direction:column;align-items:center;gap:12px;font-size:17px}.rform label{display:flex;align-items:center;gap:10px}.rform input{width:190px}
+.rbtns{display:flex;justify-content:center;gap:14px;margin:6px 0 18px}.rbtns.left{justify-content:flex-start}
+.rcols{column-count:3;column-gap:60px}
+.rcat{break-inside:avoid;margin-bottom:34px}
+.rch{font-size:24px;font-weight:300;border-bottom:1px dashed #888;padding-bottom:6px;margin-bottom:8px;cursor:pointer;user-select:none}
+.rch .tri{color:#999;font-size:15px;margin-right:10px;display:inline-block;width:16px}
+.rcat.off .rlink{display:none!important}
+.rlink{display:block;color:#4a6ee0;font-size:17px;line-height:34px;text-decoration:none}.rlink:hover{text-decoration:underline}
+@media (max-width:1000px){.rcols{column-count:2}}@media (max-width:640px){.rcols{column-count:1}h1.rtitle{font-size:34px}}

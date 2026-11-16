@@ -118,21 +118,24 @@ function render() {
   drawing = true; try { paint(hk, nav); } finally { drawing = false; }
   $('main').scrollTop = keep; $('main').scrollLeft = keepX;
   if (focusId && $('#' + focusId)) { const el = $('#' + focusId); el.focus(); if (el.setSelectionRange && el.type === 'text') el.setSelectionRange(el.value.length, el.value.length); }
-  if (view.name === 'reports' && view.rep) drawReport();
+  if (view.name === 'reports' && view.rep && view.repStage === 'result') drawReport();
+  if (view.name === 'reports' && view.repStage !== 'options' && view.repStage !== 'result') repFilter();
 }
+const IC_PERSON = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
+const IC_BUILD = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4h9v17M14 9h5v12M3 21h18M8 8h3M8 12h3M8 16h3"/></svg>';
 function paint(hk, nav) {
   const it = (label, attr) => `<a href="#" ${attr}>${label}</a>`, N = (v, label) => it(label, `data-nav="${v}"`), A = (a, label, x) => it(label, `data-act="${a}" ${x || ''}`);
-  const menu = (name, items) => `<div class="menu"><button type="button">${name}</button><div class="drop">${items.filter(Boolean).join('')}</div></div>`;
+  const menu = (name, items, cls) => `<div class="menu ${cls || ''}"><button type="button">${name}</button><div class="drop">${items.filter(Boolean).join('')}</div></div>`;
   const menus = hk ? '<button type="button" class="on" data-nav="hk">Housekeeping</button>' : `<button type="button" data-nav="home" class="${view.name === 'home' ? 'on' : ''}">Home</button>` +
-    menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
-    menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), N('groups', 'Groups')]) +
-    menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('grpNew', 'Group Master')]) +
-    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), boss() && N('setup', 'Hotel Configuration'), N('tape', 'Tape Chart')]) +
+    menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest Profile'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
+    menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), A('repGo', 'Night Audit', 'data-rep="stats"')]) +
+    menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="history"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
   $('#app').innerHTML = `<header><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
-    ${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #">'}${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}
-    <div class="who"><b>${esc(S.me.name)}</b> ${esc(dshort(B()))} · <a href="#" data-act="myPw">My password</a> · <a href="#" data-act="logout">Logout</a></div></header>
-    <main>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
+    <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<input class="find" id="find" placeholder="Find guest or conf. #">'}
+    ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span></div></header>
+    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
@@ -361,12 +364,45 @@ function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Fo
 /* ---------- Reports ---------- */
 const REPORTS = [['arrivals', 'Arrival List'], ['departures', 'Departure List'], ['inhouse', 'In House List'], ['vacant', 'Vacant Room List'], ['hkcheck', 'Housekeeping Check-off List'], ['ledger', 'Guest Ledger (balances)'], ['future', 'Future Availability (14 days)'],
   ['stats', 'Hotel Statistics', 1], ['closeout', 'Final Transaction Closeout', 1], ['shift', 'Shift Reconciliation', 1], ['journal', 'Hotel Journal Detail', 1], ['history', 'No Show, Cancellation and Departed List', 1], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts', 1]];
+const REPORT_CATS = [
+  ['TOP 10 LIST', [['Shift Reconciliation', 'shift'], ['Vacant Room List', 'vacant'], ['Housekeeping Check-off List', 'hkcheck'], ['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['In House List', 'inhouse'], ['Reservation Activity Report', 'history']]],
+  ['Emergency Reports', [['Account Balance Report', 'ledger'], ['Arrival List', 'arrivals'], ['Departure List', 'departures'], ['In House List', 'inhouse'], ['Vacant Room List', 'vacant']]],
+  ['Accounting Reports', [['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['Guest Ledger', 'ledger'], ['Hotel Journal Detail', 'journal'], ['Shift Reconciliation', 'shift'], ['Cashier Shifts', 'shifts']]],
+  ['Front Desk Reports', [['Cancellation List', 'history'], ['No Show Report', 'history']]],
+  ['Housekeeping Reports', [['Housekeeping Check-off List', 'hkcheck']]],
+  ['Reservation Reports', [['10 Day Availability', 'future'], ['No Show Report', 'history']]],
+  ['Group Reports', [['Group Pickup Summary', 'grouppickup']]],
+  ['Accounts Receivable Reports', [['Accounts Receivable Aging Report', 'araging']]]];
+const REPORT_INFO = {
+  arrivals: 'Guests with a reservation due to arrive who have not checked in yet.', departures: 'In-house guests due to leave today or earlier, with their balances.',
+  inhouse: 'Every guest checked in right now, with room, dates, rate and balance.', vacant: 'Rooms that are empty tonight, with their housekeeping condition.',
+  hkcheck: 'A room-by-room sheet for housekeepers to check off as each room is done.', ledger: 'Every stay that has a balance owing or a credit, with the total.',
+  future: 'How many rooms of each type are still available over the next 14 days.', stats: 'Rooms sold, occupancy, room revenue, ADR and RevPAR for each business date.',
+  closeout: 'Totals for every posting code (charges, taxes and payments) for the dates chosen.', shift: 'Totals by user and posting code, to balance each cashier at the end of a shift.',
+  journal: 'Every line posted to a folio, in order, with who posted it and when.', history: 'Reservations that were no shows, cancelled or departed in the dates chosen.',
+  araging: 'What each direct-bill company owes, grouped by how old the charge is.', grouppickup: 'For each group, the rooms blocked, picked up and still left.',
+  shifts: 'Each cashier shift with opening cash, cash taken in, counted cash and over or short.' };
+const repFilter = () => {
+  const q = ((view.repQ || '')).trim().toLowerCase();
+  document.querySelectorAll('.rcat').forEach(c => { let n = 0; c.querySelectorAll('.rlink').forEach(a => { const ok = !q || a.textContent.toLowerCase().includes(q); a.style.display = ok ? '' : 'none'; if (ok) n++; }); c.style.display = n ? '' : 'none'; });
+};
+function repTitle() { return view.repLabel || (REPORTS.find(r => r[0] === view.rep) || [])[1] || ''; }
 function vReports() {
   if (!view.from) view.from = view.to = B();
-  const needDates = (REPORTS.find(r => r[0] === view.rep) || [])[2];
-  return `<h1>Reports</h1><div class="bar">${boss() ? '<button class="btn red" data-act="nightAudit">Run Night Audit…</button>' : ''}<span class="hint">Business date ${dlong(B())}</span></div>
-  <div class="acts" style="margin-bottom:12px">${REPORTS.map(r => `<button class="btn sm ${view.rep === r[0] ? 'blue' : ''}" data-act="rep" data-rep="${r[0]}">${r[1]}</button>`).join('')}</div>
-  ${view.rep ? `<div class="bar">${needDates ? `<span class="hint">From</span><input type="date" id="repFrom" value="${view.from}"><span class="hint">to</span><input type="date" id="repTo" value="${view.to}">` : ''}<button class="btn sm" data-act="printRep">Print</button></div><div class="wrap" id="repOut" style="padding:12px"><div class="hint">Loading…</div></div>` : '<div class="empty">Pick a report.</div>'}`;
+  const rep = REPORTS.find(r => r[0] === view.rep);
+  if (view.rep && rep && view.repStage === 'options') {
+    return `<h1 class="rtitle">${esc(repTitle())}</h1><p class="rdesc">${esc(REPORT_INFO[view.rep] || '')}</p>
+    ${rep[2] ? `<div class="rform"><label>*Start Date:<input type="date" id="repFrom" value="${view.from}"></label><label>End Date:<input type="date" id="repTo" value="${view.to}"></label></div>` : ''}
+    <hr class="dash"><div class="rbtns"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="repRun">SUBMIT</button></div>`;
+  }
+  if (view.rep && rep && view.repStage === 'result') {
+    return `<h1 class="rtitle">${esc(repTitle())}</h1><div class="rbtns left"><button class="btn blue" data-act="repBack">BACK</button><button class="btn blue" data-act="printRep">PRINT</button></div>
+    <div class="wrap" id="repOut" style="padding:12px"><div class="hint">Loading…</div></div>`;
+  }
+  const col = view.repCol || {}, allOff = REPORT_CATS.every(c => col[c[0]]);
+  return `<h1 class="rtitle">Reports</h1><div class="rsearch"><label for="repSearch">Search:</label><br><input type="text" id="repSearch" value="${esc(view.repQ || '')}" autocomplete="off"></div><hr class="dash">
+  <div class="rtop"><button class="btn blue" data-act="repAll">${allOff ? 'EXPAND ALL' : 'COLLAPSE ALL'}</button></div>
+  <div class="rcols">${REPORT_CATS.map(c => `<div class="rcat ${col[c[0]] ? 'off' : ''}"><div class="rch" data-act="repCat" data-cat="${esc(c[0])}"><span class="tri">${col[c[0]] ? '▶' : '▼'}</span>${esc(c[0])}</div>${c[1].map(r => `<a class="rlink" href="#" data-act="rep" data-rep="${r[1]}" data-label="${esc(r[0])}">${esc(r[0])}</a>`).join('')}</div>`).join('')}</div>`;
 }
 async function drawReport() {
   const out = $('#repOut'); if (!out) return; const title = REPORTS.find(r => r[0] === view.rep)[1]; let h = '';
@@ -495,7 +531,9 @@ function blockNew() {
 
 /* ---------- clicks and typing ---------- */
 document.addEventListener('click', async e => {
-  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); view.name = nav.dataset.nav; view.q = ''; render(); return; }
+  const mb = e.target.closest('.menu>button'); if (mb) { mb.focus(); return; }
+  if (e.target.closest('.drop')) setTimeout(() => { const h = $('header'); if (h) h.classList.add('nohover'); }, 0);
+  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); view.name = nav.dataset.nav; view.q = ''; if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
   if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
   if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
@@ -517,7 +555,7 @@ document.addEventListener('click', async e => {
   if (a === 'findOpen') { view.name = 'find'; view.findQ = ''; view.found = []; render(); const f = $('#find2'); if (f) f.focus(); return; }
   if (a === 'findGo') return doFind($('#find2').value);
   if (a === 'setupGo') { view.name = 'setup'; view.setup = el.dataset.tab; return render(); }
-  if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; return render(); }
+  if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; view.repLabel = ''; view.repStage = 'result'; return render(); }
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
   if (a === 'openRes') return run(() => openRes(el.dataset.id));
@@ -555,7 +593,11 @@ document.addEventListener('click', async e => {
   if (a === 'tapeToday') { view.tapeStart = B(); return render(); }
   if (a === 'hkRange') return run(async () => { const f = $('#hkFrom').value.trim(), t = $('#hkTo').value.trim() || f; if (!f) throw new Error('Type the first room number.'); const nums = S.config.rooms.map(r => r.no).filter(no => no.localeCompare(f, 'en', { numeric: true }) >= 0 && no.localeCompare(t, 'en', { numeric: true }) <= 0); if (!nums.length) throw new Error('No rooms in that range.'); await op('roomCond', { rooms: nums, cond: el.dataset.cond }); await refresh(); toast(nums.length + ' rooms updated.'); });
   if (a === 'printHk') return printHtml(letterHead() + `<h2>Housekeeping Check-off List: ${dlong(B())}</h2>` + hkCheckHtml());
-  if (a === 'rep') { view.rep = el.dataset.rep; return render(); }
+  if (a === 'rep') { view.rep = el.dataset.rep; view.repLabel = el.dataset.label || ''; view.repStage = 'options'; return render(); }
+  if (a === 'repRun') { if ($('#repFrom')) { view.from = $('#repFrom').value || B(); view.to = $('#repTo').value || view.from; if (view.to < view.from) view.to = view.from; } view.repStage = 'result'; return render(); }
+  if (a === 'repBack') { if (view.repStage === 'result') view.repStage = 'options'; else { view.repStage = 'list'; view.rep = ''; } return render(); }
+  if (a === 'repCat') { view.repCol = view.repCol || {}; view.repCol[el.dataset.cat] = !view.repCol[el.dataset.cat]; return render(); }
+  if (a === 'repAll') { const off = !REPORT_CATS.every(c => (view.repCol || {})[c[0]]); view.repCol = {}; if (off) REPORT_CATS.forEach(c => view.repCol[c[0]] = true); return render(); }
   if (a === 'printRep') return printHtml(letterHead() + $('#repOut').innerHTML);
   if (a === 'nightAudit') return nightAudit();
   if (a === 'setupTab') { view.setup = el.dataset.tab; return render(); }
@@ -576,7 +618,8 @@ document.addEventListener('change', e => {
   if (t.id === 'repFrom' || t.id === 'repTo') { view.from = $('#repFrom').value || B(); view.to = $('#repTo').value || view.from; if (view.to < view.from) view.to = view.from; return render(); }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 'q') { view.q = e.target.value; render(); } });
+document.addEventListener('input', e => { if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
