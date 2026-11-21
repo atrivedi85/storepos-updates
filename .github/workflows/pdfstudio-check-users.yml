@@ -17,4 +17,4 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           cd worker
-          npx wrangler d1 execute pdfstudio-db --remote --json --command "SELECT COUNT(*) AS total, SUM(CASE WHEN disabled=1 THEN 1 ELSE 0 END) AS switched_off, SUM(CASE WHEN role='admin' THEN 1 ELSE 0 END) AS admins, SUM(CASE WHEN pass_hash='ledger-desk' THEN 1 ELSE 0 END) AS from_ledger_desk, SUM(CASE WHEN pass_hash<>'ledger-desk' THEN 1 ELSE 0 END) AS old_local_only FROM users" | jq -c '.[0].results'
+          npx wrangler d1 execute pdfstudio-db --remote --command "SELECT COUNT(*) AS total, SUM(CASE WHEN disabled=1 THEN 1 ELSE 0 END) AS switched_off, SUM(CASE WHEN role='admin' THEN 1 ELSE 0 END) AS admins, SUM(CASE WHEN pass_hash='ledger-desk' THEN 1 ELSE 0 END) AS from_ledger_desk, SUM(CASE WHEN pass_hash<>'ledger-desk' THEN 1 ELSE 0 END) AS old_local_only FROM users"
