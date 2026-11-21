@@ -34,7 +34,4 @@ so all the software (Store POS, Ledger Desk, Hotel Desk, PdfStudio, website) liv
 
 ## Known open items
 
-- The Worker also answers `trivedipos.com/` and serves its own copy of the home page (`worker/home.html`),
-  so edits to the home page in `cloud/` do not show until that route is removed and the PdfStudio tile
-  is added to the real home page.
-- Desktop app 1.0.6 still uses activation keys; the Ledger sign-in is in the code but not in an installer yet.
+- Home page: edited in ONE place, `cloud/site/index.html` (the PdfStudio tile is there). The old override route `trivedipos.com/` was removed on 2026-11-21.

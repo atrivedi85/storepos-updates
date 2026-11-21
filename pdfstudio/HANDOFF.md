@@ -1,4 +1,4 @@
-﻿# PdfStudio handoff (read this first on a new PC or a new chat)
+# PdfStudio handoff (read this first on a new PC or a new chat)
 
 Project: Windows PDF editor, Electron + TypeScript + pdf.js + pdf-lib. Latest published: v1.0.6.
 Owner's site: trivedipos.com (Cloudflare). Installer/updates live in R2 bucket `pdfstudio-downloads`, served by the Worker in `worker/` at https://trivedipos.com/pdfstudio/.
@@ -17,6 +17,6 @@ Release workflow: bump version + build.releaseInfo.releaseNotes in package.json 
 -> upload the 4 files to R2 with `wrangler r2 object put pdfstudio-downloads/<file> --file <path> --remote` (latest.yml LAST) -> verify https://trivedipos.com/pdfstudio/latest.yml.
 Only publish when the owner asks. Auto-update and the "Update available" popup are built in.
 
-Open items: (1) Homepage PdfStudio tile is injected by the Worker route `trivedipos.com/` (worker/home.html); add the tile to the real homepage source, then delete that route.
+Open items: (1) DONE 2026-11-21: the PdfStudio tile is now in the real home page (cloud/site/index.html) and the `trivedipos.com/` route is gone.
 (2) Installer is unsigned (SmartScreen). (3) Erase tool covers/removes annotations but is not secure redaction. (4) Keep keys\private.pem backed up.
 Note: in Claude Code the env var ELECTRON_RUN_AS_NODE may be set and must be removed before launching electron.

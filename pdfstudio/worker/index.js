@@ -1,4 +1,3 @@
-import homeHtml from './home.html';
 import adminHtml from './admin.html';
 import joinHtml from './join.html';
 import appLoginHtml from './app-login.html';
@@ -10,10 +9,6 @@ import appsSwitcher from './apps-switcher.txt';
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    // Homepage: updated copy (adds the PdfStudio tile). Remove the trivedipos.com/ route to fall back to the original site.
-    if (url.pathname === '/' && (request.method === 'GET' || request.method === 'HEAD')) {
-      return new Response(request.method === 'HEAD' ? null : homeHtml, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=0, must-revalidate' } });
-    }
     if (url.pathname.startsWith('/pdfstudio/api/')) {
       try { return await handleApi(request, env, url); }
       catch (err) { return new Response(JSON.stringify({ error: 'Server error.' }), { status: 500, headers: { 'content-type': 'application/json' } }); }

@@ -19,10 +19,6 @@ zone_name = "trivedipos.com"
 type = "Text"
 globs = ["**/*.html", "**/*.txt"]
 
-[[routes]]
-pattern = "trivedipos.com/"
-zone_name = "trivedipos.com"
-
 # Accounts database. Create it once with:  npx wrangler d1 create pdfstudio-db  and paste the real id below.
 # Private per-user PDF storage. Create once with:  npx wrangler r2 bucket create pdfstudio-userfiles
 [[r2_buckets]]
