@@ -67,7 +67,7 @@
                                   "url":  "https://trivedipos.com/pdfstudio/"
                               },
                   "releaseInfo":  {
-                                      "releaseNotes":  "- Fixed: signatures can now be moved and resized right after placing them\n- New \u0027Add another copy\u0027 button for signatures"
+                                      "releaseNotes":  "- New: sign in with your Ledger Desk username and password (no more activation keys)\n- Fixed: signatures can now be moved and resized right after placing them\n- New \u0027Add another copy\u0027 button for signatures"
                                   }
               }
 }
