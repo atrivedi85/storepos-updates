@@ -19,10 +19,11 @@ after every change, so the NAS always has the complete, current set.
 | `cloud/` | **trivedipos.com**: home page, download page, Cloud Sync server, Ledger Desk server | `cloud/README.md` |
 | `ledger/app/` | **Ledger Desk** screens (website version, served at trivedipos.com/books) | `ledger/README.md` |
 | `hotel/app/` | **Hotel Desk** screens (hotel front desk, served at trivedipos.com/hotel); the server is `cloud/src/hotel.js` + `hotel-core.js` | `hotel/README.md` |
+| `pdfstudio/` | **PdfStudio** PDF editor: desktop app + web version at trivedipos.com/pdfstudio (sign in with Ledger Desk); published by `pdfstudio.yml` | `pdfstudio/README.md` |
 | `ledger/server-pc/` | the old Ledger Desk Server from the golf sim PC (kept for reference) | `ledger/README.md` |
 | `updates/` + `latest.json` | every released Store POS update; registers check `latest.json` automatically | `updates/README.md` |
 | `docs/` | Google Play pictures and the privacy policy page (GitHub Pages) | |
-| `.github/workflows/` | automatic builds: `cloud.yml` (website), `windows.yml` (installer), `android.yml` (tablet app) | below |
+| `.github/workflows/` | automatic builds: `cloud.yml` (website), `pdfstudio.yml` (PdfStudio web), `windows.yml` (installer), `android.yml` (tablet app) | below |
 
 ## Live addresses
 

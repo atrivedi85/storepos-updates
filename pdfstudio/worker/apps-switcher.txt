@@ -1,0 +1,54 @@
+/* Apps switcher for trivedipos.com. One small script any app on the site can include:
+     <script src="/pdfstudio/apps.js" defer></script>
+   It adds a round "Apps" button (bottom-left) that lists every app, so people can jump between them or go home.
+   Only runs on trivedipos.com, so the same page loaded inside a desktop or phone app is not affected. */
+(function () {
+  'use strict';
+  if (window.__tpApps || !/(^|\.)trivedipos\.com$/.test(location.hostname)) return;
+  window.__tpApps = true;
+  var APPS = [
+    { name: 'Home', sub: 'All apps', href: '/', match: /^\/$/ },
+    { name: 'Ledger Desk', sub: 'Accounting', href: '/books/', match: /^\/books(\/|$)/ },
+    { name: 'Hotel Desk', sub: 'Front desk', href: '/hotel/', match: /^\/hotel(\/|$)/ },
+    { name: 'Store POS', sub: 'Back office', href: '/pos/', match: /^\/pos(\/|$)/ },
+    { name: 'PdfStudio', sub: 'PDF editor', href: '/pdfstudio/', match: /^\/pdfstudio(\/|$)/ }
+  ];
+  function start() {
+    var host = document.createElement('div');
+    host.setAttribute('data-apps-switcher', '');
+    host.style.cssText = 'all:initial;position:fixed;left:14px;bottom:14px;z-index:2147483000;';
+    var root = host.attachShadow({ mode: 'open' });
+    var css = document.createElement('style');
+    css.textContent =
+      ':host{all:initial}*{box-sizing:border-box;font-family:Segoe UI,system-ui,sans-serif}' +
+      '.b{width:42px;height:42px;border-radius:50%;border:1px solid rgba(120,130,170,.45);background:#1f2335;color:#e6e9f5;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.35)}' +
+      '.b:hover,.b:focus-visible{background:#2b3150;outline:2px solid #7c5cff}' +
+      '.m{position:absolute;left:0;bottom:52px;min-width:210px;padding:6px;background:#1f2335;border:1px solid rgba(120,130,170,.45);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);display:none}' +
+      '.m.o{display:block}' +
+      '.m a{display:flex;flex-direction:column;padding:8px 12px;border-radius:8px;color:#e6e9f5;text-decoration:none;font-size:14px;line-height:1.25}' +
+      '.m a small{color:#98a0c0;font-size:12px}' +
+      '.m a:hover,.m a:focus-visible{background:#2b3150;outline:none}' +
+      '.m a.cur{background:#34396a}' +
+      '.t{padding:6px 12px 4px;color:#98a0c0;font-size:11px;letter-spacing:.06em;text-transform:uppercase}';
+    var btn = document.createElement('button');
+    btn.className = 'b'; btn.type = 'button'; btn.title = 'Switch app'; btn.setAttribute('aria-label', 'Switch app'); btn.setAttribute('aria-haspopup', 'true');
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">' +
+      [2, 8, 14].map(function (y) { return [2, 8, 14].map(function (x) { return '<rect x="' + x + '" y="' + y + '" width="4" height="4" rx="1"/>'; }).join(''); }).join('') + '</svg>';
+    var menu = document.createElement('div'); menu.className = 'm'; menu.setAttribute('role', 'menu');
+    var title = document.createElement('div'); title.className = 't'; title.textContent = 'Switch app'; menu.appendChild(title);
+    APPS.forEach(function (a) {
+      var l = document.createElement('a'); l.href = a.href; l.setAttribute('role', 'menuitem');
+      if (a.match.test(location.pathname)) { l.className = 'cur'; l.setAttribute('aria-current', 'page'); }
+      l.innerHTML = '<span></span><small></small>';
+      l.firstChild.textContent = a.name; l.lastChild.textContent = a.sub;
+      menu.appendChild(l);
+    });
+    function set(open) { menu.classList.toggle('o', open); btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    btn.addEventListener('click', function (e) { e.stopPropagation(); set(!menu.classList.contains('o')); });
+    document.addEventListener('click', function () { set(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') set(false); });
+    root.appendChild(css); root.appendChild(menu); root.appendChild(btn);
+    document.body.appendChild(host);
+  }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' blob: data:; worker-src 'self' blob:;" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PdfStudio</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button id="appsBtn" class="tb icon-only" title="Switch app" aria-label="Switch app"><i data-icon="apps"></i></button>
+    <div class="brand">
+      <svg viewBox="0 0 64 64" width="26" height="26"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#19c3b1"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lg)"/><path d="M19 12h17l11 11v29a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z" fill="#fff" fill-opacity=".95"/><path d="M36 12l11 11H39a3 3 0 0 1-3-3z" fill="#c9bfff"/><path d="M24 46V29h8.5a5.2 5.2 0 0 1 0 10.4H24" fill="none" stroke="#5b3df0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>PdfStudio</span>
+    </div>
+    <div id="toolbar">
+      <div class="group" data-label="File">
+        <button class="tb" data-action="open" title="Open (Ctrl+O)"><i data-icon="open"></i><span>Open</span></button>
+        <button class="tb" data-action="save" title="Save (Ctrl+S)"><i data-icon="save"></i><span>Save</span></button>
+        <button class="tb" data-action="saveAs" title="Save As (Ctrl+Shift+S)"><i data-icon="saveas"></i><span>Save As</span></button>
+        <button class="tb" data-action="cloud" title="My files in the cloud"><i data-icon="cloud"></i><span>Cloud</span></button>
+      </div>
+      <div class="group" data-label="History">
+        <button class="tb icon-only" data-action="undo" title="Undo (Ctrl+Z)"><i data-icon="undo"></i></button>
+        <button class="tb icon-only" data-action="redo" title="Redo (Ctrl+Y)"><i data-icon="redo"></i></button>
+      </div>
+      <div class="group" data-label="Annotate">
+        <button class="tb tool" data-tool="select" title="Select (V)"><i data-icon="cursor"></i><span>Select</span></button>
+        <button class="tb tool" data-tool="highlight" title="Highlight (H)"><i data-icon="highlight"></i><span>Highlight</span></button>
+        <button class="tb tool" data-tool="underline" title="Underline (U)"><i data-icon="underline"></i><span>Underline</span></button>
+        <button class="tb tool" data-tool="strike" title="Strikethrough"><i data-icon="strike"></i><span>Strike</span></button>
+        <button class="tb tool" data-tool="draw" title="Freehand draw (D)"><i data-icon="pen"></i><span>Draw</span></button>
+        <button class="tb tool" data-tool="shape" title="Shapes (S)"><i data-icon="shapes"></i><span>Shapes</span></button>
+        <button class="tb tool" data-tool="note" title="Sticky note (N)"><i data-icon="note"></i><span>Note</span></button>
+        <button class="tb tool" data-tool="textbox" title="Text box (T)"><i data-icon="text"></i><span>Text box</span></button>
+      </div>
+      <div class="group" data-label="Edit">
+        <button class="tb tool" data-tool="edittext" title="Edit existing text (E)"><i data-icon="edittext"></i><span>Edit text</span></button>
+        <button class="tb" data-action="image" title="Insert image (I)"><i data-icon="image"></i><span>Image</span></button>
+        <button class="tb tool" data-tool="erase" title="Erase an area, e.g. an old signature (X)"><i data-icon="eraser"></i><span>Erase</span></button>
+        <button class="tb tool" data-tool="field" title="Create form fields"><i data-icon="form"></i><span>Form</span></button>
+        <button class="tb" data-action="sign" title="Signature and initials"><i data-icon="sign"></i><span>Sign</span></button>
+      </div>
+      <div class="group" data-label="Pages">
+        <button class="tb" data-action="pagesMenu" title="Page tools"><i data-icon="pages"></i><span>Pages</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="group" data-label="View">
+        <button class="tb icon-only" data-action="zoomOut" title="Zoom out (Ctrl+-)"><i data-icon="zoomout"></i></button>
+        <select id="zoomSelect" title="Zoom">
+          <option value="fitwidth">Fit width</option><option value="fitpage">Fit page</option>
+          <option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option>
+          <option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option>
+        </select>
+        <button class="tb icon-only" data-action="zoomIn" title="Zoom in (Ctrl+=)"><i data-icon="zoomin"></i></button>
+        <button class="tb icon-only" data-action="search" title="Find (Ctrl+F)"><i data-icon="search"></i></button>
+        <button class="tb" id="tbUpdate" data-action="checkUpdate" title="Check for updates"><i data-icon="update"></i><span id="tbUpdateText">Updates</span><b id="updDot" class="hidden"></b></button>
+      </div>
+    </div>
+    <button id="acctBtn" class="tb acct hidden" title="Account"></button>
+  </header>
+  <div id="optionsbar"></div>
+  <div id="tabbar"></div>
+  <div id="main">
+    <aside id="sidebar">
+      <div class="side-head"><span>Pages</span><span id="pageActions"></span></div>
+      <div id="thumbs"></div>
+    </aside>
+    <section id="stage">
+      <div id="docs"></div>
+      <div id="welcome">
+        <div class="welcome-card">
+          <svg viewBox="0 0 64 64" width="72" height="72"><rect width="64" height="64" rx="15" fill="url(#lg)"/><path d="M19 12h17l11 11v29a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z" fill="#fff" fill-opacity=".95"/><path d="M36 12l11 11H39a3 3 0 0 1-3-3z" fill="#c9bfff"/><path d="M24 46V29h8.5a5.2 5.2 0 0 1 0 10.4H24" fill="none" stroke="#5b3df0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h1>PdfStudio</h1>
+          <p>View, annotate, edit, sign and organize your PDFs.</p>
+          <div class="welcome-actions">
+            <button class="btn primary" data-action="open">Open PDF…</button>
+            <button class="btn" data-action="newBlank">New blank PDF</button>
+          </div>
+          <p class="hint">…or drag &amp; drop a PDF anywhere in this window</p>
+          <h3>Recent files</h3>
+          <div id="recentList"></div>
+        </div>
+      </div>
+      <div id="searchbar" class="hidden">
+        <input id="searchInput" placeholder="Find in document" />
+        <span id="searchCount"></span>
+        <button class="tb icon-only" data-action="searchPrev" title="Previous (Shift+Enter)"><i data-icon="up"></i></button>
+        <button class="tb icon-only" data-action="searchNext" title="Next (Enter)"><i data-icon="down"></i></button>
+        <label class="chk"><input type="checkbox" id="searchCase" /> Aa</label>
+        <button class="tb icon-only" data-action="searchClose" title="Close (Esc)"><i data-icon="close"></i></button>
+      </div>
+      <div id="dropOverlay" class="hidden">Drop PDF to open</div>
+    </section>
+  </div>
+  <footer id="status">
+    <span id="stDoc"></span><span id="stLic"></span><span id="stCloud"></span><span id="stVer"></span><button class="tb small" id="stUpdate" title="Check for updates" style="flex-direction:row;gap:4px;min-width:0;padding:2px 8px"><span id="stUpdateText" style="color:inherit">Check for updates</span></button><span class="spacer"></span>
+    <button class="tb icon-only small" data-action="prevPage"><i data-icon="up"></i></button>
+    <input id="pageInput" type="number" min="1" value="1" /> <span id="pageTotal">/ 0</span>
+    <button class="tb icon-only small" data-action="nextPage"><i data-icon="down"></i></button>
+    <span id="stZoom"></span>
+  </footer>
+</div>
+<div id="lock" class="hidden">
+  <div class="lock-card">
+    <svg viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="15" fill="url(#lg)"/><path d="M19 12h17l11 11v29a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z" fill="#fff" fill-opacity=".95"/><path d="M36 12l11 11H39a3 3 0 0 1-3-3z" fill="#c9bfff"/><path d="M24 46V29h8.5a5.2 5.2 0 0 1 0 10.4H24" fill="none" stroke="#5b3df0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h1>Sign in to PdfStudio</h1>
+    <p id="lockSub">Use your Ledger Desk username and password.</p>
+    <form id="lockForm" style="display:flex;flex-direction:column;gap:10px;text-align:left">
+      <div id="lockPwRows" style="display:flex;flex-direction:column;gap:10px">
+        <input id="lockUser" autocomplete="username" placeholder="Username" spellcheck="false" autocapitalize="off">
+        <input id="lockPass" type="password" autocomplete="current-password" placeholder="Password">
+      </div>
+      <div id="lockCodeRows" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+        <input id="lockCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="8">
+        <button class="btn" id="lockResend" type="button">Email me a new code</button>
+      </div>
+      <div id="lockErr"></div>
+      <button class="btn primary" id="lockGo" type="submit">Sign in</button>
+    </form>
+    <p class="hint">PdfStudio uses the same account as Ledger Desk. Can't sign in? Ask the owner.</p>
+  </div>
+</div><div id="menu-root"></div>
+<div id="modal-root"></div>
+<div id="toasts"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

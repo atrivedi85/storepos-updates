@@ -1,0 +1,1 @@
+window.app.openPaths(["C:\\Users\\virus\\P editor\\samples\\signed-out.pdf"]).then(async()=>{ await new Promise(r=>setTimeout(r,1200)); const p=await window.app.active.getPage(0); const a=await p.getAnnotations(); return 'annotations left after erase: '+a.filter(x=>x.subtype!=='Link').length })

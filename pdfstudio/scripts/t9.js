@@ -1,0 +1,1 @@
+window.app.openPaths(["C:\\Users\\virus\\P editor\\samples\\sample.pdf"]).then(()=>new Promise(r=>setTimeout(()=>r("tabs="+window.app.tabs.length+" pages="+window.app.active.pages.length+" fields="+window.app.active.formFields.length),1500)))

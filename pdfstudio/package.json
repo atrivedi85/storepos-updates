@@ -1,0 +1,73 @@
+{
+    "name":  "pdfstudio",
+    "version":  "1.1.0",
+    "description":  "PdfStudio - a modern PDF editor",
+    "main":  "dist/main/main.js",
+    "author":  "PdfStudio",
+    "license":  "MIT",
+    "scripts":  {
+                    "build":  "node build.mjs",
+                    "typecheck":  "tsc --noEmit",
+                    "start":  "node build.mjs \u0026\u0026 electron .",
+                    "dist":  "node build.mjs \u0026\u0026 electron-builder --win nsis",
+                    "prepare-upload":  "node scripts/prepare-upload.mjs"
+                },
+    "dependencies":  {
+                         "electron-updater":  "^6.8.11",
+                         "pdf-lib":  "^1.17.1",
+                         "pdfjs-dist":  "^6.5.438"
+                     },
+    "devDependencies":  {
+                            "@types/node":  "^26.6.6",
+                            "electron":  "^45.4.1",
+                            "electron-builder":  "^26.18.0",
+                            "esbuild":  "^0.28.2",
+                            "png-to-ico":  "^3.0.2",
+                            "sharp":  "^0.35.5",
+                            "typescript":  "^7.0.2",
+                            "wrangler":  "^4.165.0"
+                        },
+    "build":  {
+                  "appId":  "com.pdfstudio.app",
+                  "productName":  "PdfStudio",
+                  "copyright":  "PdfStudio",
+                  "directories":  {
+                                      "output":  "release",
+                                      "buildResources":  "build"
+                                  },
+                  "files":  [
+                                "dist/**/*",
+                                "build/icon.png",
+                                "package.json"
+                            ],
+                  "fileAssociations":  [
+                                           {
+                                               "ext":  "pdf",
+                                               "name":  "PDF Document",
+                                               "role":  "Editor"
+                                           }
+                                       ],
+                  "win":  {
+                              "target":  [
+                                             "nsis"
+                                         ],
+                              "icon":  "build/icon.ico",
+                              "artifactName":  "PdfStudio-Setup-${version}.${ext}"
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "perMachine":  false,
+                               "createDesktopShortcut":  true,
+                               "createStartMenuShortcut":  true,
+                               "shortcutName":  "PdfStudio"
+                           },
+                  "publish":  {
+                                  "provider":  "generic",
+                                  "url":  "https://trivedipos.com/pdfstudio/"
+                              },
+                  "releaseInfo":  {
+                                      "releaseNotes":  "- Fixed: signatures can now be moved and resized right after placing them\n- New \u0027Add another copy\u0027 button for signatures"
+                                  }
+              }
+}

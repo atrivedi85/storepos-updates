@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trivedi POS</title>
+<meta name="description" content="Store POS point of sale, Hotel Desk front desk and Ledger Desk accounting for small businesses.">
+<link rel="icon" href="/icon.png">
+<style>
+:root{--bg:#0f1b2d;--panel:#ffffff;--ink:#14213a;--muted:#5b6880;--blue:#1f6fd1;--green:#1f9d55;--line:#e3e8f0}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;background:var(--bg);color:#fff;display:flex;flex-direction:column}
+header{padding:clamp(8px,1.6vh,18px) 20px 0;max-width:1240px;width:100%;margin:0 auto;display:flex;align-items:center;gap:10px}
+header img{width:34px;height:34px;border-radius:9px}
+header b{font-size:18px;letter-spacing:.2px}
+main{flex:1;min-height:0;max-width:1240px;width:100%;margin:0 auto;padding:0 20px;display:flex;flex-direction:column}
+h1{font-size:clamp(24px,4.2vh,42px);line-height:1.1;margin:clamp(8px,1.8vh,20px) 0 6px;font-weight:800}
+.lead{color:#c4cee0;font-size:clamp(14px,2vh,17px);line-height:1.4;margin:0 0 clamp(10px,2vh,20px)}
+/* six tiles, three across and two down, sized to fill the screen so nothing needs scrolling on a computer */
+.cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:clamp(10px,1.8vh,16px)}
+.card{background:var(--panel);color:var(--ink);border-radius:16px;padding:clamp(12px,2.2vh,22px);display:flex;flex-direction:column;gap:clamp(4px,1vh,10px);min-height:0;overflow:hidden}
+.card h2{margin:0;font-size:clamp(17px,2.6vh,22px)}
+.card p{margin:0;color:var(--muted);line-height:1.4;font-size:clamp(13px,1.85vh,15px)}
+.btn{display:block;text-decoration:none;text-align:center;font-weight:700;font-size:clamp(14px,2vh,17px);padding:clamp(8px,1.4vh,13px) 16px;border-radius:10px;color:#fff;background:var(--green);margin-top:auto}
+.btn.blue{background:var(--blue)}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:#e8f1fd;color:var(--blue);align-self:flex-start}
+.card.soon{background:transparent;border:2px dashed #34486a;color:#8d9ab0;align-items:center;justify-content:center;text-align:center}
+.card.soon b{font-size:clamp(15px,2.2vh,19px);color:#b3bfd3}
+.card.soon span{font-size:13px}
+footer{color:#8d9ab0;font-size:12.5px;text-align:center;padding:clamp(6px,1.2vh,14px) 16px}
+@media (max-width:900px),(max-height:520px){html,body{height:auto}.cards{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));grid-template-rows:none}.card{min-height:150px}.card.soon{min-height:90px}}
+</style>
+</head>
+<body>
+<header><img src="/icon.png" alt=""><b>Trivedi POS</b></header>
+<main>
+  <h1>Run your store and hotel. Keep your books.</h1>
+  <p class="lead">Store POS for the counter, Hotel Desk for the front desk and Ledger Desk for accounting. Sign in from work, from home, or from your phone.</p>
+  <div class="cards">
+    <section class="card">
+      <span class="tag">Store owners</span>
+      <h2>Store POS: Back office</h2>
+      <p>Change prices, add items, receive invoices, check stock, and see today's sales and profit from anywhere. Connect once with the Cloud code from your store PC.</p>
+      <a class="btn" href="/pos/">Open back office</a>
+    </section>
+    <section class="card">
+      <span class="tag">New stores</span>
+      <h2>Store POS for Windows</h2>
+      <p>The full cash register for your store's PC: barcode scanning, receipts, cash drawer, inventory and employees. Download and activate with your owner code.</p>
+      <a class="btn" href="/download">Download Store POS</a>
+    </section>
+    <section class="card">
+      <span class="tag">Hotels</span>
+      <h2>Hotel Desk: Front desk</h2>
+      <p>Tape chart, reservations, check-in and check-out, guest folios, housekeeping, night audit and reports, on every front-desk computer. Sign in with your e-mail address.</p>
+      <a class="btn blue" href="/hotel/">Open Hotel Desk</a>
+    </section>
+    <section class="card">
+      <span class="tag">Invite only</span>
+      <h2>Ledger Desk: Accounting</h2>
+      <p>Free bookkeeping for our customers: bank and card imports, categories, reports and tax summaries. Your books are locked in your own browser.</p>
+      <a class="btn blue" href="/books/">Open Ledger Desk</a>
+    </section>
+    <section class="card">
+      <span class="tag">Windows app</span>
+      <h2>PdfStudio: PDF editor</h2>
+      <p>View, annotate, edit text, fill forms, sign and organize PDFs on your Windows PC. Download the installer, then activate it with your license key.</p>
+      <a class="btn blue" href="/pdfstudio/">Download PdfStudio</a>
+    </section>
+    <section class="card soon"><b>Coming soon</b><span>A new product is on the way.</span></section>
+  </div>
+</main>
+<footer>© <span id="y"></span> Indo American LLC · <a style="color:#8d9ab0" href="mailto:atrivedi2508@gmail.com">atrivedi2508@gmail.com</a></footer>
+<script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"dc0512f8730a436293e5dc99ebde5dd7","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>

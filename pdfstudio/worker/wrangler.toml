@@ -1,0 +1,45 @@
+name = "pdfstudio-downloads"
+main = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev = false
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "pdfstudio-downloads"
+
+[[routes]]
+pattern = "trivedipos.com/pdfstudio/*"
+zone_name = "trivedipos.com"
+
+[[routes]]
+pattern = "trivedipos.com/pdfstudio"
+zone_name = "trivedipos.com"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.txt"]
+
+[[routes]]
+pattern = "trivedipos.com/"
+zone_name = "trivedipos.com"
+
+# Accounts database. Create it once with:  npx wrangler d1 create pdfstudio-db  and paste the real id below.
+# Private per-user PDF storage. Create once with:  npx wrangler r2 bucket create pdfstudio-userfiles
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "pdfstudio-userfiles"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pdfstudio-db"
+database_id = "12985583-b747-49f9-9700-e651687228a9"
+
+# Web editor files (built by build.mjs into dist-web/app). Only served to signed-in users - see worker/index.js.
+# Invite emails go out through Resend. The key is a secret:  npx wrangler secret put RESEND_API_KEY
+[vars]
+MAIL_FROM = "PdfStudio <invites@trivedipos.com>"
+
+[assets]
+directory = "../dist-web/app"
+binding = "ASSETS"
+run_worker_first = true

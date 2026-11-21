@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>PdfStudio - Admin</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f6fb;--card:#fff;--fg:#1b2030;--mut:#5b6478;--acc:#3b6df0;--err:#c62828;--ok:#2e7d32;--bd:#d9deea}
+@media(prefers-color-scheme:dark){:root{--bg:#161a26;--card:#1e2230;--fg:#e8ebf4;--mut:#9aa3b8;--acc:#6b93ff;--err:#ff7b72;--ok:#6fcf7a;--bd:#323955}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--bd);background:var(--card)}
+h1{font-size:18px;margin:0}main{max-width:900px;margin:0 auto;padding:16px}
+section{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:16px;margin:0 0 10px}
+input{padding:9px 11px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--fg);font:inherit}
+button{padding:9px 14px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.s{background:transparent;color:var(--fg);border:1px solid var(--bd);padding:5px 10px;font-weight:500;font-size:13px}
+button.d{color:var(--err)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--bd);font-size:14px;vertical-align:middle}
+th{color:var(--mut);font-weight:500}.tableWrap{overflow-x:auto}
+.mut{color:var(--mut)}.err{color:var(--err)}.ok{color:var(--ok)}
+#login{max-width:340px;margin:60px auto}
+#login input{width:100%;margin-bottom:10px}
+[hidden]{display:none!important}
+</style></head><body>
+<div id="login" hidden><section><h2>PdfStudio admin sign-in</h2>
+<p class="mut" style="margin-top:0">Use your Ledger Desk username and password. Administrators only.</p>
+<form id="lf"><input id="lu" placeholder="Username" autocomplete="username" autocapitalize="off"><input id="lp" type="password" placeholder="Password" autocomplete="current-password"><button style="width:100%">Sign in</button></form>
+<div id="lerr" class="err" style="margin-top:8px"></div></section></div>
+<div id="app" hidden>
+<header><h1>PdfStudio users</h1><div class="row"><span id="who" class="mut"></span><button class="s" id="out">Sign out</button></div></header>
+<main>
+<section><h2>How accounts work</h2>
+<p class="mut" style="margin:0">PdfStudio uses your Ledger Desk accounts. Everyone with a Ledger Desk login can sign in to PdfStudio with the same username and password, and appears below after their first sign-in. To add someone, invite them in Ledger Desk. To reset a password or turn someone off completely, do it in Ledger Desk.</p></section>
+<section><h2>People who have used PdfStudio</h2><div class="tableWrap"><table id="ut"></table></div>
+<p class="mut" style="margin:10px 0 0;font-size:13px">"Disable" only blocks PdfStudio for that person. "Remove files" deletes their cloud PDFs and their PdfStudio record (they come back if they sign in again).</p></section>
+</main></div>
+<script>
+const $=(id)=>document.getElementById(id);
+const api=async(path,method='GET',body)=>{
+  const r=await fetch('/pdfstudio/api/'+path,{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Request failed'),{status:r.status,data:j});return j;
+};
+async function authFor(username,password){
+  const te=new TextEncoder();
+  const base=await crypto.subtle.importKey('raw',te.encode(password),'PBKDF2',false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:te.encode('ledgerdesk-auth|'+String(username).trim().toLowerCase()),iterations:200000},base,256);
+  let s='';for(const b of new Uint8Array(bits))s+=String.fromCharCode(b);return btoa(s);
+}
+const fmt=(t)=>t?new Date(t).toLocaleString():'never';
+function cell(tr,text,cls){const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;tr.appendChild(td);return td;}
+function btn(td,label,fn,cls){const b=document.createElement('button');b.className='s '+(cls||'');b.textContent=label;b.onclick=fn;td.appendChild(b);td.appendChild(document.createTextNode(' '));}
+function head(t,cols){t.replaceChildren();const tr=t.insertRow();cols.forEach((c)=>{const th=document.createElement('th');th.textContent=c;tr.appendChild(th);});}
+let me=null;
+async function load(){
+  const u=await api('admin/users');
+  head($('ut'),['Username','Role','Last sign-in','Status','']);
+  u.users.forEach((v)=>{const tr=$('ut').insertRow();cell(tr,v.username);cell(tr,v.role);cell(tr,fmt(v.last_login));
+    cell(tr,v.disabled?'disabled':'active',v.disabled?'err':'ok');const td=cell(tr,'');
+    if(v.id!==me.id){
+      btn(td,v.disabled?'Enable':'Disable',async()=>{await api('admin/users/'+v.id+'/'+(v.disabled?'enable':'disable'),'POST');load();});
+      btn(td,'Remove files',async()=>{if(confirm('Delete '+v.username+"'s PdfStudio cloud files and record? Their Ledger Desk account is not affected.")){await api('admin/users/'+v.id,'DELETE');load();}},'d');}});
+}
+async function start(){
+  try{const r=await api('me');me=r.user;
+    if(me.role!=='admin'){$('login').hidden=false;$('app').hidden=true;$('lerr').textContent='This account is not an administrator.';return;}
+    $('login').hidden=true;$('app').hidden=false;$('who').textContent=me.username;await load();
+  }catch{$('login').hidden=false;$('app').hidden=true;}
+}
+$('lf').onsubmit=async(e)=>{e.preventDefault();$('lerr').textContent='';
+  try{
+    const r=await api('login','POST',{username:$('lu').value,auth:await authFor($('lu').value,$('lp').value)});
+    if(r.need2fa){$('lerr').textContent='This account uses two-step sign-in. Sign in at trivedipos.com/pdfstudio/app/ first, then reload this page.';return;}
+    await start();
+  }catch(x){$('lerr').textContent=x.message;}};
+$('out').onclick=async()=>{await api('logout','POST');location.reload();};
+start();
+</script><script src="/pdfstudio/apps.js" defer></script></body></html>

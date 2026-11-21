@@ -1,0 +1,1 @@
+window.app.openPaths(["C:\\Users\\virus\\P editor\\samples\\out2.pdf"]).then(()=>new Promise(r=>setTimeout(()=>{window.app.view.scrollToPage(1);setTimeout(()=>r(JSON.stringify(window.app.active.formFields.map(f=>[f.name,f.type,f.page]))),500)},1500)))
