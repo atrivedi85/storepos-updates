@@ -175,18 +175,22 @@ ipcMain.handle('app:set-title', (_e, t: string) => { win?.setTitle(t); });
 // ---------- auto-update (GitHub Releases) ----------
 type UpdateMsg = { state: 'checking' | 'available' | 'none' | 'downloading' | 'ready' | 'error'; version?: string; percent?: number; message?: string; notes?: string };
 let manualCheck = false;
+function cleanNotes(n: any): string {
+  const t = typeof n === 'string' ? n : Array.isArray(n) ? n.map((x: any) => x?.note || '').join('\n') : '';
+  return t.replace(/<[^>]+>/g, '').trim();
+}
 function sendUpdate(m: UpdateMsg) { win?.webContents.send('update:state', m); }
 function setupUpdater() {
   if (!app.isPackaged) return;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => manualCheck && sendUpdate({ state: 'checking' }));
-  autoUpdater.on('update-available', (i) => sendUpdate({ state: 'available', version: i.version }));
+  autoUpdater.on('update-available', (i) => sendUpdate({ state: 'available', version: i.version, notes: cleanNotes(i.releaseNotes) }));
   autoUpdater.on('update-not-available', () => { if (manualCheck) sendUpdate({ state: 'none' }); manualCheck = false; });
   autoUpdater.on('download-progress', (p) => sendUpdate({ state: 'downloading', percent: Math.round(p.percent) }));
-  autoUpdater.on('update-downloaded', (i) => { manualCheck = false; sendUpdate({ state: 'ready', version: i.version, notes: typeof i.releaseNotes === 'string' ? i.releaseNotes.replace(/<[^>]+>/g, '').trim() : '' }); });
+  autoUpdater.on('update-downloaded', (i) => { manualCheck = false; sendUpdate({ state: 'ready', version: i.version, notes: cleanNotes(i.releaseNotes) }); });
   autoUpdater.on('error', (e) => { if (manualCheck) sendUpdate({ state: 'error', message: String(e?.message || e).split('\n')[0] }); manualCheck = false; });
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 8000);
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000);
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
 }
 ipcMain.handle('update:check', async () => {

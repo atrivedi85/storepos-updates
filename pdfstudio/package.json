@@ -1,6 +1,6 @@
 {
     "name":  "pdfstudio",
-    "version":  "1.1.0",
+    "version":  "1.1.1",
     "description":  "PdfStudio - a modern PDF editor",
     "main":  "dist/main/main.js",
     "author":  "PdfStudio",
@@ -67,7 +67,7 @@
                                   "url":  "https://trivedipos.com/pdfstudio/"
                               },
                   "releaseInfo":  {
-                                      "releaseNotes":  "- New: sign in with your Ledger Desk username and password (no more activation keys)\n- Fixed: signatures can now be moved and resized right after placing them\n- New \u0027Add another copy\u0027 button for signatures"
+                                      "releaseNotes":  "- Updates: a pop-up now appears as soon as PdfStudio finds a new version, shows the download, then offers Restart now\n- New: sign in with your Ledger Desk username and password (no more activation keys)\n- Fixed: signatures can now be moved and resized right after placing them\n- New \u0027Add another copy\u0027 button for signatures"
                                   }
               }
 }

@@ -442,12 +442,53 @@ export class App implements PageHooks {
     api.installUpdate();
   }
 
-  async showUpdatePopup(version: string, notes?: string) {
-    const body = el('div');
+  // ---- update pop-up: opens the moment an update is found, shows the download, then offers "Restart now" ----
+  private upPop: { bg: HTMLElement; title: HTMLElement; msg: HTMLElement; bar: HTMLElement; fill: HTMLElement; notes: HTMLElement; now: HTMLButtonElement; later: HTMLButtonElement } | null = null;
+  private upDismissed = '';
+  private upReady = false;
+
+  private openUpdatePopup(version: string, notes?: string) {
+    if (this.upPop || this.upDismissed === version) return;
+    const bg = el('div', 'modal-bg'); const m = el('div', 'modal');
+    const title = el('h2', '', {}, 'Update available'); m.appendChild(title);
+    const body = el('div', 'body');
     body.style.cssText = 'display:flex;flex-direction:column;gap:10px;min-width:360px;max-width:480px';
-    body.innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></div><div><div style="color:var(--text);font-size:15px;font-weight:600">PdfStudio ${esc(version)} is ready to install</div><div>It has already been downloaded.</div></div></div>${notes ? `<div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre-wrap;max-height:160px;overflow:auto"><b style="color:var(--text)">What's new</b>\n${esc(notes)}</div>` : ''}<div>Restart now to finish updating, or choose Later. It will install automatically the next time you close PdfStudio.</div>`;
-    const r = await modal('Update available', body, [{ label: 'Later', value: 'later' }, { label: 'Restart now', kind: 'primary', value: 'now' }]);
-    if (r === 'now') await this.restartForUpdate();
+    body.innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></div><div><div style="color:var(--text);font-size:15px;font-weight:600">PdfStudio ${esc(version)} is available</div><div data-k="msg">Downloading the update…</div></div></div><div data-k="bar" style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><div data-k="fill" style="height:100%;width:0%;background:var(--accent2);transition:width .3s"></div></div><div data-k="notes" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre-wrap;max-height:160px;overflow:auto;display:none"></div>`;
+    m.appendChild(body);
+    const f = el('div', 'footer');
+    const later = el('button', 'btn', {}, 'Later') as HTMLButtonElement;
+    const now = el('button', 'btn primary', {}, 'Restart now') as HTMLButtonElement; now.disabled = true;
+    f.appendChild(later); f.appendChild(now); m.appendChild(f); bg.appendChild(m);
+    document.getElementById('modal-root')!.appendChild(bg);
+    const close = () => { this.upDismissed = version; bg.remove(); this.upPop = null; document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    later.onclick = close;
+    now.onclick = async () => { close(); await this.restartForUpdate(); };
+    this.upPop = { bg, title, msg: body.querySelector('[data-k=msg]') as HTMLElement, bar: body.querySelector('[data-k=bar]') as HTMLElement, fill: body.querySelector('[data-k=fill]') as HTMLElement, notes: body.querySelector('[data-k=notes]') as HTMLElement, now, later };
+    if (notes) { this.upPop.notes.textContent = "What's new\n" + notes; this.upPop.notes.style.display = ''; }
+    if (this.upReady) this.updateReady(version, notes);
+  }
+
+  /** An update was found (shown right away, even while it downloads). */
+  updateFound(version: string, notes?: string) { this.upReady = false; this.openUpdatePopup(version, notes); }
+
+  updateProgress(percent: number | undefined) {
+    if (!this.upPop || this.upReady) return;
+    this.upPop.fill.style.width = `${Math.max(2, Math.min(100, percent || 0))}%`;
+    this.upPop.msg.textContent = `Downloading the update… ${percent || 0}%`;
+  }
+
+  /** The update has finished downloading: offer to restart. */
+  updateReady(version: string, notes?: string) {
+    this.upReady = true;
+    if (!this.upPop) { this.openUpdatePopup(version, notes); return; }
+    const p = this.upPop;
+    p.title.textContent = 'Update ready to install';
+    p.msg.textContent = 'It has been downloaded. Restart now to finish, or choose Later - it installs automatically the next time you close PdfStudio.';
+    p.fill.style.width = '100%';
+    if (notes && !p.notes.textContent) { p.notes.textContent = "What's new\n" + notes; p.notes.style.display = ''; }
+    p.now.disabled = false; p.now.focus();
   }
 
   // ---- images & signatures ----
@@ -605,15 +646,15 @@ function bind() {
     setBusy(m.state === 'checking' || m.state === 'available' || m.state === 'downloading');
     switch (m.state) {
       case 'checking': upTxt.textContent = 'Checking…'; tbTxt.textContent = 'Checking…'; break;
-      case 'available': upTxt.textContent = `Downloading v${m.version}…`; tbTxt.textContent = 'Downloading…'; break;
-      case 'downloading': upTxt.textContent = `Downloading update ${m.percent}%`; tbTxt.textContent = `${m.percent}%`; break;
+      case 'available': upTxt.textContent = `Downloading v${m.version}…`; tbTxt.textContent = 'Downloading…'; app.updateFound(`v${m.version}`, m.notes); break;
+      case 'downloading': upTxt.textContent = `Downloading update ${m.percent}%`; tbTxt.textContent = `${m.percent}%`; app.updateProgress(m.percent); break;
       case 'none': upTxt.textContent = 'Check for updates'; tbTxt.textContent = 'Updates'; toast('You are on the latest version'); break;
       case 'error': upTxt.textContent = 'Check for updates'; tbTxt.textContent = 'Updates'; toast(`Update check failed: ${m.message}`, true); break;
       case 'ready':
         upReady = true; upTxt.textContent = `Restart to update to v${m.version}`; upBtn.style.color = 'var(--accent2)';
         tbTxt.textContent = 'Restart to update'; tbBtn.classList.add('ready'); dot.classList.remove('hidden');
         tbBtn.title = `Update v${m.version} is ready - click to restart and install`;
-        app.showUpdatePopup(`v${m.version}`, m.notes);
+        app.updateReady(`v${m.version}`, m.notes);
         break;
     }
   };
