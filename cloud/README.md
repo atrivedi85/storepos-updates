@@ -8,6 +8,7 @@ A tiny relay on Cloudflare Workers (free plan). One Durable Object per store.
 - Access to a store's hub needs `HMAC(storeKey, "storepos-relay-auth")`; the hub only stores its SHA-256.
 
 Deployed by `.github/workflows/cloud.yml` when `cloud/**` changes (needs repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`).
+The Cloudflare key ("Edit Cloudflare Workers" token) was rolled on 2026-11-21 after the old one was found in a public repo; if it is ever rolled again, paste the new one into the `CLOUDFLARE_API_TOKEN` secret.
 The registers learn the server address from `cloudUrl` in `latest.json`.
 
 ## Hotel Desk (`/hotel`)
