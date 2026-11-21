@@ -31,7 +31,7 @@ th{color:var(--mut);font-weight:500}.tableWrap{overflow-x:auto}
 <section><h2>How accounts work</h2>
 <p class="mut" style="margin:0">PdfStudio uses your Ledger Desk accounts. Everyone with a Ledger Desk login can sign in to PdfStudio with the same username and password, and appears below after their first sign-in. To add someone, invite them in Ledger Desk. To reset a password or turn someone off completely, do it in Ledger Desk.</p></section>
 <section><h2>People who have used PdfStudio</h2><div class="tableWrap"><table id="ut"></table></div>
-<p class="mut" style="margin:10px 0 0;font-size:13px">"Disable" only blocks PdfStudio for that person. "Remove files" deletes their cloud PDFs and their PdfStudio record (they come back if they sign in again).</p></section>
+<p class="mut" style="margin:10px 0 0;font-size:13px">There is no separate on/off switch here: turn people on or off in Ledger Desk and PdfStudio follows. "Remove files" deletes their cloud PDFs and their PdfStudio record (they come back if they sign in again).</p></section>
 </main></div>
 <script>
 const $=(id)=>document.getElementById(id);
@@ -52,11 +52,10 @@ function head(t,cols){t.replaceChildren();const tr=t.insertRow();cols.forEach((c
 let me=null;
 async function load(){
   const u=await api('admin/users');
-  head($('ut'),['Username','Role','Last sign-in','Status','']);
+  head($('ut'),['Username','Role','Last sign-in','']);
   u.users.forEach((v)=>{const tr=$('ut').insertRow();cell(tr,v.username);cell(tr,v.role);cell(tr,fmt(v.last_login));
-    cell(tr,v.disabled?'disabled':'active',v.disabled?'err':'ok');const td=cell(tr,'');
+    const td=cell(tr,'');
     if(v.id!==me.id){
-      btn(td,v.disabled?'Enable':'Disable',async()=>{await api('admin/users/'+v.id+'/'+(v.disabled?'enable':'disable'),'POST');load();});
       btn(td,'Remove files',async()=>{if(confirm('Delete '+v.username+"'s PdfStudio cloud files and record? Their Ledger Desk account is not affected.")){await api('admin/users/'+v.id,'DELETE');load();}},'d');}});
 }
 async function start(){

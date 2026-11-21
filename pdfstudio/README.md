@@ -32,6 +32,10 @@ so all the software (Store POS, Ledger Desk, Hotel Desk, PdfStudio, website) liv
 - The Resend email key (it is a Worker secret: `npx wrangler secret put RESEND_API_KEY`).
 - `worker/seed-admin.sql` (contains a one-time invite).
 
+## Who may use it
+
+Anyone who can sign in to Ledger Desk. Ledger Desk is the only on/off switch (PdfStudio's own Disable button was removed 2026-11-21; old `disabled` flags in the database are ignored).
+
 ## Known open items
 
 - Home page: edited in ONE place, `cloud/site/index.html` (the PdfStudio tile is there). The old override route `trivedipos.com/` was removed on 2026-11-21.

@@ -66,7 +66,6 @@ async function upsertLedgerUser(env, me) {
       .bind(id, username, email, 'ledger-desk', 'ledger-desk', wantAdmin ? 'admin' : 'user', Date.now()).run();
     return { id, username, email, role: wantAdmin ? 'admin' : 'user' };
   }
-  if (u.disabled) return null;
   if (wantAdmin && u.role !== 'admin') {
     await env.DB.prepare("UPDATE users SET role = 'admin' WHERE id = ?").bind(u.id).run();
     u = { ...u, role: 'admin' };
@@ -100,7 +99,7 @@ export async function authenticate(request, env, url) {
       `SELECT u.id, u.username, u.email, u.role, u.disabled, s.expires_at, s.ledger_token
          FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`
     ).bind(th).first();
-    if (row && !row.disabled && row.expires_at >= Date.now()) {
+    if (row && row.expires_at >= Date.now()) {
       return { user: { id: row.id, username: row.username, email: row.email, role: row.role }, via: bearer ? 'bearer' : 'cookie', sessionHash: th, sealed: row.ledger_token };
     }
   }
@@ -287,12 +286,8 @@ export async function handleApi(request, env, url) {
         const b = await readJson(request);
         return inviteResponse(await makeInvite(env, url, { email: target.email, role: target.role, userId: id, createdBy: auth.user.id, send: b.send === true, inviter: auth.user.username }));
       }
-      if (id === auth.user.id) return fail(400, 'You cannot disable your own account.');
-      await env.DB.batch([
-        env.DB.prepare('UPDATE users SET disabled = ? WHERE id = ?').bind(action === 'disable' ? 1 : 0, id),
-        ...(action === 'disable' ? [env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id)] : []),
-      ]);
-      return json({ ok: true });
+      // There is no PdfStudio-only on/off switch. Turn people on or off in Ledger Desk; PdfStudio follows.
+      return fail(410, 'Turn people on or off in Ledger Desk. PdfStudio follows it.');
     }
     if ((m = sub.match(/^users\/([a-f0-9]+)$/)) && method === 'DELETE') {
       if (m[1] === auth.user.id) return fail(400, 'You cannot delete your own account.');
