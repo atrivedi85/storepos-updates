@@ -1,0 +1,27 @@
+name: Cloudflare routes (list / delete one)
+# Lists the Worker routes on trivedipos.com. With delete_pattern filled in, deletes ONLY the route with exactly that pattern.
+on:
+  workflow_dispatch:
+    inputs:
+      delete_pattern:
+        description: 'Exact route pattern to delete (leave empty to just list)'
+        required: false
+        default: ''
+jobs:
+  routes:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      PATTERN: ${{ github.event.inputs.delete_pattern }}
+    steps:
+      - name: List (and maybe delete)
+        run: |
+          api() { curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$@"; }
+          Z=$(api "https://api.cloudflare.com/client/v4/zones?name=trivedipos.com" | jq -r '.result[0].id')
+          echo "zone found: $([ -n "$Z" ] && [ "$Z" != null ] && echo yes || echo NO)"
+          api "https://api.cloudflare.com/client/v4/zones/$Z/workers/routes" | jq -r '.success, (.errors|tostring), (.result[]? | "\(.id)  \(.pattern)  ->  \(.script)")'
+          if [ -n "$PATTERN" ]; then
+            ID=$(api "https://api.cloudflare.com/client/v4/zones/$Z/workers/routes" | jq -r --arg p "$PATTERN" '.result[] | select(.pattern==$p) | .id')
+            echo "matching route id: ${ID:-none}"
+            if [ -n "$ID" ]; then api -X DELETE "https://api.cloudflare.com/client/v4/zones/$Z/workers/routes/$ID" | jq -r '.success, (.errors|tostring)'; fi
+          fi
