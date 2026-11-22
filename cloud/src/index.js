@@ -92,6 +92,11 @@ export default {
       return env.HOTEL.get(env.HOTEL.idFromName('h:' + who.hotel.id)).fetch(new Request(req, { headers: h }));
     }
     if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
+    // Safety net: PdfStudio normally answers /pdfstudio itself (its own route). If Cloudflare ever sends it here instead, pass it on.
+    if (p[0] === 'pdfstudio' && env.PDFSTUDIO) {
+      try { return await env.PDFSTUDIO.fetch(req); }
+      catch (e) { return new Response('PdfStudio is restarting. Please refresh in a few seconds.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '3', 'Cache-Control': 'no-store' } }); }
+    }
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });
     if ((p[1] === 'store' || p[1] === 'pair') && ID.test(p[2] || '')) return env.HUB.get(env.HUB.idFromName(p[1] + ':' + p[2])).fetch(req);
     return J({ error: 'Not found' }, 404);

@@ -32,6 +32,11 @@ new_sqlite_classes = ["Ledger"]
 tag = "v3"
 new_sqlite_classes = ["Hotel"]
 
+# PdfStudio has its own Worker (pdfstudio/worker). If a /pdfstudio request ever lands here, hand it over.
+[[services]]
+binding = "PDFSTUDIO"
+service = "pdfstudio-downloads"
+
 # The web back office (the POS screens + web-shim.js), copied in by the deploy workflow.
 [assets]
 directory = "./public"
