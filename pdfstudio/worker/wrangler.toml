@@ -35,6 +35,11 @@ database_id = "12985583-b747-49f9-9700-e651687228a9"
 [vars]
 MAIL_FROM = "PdfStudio <invites@trivedipos.com>"
 
+# Ledger Desk (the storepos-sync Worker) - used for sign-in, so it is reached directly and not over the internet.
+[[services]]
+binding = "LEDGER_SVC"
+service = "storepos-sync"
+
 [assets]
 directory = "../dist-web/app"
 binding = "ASSETS"

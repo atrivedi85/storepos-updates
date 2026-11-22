@@ -12,10 +12,14 @@ export async function ledgerCall(env, path, { method = 'POST', body, token } = {
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (token) headers.cookie = `ld_s=${token}`;
   try {
-    const r = await fetch(ledgerBase(env) + path, {
-      method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(10000),
-    });
+    // Talk to Ledger Desk directly through the Cloudflare service binding (no trip over the public internet);
+    // fall back to a normal web request if the binding is missing. Retry once if Cloudflare hiccups (5xx from the edge).
+    const send = () => {
+      const init = { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(10000) };
+      return env.LEDGER_SVC ? env.LEDGER_SVC.fetch(new Request(ledgerBase(env) + path, init)) : fetch(ledgerBase(env) + path, init);
+    };
+    let r = await send();
+    if (r.status >= 520 && r.status <= 530) { await new Promise((ok) => setTimeout(ok, 400)); r = await send(); }
     const data = await r.json().catch(() => ({}));
     const cookies = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [r.headers.get('set-cookie') || ''];
     return { status: r.status, data, cookies };
