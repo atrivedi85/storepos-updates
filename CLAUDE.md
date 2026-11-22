@@ -34,3 +34,12 @@ at the same paths, and copy a new `.posupdate` into the NAS `Updates\` folder
 
 PdfStudio now lives in `pdfstudio/` here. The old folder `C:\Users\virus\Documents\PdfStudio\P editor`
 on the trivedi-ai PC is no longer the master copy: work in `pdfstudio/` and push. Its `keys/` folder stays on that PC only.
+
+## Things that changed on 2026-11-21 (read this if you worked on PdfStudio before)
+
+- PdfStudio moved into this repo (`pdfstudio/`). There is no separate PdfStudio repo any more; the old public one that held a key was deleted.
+- The Cloudflare key was replaced. The new one lives only in GitHub → Settings → Secrets (`CLOUDFLARE_API_TOKEN`). Never paste a Cloudflare key into a file, a chat or a terminal on a PC. Publish by pushing to `main`; do not run `wrangler deploy` by hand.
+- PdfStudio desktop updates: raise `version` in `pdfstudio/package.json`, push, then run the GitHub Action "pdfstudio-publish" (no Windows PC needed).
+- PdfStudio sign-in uses Ledger Desk accounts. Turn people on or off only in Ledger Desk.
+- The home page is edited only in `cloud/site/index.html`.
+- The old Resend email key was deleted; PdfStudio does not send emails now.
