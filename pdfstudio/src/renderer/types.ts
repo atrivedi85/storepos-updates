@@ -18,6 +18,9 @@ export interface TextObj extends Base {
   size: number; color: string; font: FontKey; bold: boolean; italic: boolean;
   /** used by "edit existing text": opaque rectangle covering the original text */
   cover?: Box & { color: string };
+  /** "edit existing text": the document's own font, reused when saving so the font does not change.
+   *  name = font name as pdf.js reports it, css = pdf.js on-screen font family, chars = letters seen on the page in that font */
+  orig?: { name: string; css: string; chars: string };
 }
 export interface ImageObj extends Base { type: 'image'; x: number; y: number; w: number; h: number; asset: string }
 export interface FieldObj extends Base {

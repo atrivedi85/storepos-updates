@@ -1,6 +1,8 @@
 import {
   PDFDocument, PDFFont, PDFPage, StandardFonts, degrees, rgb, PDFName, PDFHexString, PDFTextField, PDFCheckBox,
   PDFRadioGroup, PDFDropdown, PDFOptionList, BlendMode, LineCapStyle, PDFArray, PDFDict, PDFNumber,
+  PDFRef, PDFStream, PDFRawStream, decodePDFRawStream, pushGraphicsState, popGraphicsState, beginText, endText,
+  setFontAndSize, setTextMatrix, showText, setFillingRgbColor,
 } from 'pdf-lib';
 import type { DocTab } from './doc';
 import type { FieldObj, FontKey, Obj, TextObj } from './types';
@@ -87,6 +89,86 @@ function removeAnnotsInside(doc: PDFDocument, page: PDFPage, pts: [number, numbe
   } catch (e) { warnings.push('Could not remove annotations under an erased area: ' + (e as Error).message); }
 }
 
+
+/* ---------- keep the document's own font when editing existing text ---------- */
+// The edited text is written with the same font the PDF already uses, when every letter typed exists in it.
+// Subset fonts only contain the letters the document used, so anything else falls back to the closest built-in font.
+interface OrigFont { res: string; encode: (s: string) => string | null }
+const normFont = (n: string) => String(n || '').replace(/^[A-Z]{6}\+/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+function streamText(doc: PDFDocument, v: unknown): string | null {
+  const st = doc.context.lookup(v as any);
+  try {
+    if (st instanceof PDFRawStream) return new TextDecoder('latin1').decode(decodePDFRawStream(st).decode());
+    if (st instanceof PDFStream) return new TextDecoder('latin1').decode((st as any).getContents());
+  } catch { /* unreadable */ }
+  return null;
+}
+function hexToStr(h: string) {
+  const b: number[] = []; for (let i = 0; i + 1 < h.length; i += 2) b.push(parseInt(h.slice(i, i + 2), 16));
+  let out = ''; for (let i = 0; i + 1 < b.length; i += 2) out += String.fromCharCode((b[i] << 8) | b[i + 1]);
+  return out;
+}
+/** unicode letter -> char code (hex) from a ToUnicode CMap */
+function parseToUnicode(cm: string): { map: Map<string, string>; bytes: number } {
+  const map = new Map<string, string>();
+  const cs = /begincodespacerange\s*<([0-9a-f]+)>/i.exec(cm); const bytes = cs ? Math.max(1, cs[1].length / 2) : 1;
+  const pad = (n: number) => n.toString(16).padStart(bytes * 2, '0');
+  const put = (code: string, uni: string) => { if ([...uni].length === 1 && !map.has(uni)) map.set(uni, code.toLowerCase()); };
+  for (const blk of cm.matchAll(/beginbfchar([\s\S]*?)endbfchar/gi))
+    for (const m of blk[1].matchAll(/<([0-9a-f]+)>\s*<([0-9a-f]*)>/gi)) put(m[1].padStart(bytes * 2, '0'), hexToStr(m[2]));
+  for (const blk of cm.matchAll(/beginbfrange([\s\S]*?)endbfrange/gi)) {
+    for (const m of blk[1].matchAll(/<([0-9a-f]+)>\s*<([0-9a-f]+)>\s*(\[[^\]]*\]|<[0-9a-f]*>)/gi)) {
+      const lo = parseInt(m[1], 16), hi = Math.min(parseInt(m[2], 16), lo + 65535);
+      if (m[3].startsWith('[')) { const items = [...m[3].matchAll(/<([0-9a-f]*)>/gi)].map((x) => x[1]); items.forEach((d, i) => { if (lo + i <= hi) put(pad(lo + i), hexToStr(d)); }); }
+      else { const d = m[3].slice(1, -1); const base = hexToStr(d); if (!base) continue; const last = base.charCodeAt(base.length - 1);
+        for (let c = lo; c <= hi; c++) put(pad(c), base.slice(0, -1) + String.fromCharCode(last + (c - lo))); }
+    }
+  }
+  return { map, bytes };
+}
+
+function findOrigFont(doc: PDFDocument, page: PDFPage, name: string, pageChars: string, counter: { n: number }): OrigFont | null {
+  const want = normFont(name); if (!want) return null;
+  const res = page.node.Resources(); if (!res) return null;
+  let fonts = res.lookupMaybe(PDFName.of('Font'), PDFDict);
+  // candidate fonts: the page's own, then fonts inside its form XObjects (one level)
+  const cands: { key: PDFName; ref: any; onPage: boolean }[] = [];
+  const scan = (fd: PDFDict | undefined, onPage: boolean) => { if (fd) for (const [k, v] of fd.entries()) cands.push({ key: k, ref: v, onPage }); };
+  scan(fonts, true);
+  const xo = res.lookupMaybe(PDFName.of('XObject'), PDFDict);
+  if (xo) for (const [, v] of xo.entries()) {
+    const x = doc.context.lookup(v) as any; const d: PDFDict | undefined = x && x.dict;
+    const r = d && d.lookupMaybe(PDFName.of('Resources'), PDFDict); scan(r && r.lookupMaybe(PDFName.of('Font'), PDFDict), false);
+  }
+  for (const c of cands) {
+    const fd = doc.context.lookupMaybe(c.ref, PDFDict); if (!fd) continue;
+    const base = fd.lookupMaybe(PDFName.of('BaseFont'), PDFName); if (!base || normFont(base.decodeText()) !== want) continue;
+    const subtype = (fd.lookupMaybe(PDFName.of('Subtype'), PDFName) || PDFName.of('')).decodeText();
+    let enc: ((s: string) => string | null) | null = null;
+    const tu = fd.get(PDFName.of('ToUnicode')); const cm = tu ? streamText(doc, tu) : null;
+    if (cm) {
+      const { map } = parseToUnicode(cm);
+      enc = (s) => { let h = ''; for (const ch of s) { const code = map.get(ch === ' ' ? ' ' : ch); if (code === undefined) return null; h += code; } return h; };
+    } else if (subtype !== 'Type0' && subtype !== 'Type3') {
+      // simple font without a ToUnicode map: plain letters only, and only ones the page already shows in this font (subset fonts)
+      const e = fd.get(PDFName.of('Encoding')); const encName = e instanceof PDFName ? e.decodeText() : e ? 'custom' : 'none';
+      if (encName !== 'WinAnsiEncoding' && encName !== 'StandardEncoding' && encName !== 'none') continue;
+      const subset = /^[A-Z]{6}\+/.test(base.decodeText()); const seen = new Set(pageChars + ' ');
+      enc = (s) => { let h = ''; for (const ch of s) { const cp = ch.codePointAt(0)!; if (cp < 0x20 || cp > 0x7e || (subset && !seen.has(ch))) return null; h += cp.toString(16).padStart(2, '0'); } return h; };
+    }
+    if (!enc) continue;
+    let key = c.key;
+    if (!c.onPage) { // font lives in an XObject: make it available to the page under a new name
+      if (!fonts) { fonts = doc.context.obj({}); res.set(PDFName.of('Font'), fonts); }
+      key = PDFName.of('PSo' + (++counter.n)); while (fonts.has(key)) key = PDFName.of('PSo' + (++counter.n));
+      fonts.set(key, c.ref);
+    }
+    return { res: key.decodeText(), encode: enc };
+  }
+  return null;
+}
+
 export interface BuildResult { bytes: Uint8Array; warnings: string[] }
 
 /** Apply form values + overlay objects onto the current bytes. */
@@ -129,7 +211,8 @@ export async function buildPdf(tab: DocTab): Promise<BuildResult> {
   const pages = doc.getPages();
   const fields: { page: number; f: FieldObj }[] = [];
   const imgCache = new Map<string, any>();
-  let lossy = false;
+  let lossy = false, fontFallback = false;
+  const origCache = new Map<string, OrigFont | null>(); const origCounter = { n: 0 };
   for (const [pi, list] of Object.entries(tab.objects)) {
     const page = pages[Number(pi)];
     if (!page || !list) continue;
@@ -216,6 +299,24 @@ export async function buildPdf(tab: DocTab): Promise<BuildResult> {
             page.drawSvgPath(pathOf(pts, true), { x: 0, y: 0, color: parseColor(cv.color), borderWidth: 0 });
           }
           if (!t.text) break;
+          if (t.orig) {
+            const ck = pi + '|' + t.orig.name;
+            if (!origCache.has(ck)) { let f: OrigFont | null = null; try { f = findOrigFont(doc, page, t.orig.name, t.orig.chars, origCounter); } catch { f = null; } origCache.set(ck, f); }
+            const of = origCache.get(ck);
+            const lines = t.text.split('\n');
+            const hexes = of ? lines.map((ln) => (ln ? of.encode(ln) : '')) : null;
+            if (of && hexes && hexes.every((h) => h !== null)) {
+              const col = parseColor(t.color), a = (m.rot * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
+              lines.forEach((ln, i) => {
+                if (!ln) return;
+                const [bx, by] = m.pt(t.x, t.y + t.size * 0.9465 + i * t.size * 1.2);
+                page.pushOperators(pushGraphicsState(), beginText(), setFontAndSize(of.res, t.size), setFillingRgbColor(col.red, col.green, col.blue),
+                  setTextMatrix(cs, sn, -sn, cs, bx, by), showText(PDFHexString.of(hexes[i] as string)), endText(), popGraphicsState());
+              });
+              break;
+            }
+            fontFallback = true;
+          }
           const font = await getFont(t.font, t.bold, t.italic);
           const lines = t.text.split('\n');
           lines.forEach((ln, i) => {
@@ -240,6 +341,7 @@ export async function buildPdf(tab: DocTab): Promise<BuildResult> {
       }
     }
   }
+  if (fontFallback) warnings.push('Some edited text uses letters that are not in the document\'s original font, so a similar built-in font was used for that text.');
   if (lossy) warnings.push('Some characters are not supported by the built-in PDF fonts and were replaced with "?".');
 
   // ---- new form fields ----

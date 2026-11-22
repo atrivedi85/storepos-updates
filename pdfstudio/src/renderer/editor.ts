@@ -152,7 +152,7 @@ export class Editor {
       case 'text': {
         e.classList.add('movable');
         e.textContent = o.text;
-        e.style.cssText += `;font-family:${FONT_CSS[o.font]};font-size:${o.size}px;color:${o.color};font-weight:${o.bold ? 700 : 400};font-style:${o.italic ? 'italic' : 'normal'};width:auto;min-width:${o.w}px;height:auto;min-height:${o.h}px`;
+        e.style.cssText += `;font-family:${o.orig ? `"${o.orig.css}", ` : ''}${FONT_CSS[o.font]};font-size:${o.size}px;color:${o.color};font-weight:${o.bold ? 700 : 400};font-style:${o.italic ? 'italic' : 'normal'};width:auto;min-width:${o.w}px;height:auto;min-height:${o.h}px`;
         e.ondblclick = (ev) => { ev.stopPropagation(); this.editText(pv, o, e); };
         break;
       }
@@ -507,6 +507,12 @@ export class Editor {
       id: uid(), type: 'text', x: run.bx, y: run.by - size * 0.9465, w: run.w, h: size * 1.2, text: run.str,
       size, color: colors.fg, font: fi.font, bold: fi.bold, italic: fi.italic, cover,
     };
+    // Keep the document's own font: remember it so saving reuses it instead of a built-in font.
+    if (fi.name) {
+      let chars = '';
+      try { const pt = await tab.getText(pv.index); chars = [...new Set(pt.runs.filter((r) => r.fontName === run.fontName).map((r) => r.str).join(''))].join(''); } catch { /* ignore */ }
+      t.orig = { name: fi.name, css: run.fontName, chars };
+    }
     tab.push();
     tab.objectsOn(pv.index).push(t);
     this.refresh(pv.index);
@@ -514,7 +520,7 @@ export class Editor {
     this.editText(pv, t, e);
   }
 
-  private async fontInfo(pv: PageView, name: string): Promise<{ font: FontKey; bold: boolean; italic: boolean }> {
+  private async fontInfo(pv: PageView, name: string): Promise<{ font: FontKey; bold: boolean; italic: boolean; name: string }> {
     let n = '', bold = false, italic = false, serif = false, mono = false;
     try {
       const page = await pv.tab.getPage(pv.index);
@@ -528,7 +534,7 @@ export class Editor {
     if (/italic|oblique/.test(s)) italic = true;
     if (/times|serif|georgia|garamond|minion|cambria|palatino|book|roman/.test(s) && !/sans/.test(s)) serif = true;
     if (/courier|mono|consolas|typewriter/.test(s)) mono = true;
-    return { font: mono ? 'courier' : serif ? 'times' : 'helv', bold, italic };
+    return { font: mono ? 'courier' : serif ? 'times' : 'helv', bold, italic, name: n };
   }
 
   private sampleColors(pv: PageView, run: Box) {
@@ -733,6 +739,8 @@ export class Editor {
         title(so.cover ? 'Edited text' : 'Text');
         textControls(() => so, (p) => mod(() => {
           Object.assign(so, p);
+          // picking another font, bold or italic means the person no longer wants the original font
+          if (p.font !== undefined || p.bold !== undefined || p.italic !== undefined) delete so.orig;
           if (p.size) so.h = so.size * 1.2;
         }));
       } else if (so.type === 'note') {
