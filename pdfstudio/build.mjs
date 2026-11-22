@@ -43,5 +43,14 @@ fs.copyFileSync(`${pj}/build/pdf.worker.min.mjs`, `${web}/pdf.worker.min.mjs`);
 for (const d of ['cmaps', 'standard_fonts', 'wasm', 'iccs']) {
   if (fs.existsSync(`${pj}/${d}`)) fs.cpSync(`${pj}/${d}`, `${web}/${d}`, { recursive: true });
 }
+// public signing page (people sent a document to sign; no account): served by the Worker at /pdfstudio/s/<token>
+fs.mkdirSync(`${web}/signer`, { recursive: true });
+await esbuild.build({
+  entryPoints: ['src/signer/signer.ts'], outfile: `${web}/signer/signer.js`,
+  bundle: true, platform: 'browser', target: ['chrome110', 'safari16', 'firefox115'], format: 'esm', sourcemap: false, minify: true,
+  loader: { '.svg': 'text' },
+});
+fs.copyFileSync('src/signer/index.html', `${web}/signer/index.html`);
+fs.copyFileSync('src/signer/signer.css', `${web}/signer/signer.css`);
 fs.writeFileSync(`${web}/version.json`, JSON.stringify({ version: JSON.parse(fs.readFileSync('package.json', 'utf8')).version }));
 console.log('build ok');

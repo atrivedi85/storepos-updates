@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { currentStatus, login, login2fa, login2faEmail, logout, onAuthChange, startRevalidating } from './auth';
+import { SERVER, currentStatus, currentToken, login, login2fa, login2faEmail, logout, onAuthChange, startRevalidating } from './auth';
+import { esignClient } from '../shared/esign';
 import * as cloud from './cloud';
 import { parseCloudPath } from '../shared/cloud';
 import { autoUpdater } from 'electron-updater';
@@ -117,6 +118,15 @@ ipcMain.handle('auth:login2faEmail', (_e, t: string) => login2faEmail(String(t |
 ipcMain.handle('auth:logout', () => logout());
 const pdfFilter = [{ name: 'PDF documents', extensions: ['pdf'] }];
 
+// "Send for signature" (server does the emailing; the app only talks to it)
+const esignApi = esignClient((p, init) => net.fetch(`${SERVER}/api/${p}`, {
+  method: init?.method, headers: { ...(init?.headers || {}), authorization: `Bearer ${currentToken() || ''}` },
+  body: init?.body ? (typeof init.body === 'string' ? init.body : Buffer.from(init.body)) : undefined, signal: AbortSignal.timeout(120000),
+}));
+gated('esign:json', (_e, method: string, path: string, body?: unknown) => esignApi.json(String(method), String(path), body));
+gated('esign:bytes', (_e, path: string) => esignApi.bytes(String(path)));
+gated('esign:create', (_e, meta: unknown, pdf: Uint8Array) => esignApi.create(meta, pdf));
+gated('esign:final', (_e, id: string, pdf: Uint8Array) => esignApi.putFinal(String(id), pdf));
 ipcMain.handle('init:files', () => (currentStatus().signedIn ? pendingOpen.splice(0) : []));
 // Cloud library (server + offline cache). Paths look like cloud://<id>/<name>.
 gated('cloud:list', () => cloud.list());

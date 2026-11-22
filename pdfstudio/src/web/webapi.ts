@@ -6,6 +6,7 @@ import {
   cloudClient, cloudPath, conflictName, parseCloudPath,
   CloudConflict, CloudError, CloudOffline, type CloudEvent,
 } from '../shared/cloud';
+import { esignClient } from '../shared/esign';
 
 const SERVER = '/pdfstudio';
 const PDF_TYPES = [{ description: 'PDF documents', accept: { 'application/pdf': ['.pdf'] } }];
@@ -49,6 +50,7 @@ async function writeHandle(handle: any, data: Uint8Array) {
 }
 
 // ---- cloud library (same server API as the desktop app; the browser has no offline cache) ----
+const esignApi = esignClient((p, init) => fetch(`${SERVER}/api/${p}`, init as RequestInit));
 const client = cloudClient((p, init) => fetch(`${SERVER}/api/${p}`, init as RequestInit));
 const revs = new Map<string, { rev: number; name: string }>();
 let cloudCb: ((e: CloudEvent) => void) | null = null;
@@ -136,6 +138,10 @@ const api: { [K in keyof Api]: (...a: Parameters<Api[K]>) => any } = {
   },
   onAuthChanged: (cb) => { authCb = cb; },
   initFiles: async () => [],
+  esign: (method: string, path: string, body?: unknown) => esignApi.json(method, path, body),
+  esignBytes: (path: string) => esignApi.bytes(path),
+  esignCreate: (meta: unknown, pdf: Uint8Array) => esignApi.create(meta, pdf),
+  esignPutFinal: (id: string, pdf: Uint8Array) => esignApi.putFinal(id, pdf),
   cloudList: async () => {
     try { const l = await client.list(); return { ...l, offline: false }; }
     catch (x) { if (x instanceof CloudOffline) return { files: [], used: 0, quota: 0, offline: true }; throw x; }

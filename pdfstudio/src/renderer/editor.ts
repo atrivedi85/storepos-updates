@@ -1,6 +1,6 @@
 import type { App } from './app';
 import type { PageView } from './viewer';
-import type { Box, EraseObj, FontKey, InkObj, MarkupObj, NoteObj, Obj, ShapeObj, TextObj, ToolName, ImageObj, FieldObj } from './types';
+import type { Box, EraseObj, FontKey, InkObj, MarkupObj, NoteObj, Obj, ShapeObj, TextObj, ToolName, ImageObj, FieldObj, SignFieldObj } from './types';
 import { el, uid, clamp, modal, esc, toast } from './util';
 import { icon } from './icons';
 import { renderFormFields } from './forms';
@@ -10,7 +10,12 @@ export const FONT_CSS: Record<FontKey, string> = {
   times: '"Times New Roman", Times, serif',
   courier: '"Courier New", Courier, monospace',
 };
-const CAP_TOOLS: ToolName[] = ['draw', 'shape', 'note', 'textbox', 'field', 'place', 'erase'];
+const CAP_TOOLS: ToolName[] = ['draw', 'shape', 'note', 'textbox', 'field', 'place', 'erase', 'signfield'];
+/** one colour per signer in "Send for signature" */
+export const SIGNER_COLORS = ['#e3a400', '#2f80ed', '#27ae60', '#e5484d', '#8e44ad', '#16a085', '#d35400', '#c2185b', '#5d6d7e', '#00838f'];
+const SF_LABEL: Record<SignFieldObj['kind'], string> = { signature: 'Signature', initials: 'Initials', date: 'Date signed', text: 'Name' };
+const SF_SIZE: Record<SignFieldObj['kind'], [number, number]> = { signature: [170, 42], initials: [70, 36], date: [110, 22], text: [170, 22] };
+export interface EsignDraft { title: string; message: string; signers: { name: string; email: string }[]; cur: number; kind: SignFieldObj['kind'] }
 const SWATCHES = ['#ffe14d', '#ff9f43', '#ff5d73', '#2ed573', '#19c3b1', '#4da3ff', '#7c5cff', '#111111', '#ffffff'];
 
 export interface Options {
@@ -29,6 +34,10 @@ export class Editor {
   sel: { page: number; id: string } | null = null;
   /** image waiting to be placed (insert image / signature) */
   pending: { asset: string; w: number; h: number; repeat?: boolean } | null = null;
+  /** "Send for signature" in progress (signers + which box type is being placed) */
+  esign: EsignDraft | null = null;
+  /** set by the esign module: opens the send dialog / signer list */
+  onEsign: { send: () => void; editSigners: () => void; cancel: () => void } | null = null;
   private pvs = new Set<PageView>();
 
   constructor(private app: App) {
@@ -160,6 +169,15 @@ export class Editor {
         e.classList.add('movable');
         const a = pv.tab.assets.get(o.asset);
         e.innerHTML = `<img src="${a?.url || ''}" draggable="false" style="width:100%;height:100%;display:block;pointer-events:none">`;
+        break;
+      }
+      case 'signfield': {
+        e.classList.add('movable');
+        const col = SIGNER_COLORS[o.signer % SIGNER_COLORS.length];
+        const who = this.esign?.signers[o.signer]?.name || `Signer ${o.signer + 1}`;
+        e.style.cssText += `;border:1.5px dashed ${col};background:${col}22;color:${col};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;overflow:hidden`;
+        e.innerHTML = `<span>${esc(o.label || SF_LABEL[o.kind])}<br><span style="font-weight:400">${esc(who)}</span></span>`;
+        e.title = `${SF_LABEL[o.kind]} for ${who}`;
         break;
       }
       case 'field': {
@@ -399,6 +417,13 @@ export class Editor {
         this.setTool('select');
         this.select({ page: pv.index, id: o2.id });
         toast('Area erased. Now use Sign (or Draw) to add the new signature here.');
+      } else if (this.tool === 'signfield' && this.esign) {
+        const k = this.esign.kind, [dw, dh] = SF_SIZE[k];
+        const bw = w < 8 ? dw : w, bh = h < 8 ? dh : h;
+        const x = w < 8 ? p0.x - bw / 2 : Math.min(p0.x, cur.x), y = h < 8 ? p0.y - bh / 2 : Math.min(p0.y, cur.y);
+        const sf: SignFieldObj = { id: uid(), type: 'signfield', kind: k, signer: this.esign.cur, label: SF_LABEL[k],
+          x: clamp(x, 0, Math.max(0, pv.info.w - bw)), y: clamp(y, 0, Math.max(0, pv.info.h - bh)), w: bw, h: bh };
+        this.addObj(pv, sf, true);
       } else if (this.tool === 'field') {
         let fw = w < 8 ? (this.opt.fieldKind === 'check' ? 18 : 160) : w, fh = h < 8 ? (this.opt.fieldKind === 'check' ? 18 : 24) : h;
         if (this.opt.fieldKind === 'check') fw = fh = Math.max(14, Math.min(fw, fh) || 18);
@@ -760,6 +785,17 @@ export class Editor {
         };
         add('').appendChild(copy);
       }
+      else if (so.type === 'signfield') {
+        title('Box for a signer');
+        const signers = this.esign?.signers || [];
+        const d = add(`<span>Who</span><select>${signers.map((x, i) => `<option value="${i}" ${i === so.signer ? 'selected' : ''}>${esc(x.name || `Signer ${i + 1}`)}</option>`).join('')}</select>`);
+        (d.querySelector('select') as HTMLSelectElement).onchange = (e) => mod(() => { so.signer = Number((e.target as HTMLSelectElement).value); });
+        seg([['signature', 'Signature'], ['initials', 'Initials'], ['date', 'Date signed'], ['text', 'Text']], so.kind, (v) => mod(() => { so.kind = v as SignFieldObj['kind']; so.label = SF_LABEL[so.kind]; }));
+        if (so.kind === 'text') {
+          const t = add(`<span>Label</span><input value="${esc(so.label)}" style="width:140px">`);
+          (t.querySelector('input') as HTMLInputElement).onchange = (e) => mod(() => { so.label = (e.target as HTMLInputElement).value.trim().slice(0, 60) || 'Text'; });
+        }
+      }
       else if (so.type === 'field') {
         title(`Form field "${so.name}"`);
         const b = el('button', 'btn', {}, 'Rename…'); b.onclick = () => this.editField(this.app.view!.pages[pg], so); add('').appendChild(b);
@@ -801,6 +837,27 @@ export class Editor {
         add('<span>Drag a box over the old signature (or anything) to erase it</span>');
         const cb = add('<label class="chk"><input type="checkbox" ' + (o.eraseRemoveAnnots ? 'checked' : '') + '> Also remove signature / annotation objects underneath</label>');
         (cb.querySelector('input') as HTMLInputElement).onchange = (e) => { o.eraseRemoveAnnots = (e.target as HTMLInputElement).checked; };
+        break;
+      }
+      case 'signfield': {
+        title('Send for signature');
+        const d = this.esign;
+        if (!d) break;
+        const chips = add('<span>Signer</span>');
+        d.signers.forEach((x, i) => {
+          const col = SIGNER_COLORS[i % SIGNER_COLORS.length];
+          const b = el('button', 'btn' + (i === d.cur ? ' primary' : ''), {}, esc(x.name || `Signer ${i + 1}`));
+          b.style.cssText = `padding:4px 10px;border:2px solid ${col};${i === d.cur ? `background:${col};` : ''}`;
+          b.onclick = () => { d.cur = i; this.buildOptions(); };
+          chips.appendChild(b);
+        });
+        const eb = el('button', 'btn', {}, 'Edit signers…'); eb.style.padding = '4px 10px'; eb.onclick = () => this.onEsign?.editSigners(); chips.appendChild(eb);
+        seg([['signature', 'Signature'], ['initials', 'Initials'], ['date', 'Date signed'], ['text', 'Name / text']], d.kind, (v) => { d.kind = v as SignFieldObj['kind']; });
+        add('<span>Click on the page where this person fills in</span>');
+        const acts = add('');
+        const send = el('button', 'btn primary', {}, 'Send…'); send.onclick = () => this.onEsign?.send();
+        const cancel = el('button', 'btn', {}, 'Cancel'); cancel.onclick = () => this.onEsign?.cancel();
+        acts.append(send, cancel);
         break;
       }
       case 'place': title('Place'); add(`<span>Click on the page to place (drag to size). ${this.pending?.repeat ? 'Click again to place more copies. ' : ''}Esc when done.</span>`); break;

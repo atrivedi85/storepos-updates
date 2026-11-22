@@ -34,6 +34,7 @@ database_id = "12985583-b747-49f9-9700-e651687228a9"
 # Invite emails go out through Resend. The key is a secret:  npx wrangler secret put RESEND_API_KEY
 [vars]
 MAIL_FROM = "PdfStudio <invites@trivedipos.com>"
+SIGN_FROM = "PdfStudio Signing <sign@trivedipos.com>"
 
 # Ledger Desk (the storepos-sync Worker) - used for sign-in, so it is reached directly and not over the internet.
 [[services]]

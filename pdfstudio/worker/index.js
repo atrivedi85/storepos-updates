@@ -33,6 +33,27 @@ export default {
       out.headers.set('x-frame-options', 'DENY');
       return out;
     }
+    // Public signing page for people who were sent a document to sign (no account): /pdfstudio/s/<token>
+    // Its script and the PDF viewer files are served from the same folder.
+    if (url.pathname.startsWith('/pdfstudio/s/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
+      const rest = url.pathname.slice('/pdfstudio/s/'.length);
+      let assetPath = null;
+      if (/^[a-f0-9]{48}$/.test(rest)) assetPath = '/signer/';
+      else if (/^(signer\.js|signer\.css)$/.test(rest)) assetPath = '/signer/' + rest;
+      else if (rest === 'styles.css') assetPath = '/styles.css';
+      else if (rest === 'pdf.worker.min.mjs' || /^(cmaps|standard_fonts|wasm|iccs)\/[\w.+-]+$/.test(rest)) assetPath = '/' + rest;
+      if (!assetPath) return new Response('Not found', { status: 404 });
+      const au = new URL(request.url); au.pathname = assetPath;
+      const res = await env.ASSETS.fetch(new Request(au, { method: 'GET' }));
+      const out = new Response(request.method === 'HEAD' ? null : res.body, res);
+      const stable = !assetPath.startsWith('/signer/');
+      out.headers.set('cache-control', stable ? 'public, max-age=86400' : 'no-cache');
+      out.headers.set('x-frame-options', 'DENY');
+      out.headers.set('referrer-policy', 'no-referrer');
+      out.headers.set('x-robots-tag', 'noindex');
+      return out;
+    }
     // Shared "Apps" button script that any app on trivedipos.com can include: <script src="/pdfstudio/apps.js" defer>
     if (url.pathname === '/pdfstudio/apps.js' && (request.method === 'GET' || request.method === 'HEAD')) {
       return new Response(request.method === 'HEAD' ? null : appsSwitcher, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });

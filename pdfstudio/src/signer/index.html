@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sign document · PdfStudio</title>
+<link rel="stylesheet" href="signer.css">
+</head>
+<body>
+  <header id="top">
+    <div class="brand"><span class="logo">P</span> PdfStudio <span class="muted">Signing</span></div>
+  </header>
+  <main id="main"><div class="center muted" id="loading">Loading the document…</div></main>
+  <footer id="bar" class="hidden">
+    <div class="bar-in">
+      <div class="prog"><b id="progTxt"></b><button class="link" id="nextBtn">Go to next box ↓</button></div>
+      <label class="consent"><input type="checkbox" id="consent"> I agree to sign this document electronically. My electronic signature is the legal equivalent of my handwritten signature.</label>
+      <div class="acts"><button class="btn" id="declineBtn">Decline</button><button class="btn primary" id="finishBtn" disabled>Finish</button></div>
+    </div>
+  </footer>
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+  <script type="module" src="signer.js"></script>
+</body>
+</html>

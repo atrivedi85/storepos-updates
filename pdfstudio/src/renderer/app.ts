@@ -11,6 +11,7 @@ import {
 } from './pdfops';
 import { getSignature, dataUrlToBytes, SigKind } from './sign';
 import { openCloudPanel } from './cloud';
+import { setupEsign, startSend, requestsPanel } from './esign';
 import type { ToolName } from './types';
 import type { Api } from '../main/preload';
 
@@ -31,6 +32,7 @@ export class App implements PageHooks {
 
   constructor() {
     this.editor = new Editor(this);
+    setupEsign(this);
     this.thumbs = new Thumbs($('#thumbs'), {
       goto: (i) => this.view?.scrollToPage(i),
       reorder: (from, to) => this.reorder(from, to),
@@ -543,6 +545,9 @@ export class App implements PageHooks {
     showMenu([
       { label: 'Add signature…', icon: 'sign', action: () => this.sign('signature') },
       { label: 'Add initials…', icon: 'type', action: () => this.sign('initials') },
+      { sep: true },
+      { label: 'Send for others to sign…', icon: 'sign', action: () => { void startSend(this); } },
+      { label: 'Signing requests…', icon: 'open', action: () => { void requestsPanel(this); } },
     ], r.left, r.bottom + 4);
   }
 }

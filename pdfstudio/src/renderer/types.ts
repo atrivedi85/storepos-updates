@@ -28,7 +28,9 @@ export interface FieldObj extends Base {
   x: number; y: number; w: number; h: number; options: string[]; fontSize: number; multiline: boolean;
 }
 export interface EraseObj extends Base { type: 'erase'; x: number; y: number; w: number; h: number; color: string; removeAnnots: boolean }
-export type Obj = EraseObj | MarkupObj | InkObj | ShapeObj | NoteObj | TextObj | ImageObj | FieldObj;
+/** "Send for signature": a box one signer fills in (never drawn into the PDF by the editor itself) */
+export interface SignFieldObj extends Base { type: 'signfield'; kind: 'signature' | 'initials' | 'date' | 'text'; signer: number; label: string; x: number; y: number; w: number; h: number }
+export type Obj = EraseObj | MarkupObj | InkObj | ShapeObj | NoteObj | TextObj | ImageObj | FieldObj | SignFieldObj;
 
 export type ObjectsByPage = Record<number, Obj[]>;
 
@@ -44,7 +46,7 @@ export interface PageInfo { w: number; h: number; rotation: number }
 
 export type ToolName =
   | 'select' | 'highlight' | 'underline' | 'strike' | 'draw' | 'shape' | 'note' | 'textbox'
-  | 'edittext' | 'field' | 'place' | 'erase';
+  | 'edittext' | 'field' | 'place' | 'erase' | 'signfield';
 
 export type FormValue = string | boolean;
 

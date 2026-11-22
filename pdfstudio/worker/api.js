@@ -1,4 +1,5 @@
 // PdfStudio accounts API (invite-only). Mounted by index.js under /pdfstudio/api/*
+import { handleEsign } from './esign.js';
 const enc = new TextEncoder();
 const SESSION_DAYS = 30;
 const INVITE_DAYS = 7;
@@ -169,6 +170,9 @@ async function finishLedgerLogin(env, r, keys) {
 export async function handleApi(request, env, url) {
   const route = url.pathname.replace(/^\/pdfstudio\/api\//, '').replace(/\/$/, '');
   const method = request.method;
+
+  // "Send for signature": signer links are public, the rest needs a signed-in owner
+  if (route.startsWith('esign/')) return handleEsign(request, env, url, route, () => authenticate(request, env, url));
 
   // ---- public ----
   if (route === 'login' && method === 'POST') {

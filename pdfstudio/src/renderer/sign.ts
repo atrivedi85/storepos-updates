@@ -79,7 +79,7 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
   let remember = true;
 
   const root = el('div');
-  root.style.cssText = 'width:520px';
+  root.style.cssText = 'width:min(520px, 84vw)';
   const tabs = el('div', 'tabs2');
   const pane = el('div');
   root.append(tabs, pane);
@@ -87,10 +87,10 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
   // draw
   const canvas = el('canvas', 'sigpad') as HTMLCanvasElement;
   canvas.width = 1040; canvas.height = 320;
-  canvas.style.cssText = 'width:520px;height:160px';
+  canvas.style.cssText = 'width:100%;aspect-ratio:1040/320;height:auto;touch-action:none';
   const ctx = canvas.getContext('2d')!;
   let drawing = false; let drew = false;
-  const pos = (e: PointerEvent) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * 2, (e.clientY - r.top) * 2]; };
+  const pos = (e: PointerEvent) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (canvas.width / r.width), (e.clientY - r.top) * (canvas.height / r.height)]; };
   canvas.onpointerdown = (e) => { drawing = true; drew = true; canvas.setPointerCapture(e.pointerId); const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(); };
   canvas.onpointermove = (e) => { if (!drawing) return; const [x, y] = pos(e); ctx.strokeStyle = color; ctx.lineTo(x, y); ctx.stroke(); };
   canvas.onpointerup = () => { drawing = false; };
