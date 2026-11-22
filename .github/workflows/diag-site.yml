@@ -1,0 +1,12 @@
+name: Diagnose site from GitHub (temporary)
+on:
+  workflow_dispatch:
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for u in https://trivedipos.com/pdfstudio/latest.yml https://trivedipos.com/pdfstudio/ https://trivedipos.com/health https://trivedipos.com/; do
+            echo "=== $u (plain curl)"; curl -s -o /tmp/b -D - "$u" | head -14; head -c 300 /tmp/b; echo
+          done
+          echo "=== latest.yml with browser user-agent"; curl -s -o /tmp/b -D - -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36" https://trivedipos.com/pdfstudio/latest.yml | head -12; head -c 200 /tmp/b
