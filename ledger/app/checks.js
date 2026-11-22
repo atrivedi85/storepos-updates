@@ -9,7 +9,7 @@
   const ST = L.viewState.ai, S = () => L.S, H = () => ST.h || {};
   let PJ = null;
   async function pdfLib() {
-    if (!PJ) { PJ = await import('/vendor/pdf.min.js'); PJ.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js'; }
+    if (!PJ) { PJ = await import(new URL('vendor/pdf.min.js', document.baseURI).href); PJ.GlobalWorkerOptions.workerSrc = new URL('vendor/pdf.worker.min.js', document.baseURI).href; }
     return PJ;
   }
 
@@ -85,7 +85,7 @@
     const P = into || (ST.pc = {}); Object.assign(P, { name: file.name, busy: true, progress: 'Opening the PDF…', items: [], note: '', deposits: 0, scanned: false, none: false }); L.render();
     try {
       const lib = await pdfLib();
-      const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: '/vendor/wasm/', useWasm: false }).promise;
+      const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
       const found = [], scanned = []; let deposits = 0;
       for (let p = 1; p <= doc.numPages; p++) {
         P.progress = 'Looking for checks on page ' + p + ' of ' + doc.numPages + '…'; L.render();
@@ -126,7 +126,7 @@
   // First page of a PDF as a picture (for a bill or invoice that came as a PDF)
   async function pdfPageImage(file) {
     const lib = await pdfLib();
-    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: '/vendor/wasm/', useWasm: false }).promise;
+    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
     const page = await doc.getPage(1), v0 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 1700 / Math.max(v0.width, v0.height)) });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);

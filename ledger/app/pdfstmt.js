@@ -139,7 +139,7 @@
 
   // ---- pdf.js text → lines ----
   async function readLines(file, lib) {
-    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: '/vendor/wasm/', useWasm: false }).promise;
+    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
     const lines = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p), items = (await page.getTextContent()).items.filter(i => i.str && i.str.trim());

@@ -79,7 +79,7 @@
   // PDFs: check pictures in a bank statement, or a bill/invoice that came as a PDF
   // A PDF bank or card statement: read its transactions (checked against the statement's own balances), then its check pictures
   let PJ = null;
-  const pdfLib = async () => { if (!PJ) { PJ = await import('/vendor/pdf.min.js'); PJ.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js'; } return PJ; };
+  const pdfLib = async () => { if (!PJ) { PJ = await import(new URL('vendor/pdf.min.js', document.baseURI).href); PJ.GlobalWorkerOptions.workerSrc = new URL('vendor/pdf.worker.min.js', document.baseURI).href; } return PJ; };
   async function pdfStatement(f) {
     if (!window.LedgerPdfStatement) return false;
     let r; try { r = await window.LedgerPdfStatement.readStatement(f, await pdfLib()); } catch (e) { return false; }
