@@ -1,0 +1,12 @@
+name: Cloudflare plan check (read only, temporary)
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    env:
+      T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - run: |
+          for p in workers/account-settings subscriptions workers/subdomain; do echo "== $p"; curl -s -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts/$A/$p" | jq -c '{success, result: (.result|tostring|.[0:400]), errors}'; done
+          echo "== scripts"; curl -s -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts/$A/workers/scripts" | jq -c '.result[]? | {id, usage_model, placement_mode}'
