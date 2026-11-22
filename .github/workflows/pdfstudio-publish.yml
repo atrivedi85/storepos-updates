@@ -21,7 +21,7 @@ jobs:
       - name: Save the live latest.yml (for rollback)
         run: |
           mkdir -p ../backup
-          curl -fsS https://trivedipos.com/pdfstudio/latest.yml -o ../backup/latest.yml
+          curl -fsS --retry 5 --retry-all-errors --retry-delay 6 https://trivedipos.com/pdfstudio/latest.yml -o ../backup/latest.yml
           cat ../backup/latest.yml
       - uses: actions/upload-artifact@v4
         with:
@@ -38,4 +38,4 @@ jobs:
           npx wrangler r2 object put "pdfstudio-downloads/PdfStudio-Setup-$V.exe.blockmap" --file "upload/PdfStudio-Setup-$V.exe.blockmap" --content-type application/octet-stream --remote
           npx wrangler r2 object put "pdfstudio-downloads/latest.yml" --file upload/latest.yml --content-type "text/yaml" --remote
       - name: Check what people will now get
-        run: curl -fsS https://trivedipos.com/pdfstudio/latest.yml
+        run: curl -fsS --retry 5 --retry-all-errors --retry-delay 6 https://trivedipos.com/pdfstudio/latest.yml
