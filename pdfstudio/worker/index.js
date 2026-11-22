@@ -52,7 +52,13 @@ export default {
     if (key === '') key = 'index.html';
     if (key.includes('..')) return new Response('Bad request', { status: 400 });
     const range = request.headers.get('range');
-    const obj = await env.BUCKET.get(key, range ? { range: request.headers } : undefined);
+    // R2 now and then fails for a moment; try a few times before giving up, and never show a raw crash page.
+    let obj, lastErr;
+    for (let i = 0; i < 3; i++) {
+      try { obj = await env.BUCKET.get(key, range ? { range: request.headers } : undefined); lastErr = null; break; }
+      catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 150 * (i + 1))); }
+    }
+    if (lastErr) return new Response('Temporarily unavailable, please retry.', { status: 503, headers: { 'retry-after': '2', 'cache-control': 'no-store' } });
     if (!obj) return new Response('Not found', { status: 404 });
     const h = new Headers();
     obj.writeHttpMetadata(h);
