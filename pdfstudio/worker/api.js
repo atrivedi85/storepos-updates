@@ -144,7 +144,7 @@ async function finishLedgerLogin(env, r, keys) {
     for (const k of keys) await recordFail(env, k);
     return fail(401, r.data.error || 'Wrong username or password.');
   }
-  if (r.status !== 200) return fail(502, 'Ledger Desk could not sign you in right now. Try again in a moment.');
+  if (r.status !== 200) return fail(r.status >= 400 && r.status < 600 ? r.status : 502, r.data.error ? 'Ledger Desk: ' + r.data.error : 'Ledger Desk could not sign you in right now (code ' + r.status + '). Try again in a moment.');
   if (r.data.need2fa) return json({ need2fa: r.data.need2fa, ticket: r.data.ticket, to: r.data.to || '', canEmail: !!r.data.canEmail });
   const ld = ledgerTokenFrom(r.cookies);
   if (!r.data.ok || !ld) return fail(502, 'Ledger Desk did not complete the sign-in. Try again.');
