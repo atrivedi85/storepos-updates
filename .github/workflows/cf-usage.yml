@@ -10,5 +10,5 @@ jobs:
     steps:
       - run: |
           S=$(date -u -d '-24 hours' +%Y-%m-%dT%H:%M:%SZ); E=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          Q='{"query":"query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$s,datetime_leq:$e}){sum{requests errors subrequests} dimensions{scriptName status}}}}}","variables":{"a":"'$A'","s":"'$S'","e":"'$E'"}}'
-          curl -sS -H "Authorization: Bearer $T" -H "Content-Type: application/json" https://api.cloudflare.com/client/v4/graphql -d "$Q" | jq -r '.errors // empty, (.data.viewer.accounts[0].workersInvocationsAdaptive[]? | "\(.dimensions.scriptName) \(.dimensions.status) requests=\(.sum.requests) errors=\(.sum.errors) sub=\(.sum.subrequests)")'
+          Q='{"query":"query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){workersInvocationsAdaptive(limit:300,filter:{datetime_geq:$s,datetime_leq:$e}){sum{requests errors subrequests} dimensions{scriptName status datetimeFifteenMinutes}}}}}","variables":{"a":"'$A'","s":"'$S'","e":"'$E'"}}'
+          curl -sS -H "Authorization: Bearer $T" -H "Content-Type: application/json" https://api.cloudflare.com/client/v4/graphql -d "$Q" | jq -r '.errors // empty, (.data.viewer.accounts[0].workersInvocationsAdaptive[]? | "\(.dimensions.datetimeFifteenMinutes) \(.dimensions.scriptName) \(.dimensions.status) requests=\(.sum.requests) errors=\(.sum.errors) sub=\(.sum.subrequests)")'
