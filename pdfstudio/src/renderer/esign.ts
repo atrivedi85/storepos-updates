@@ -105,20 +105,22 @@ async function send(app: App) {
   if (missing.length) { toast(`${missing.map((m) => m.name).join(', ')} ${missing.length > 1 ? 'have' : 'has'} no boxes yet. Add one, or remove them in Edit signers.`, true); return; }
   const body = el('div');
   body.innerHTML = `<p style="margin:0">PdfStudio will email a signing link to:</p><ul style="margin:6px 0">${d.signers.map((s) => `<li><b>${esc(s.name)}</b> &lt;${esc(s.email)}&gt;: ${fields.filter((f) => f.signer === d.signers.indexOf(s)).length} box(es)</li>`).join('')}</ul>
+    <div class="row"><label>From</label><input id="frm" placeholder="Your name or company, as signers will see it"></div>
     <div class="row"><label>Tell me at</label><input id="ntf" type="email" placeholder="your email for updates"></div>`;
-  const ntf = body.querySelector('#ntf') as HTMLInputElement;
-  try { ntf.value = localStorage.getItem('pdfstudio.esignNotify') || ''; } catch { /* none */ }
+  const ntf = body.querySelector('#ntf') as HTMLInputElement, frm = body.querySelector('#frm') as HTMLInputElement;
+  const me = await window.api.authStatus().catch(() => ({} as any));
+  try { ntf.value = localStorage.getItem('pdfstudio.esignNotify') || (EMAIL_RE.test(me.email || '') ? me.email : ''); frm.value = localStorage.getItem('pdfstudio.esignFrom') || me.username || ''; } catch { /* none */ }
   const ok = await modal(`Send "${d.title}"?`, body, [{ label: 'Back', value: 'cancel' }, { label: 'Send now', kind: 'primary', value: 'ok' }]);
   if (ok !== 'ok') return;
   const notifyEmail = ntf.value.trim();
   if (notifyEmail && !EMAIL_RE.test(notifyEmail)) { toast('That email for updates does not look right', true); return; }
-  try { localStorage.setItem('pdfstudio.esignNotify', notifyEmail); } catch { /* none */ }
+  const fromName = frm.value.trim();
+  try { localStorage.setItem('pdfstudio.esignNotify', notifyEmail); localStorage.setItem('pdfstudio.esignFrom', fromName); } catch { /* none */ }
   try {
     app.editor.select(null);
     toast('Sending…');
     const { bytes } = await buildPdf(t);
-    const me = await window.api.authStatus().catch(() => ({} as any));
-    const meta = { title: d.title, message: d.message, fileName: t.name, signers: d.signers, fields, notifyEmail, fromName: me.username || '' };
+    const meta = { title: d.title, message: d.message, fileName: t.name, signers: d.signers, fields, notifyEmail, fromName: fromName || me.username || '' };
     const res = await window.api.esignCreate(meta, bytes) as Req;
     // the boxes were only for sending: remove them from the open document
     t.push();
@@ -136,7 +138,7 @@ const STATUS: Record<string, string> = { sent: 'Waiting', viewed: 'Opened', sign
 
 export async function requestsPanel(app: App): Promise<void> {
   const body = el('div');
-  body.style.cssText = 'width:min(720px,88vw);max-height:65vh;overflow:auto;display:flex;flex-direction:column;gap:10px';
+  body.style.cssText = 'width:min(600px,84vw);max-height:65vh;overflow:auto;display:flex;flex-direction:column;gap:10px';
   let closeIt: ((v: string) => void) | null = null;
   const render = async () => {
     body.replaceChildren(el('div', 'hint', {}, 'Loading…'));

@@ -42,7 +42,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tb.icon-only { min-width: 32px; padding: 7px; }
 .tb.small { min-width: 24px; padding: 3px; }
 .tb.small svg { width: 16px; height: 16px; }
-#zoomSelect, select, input[type=text], input[type=number], input[type=search], input:not([type]), input[type=password], textarea {
+#zoomSelect, select, input[type=text], input[type=number], input[type=search], input:not([type]), input[type=password], input[type=email], textarea {
   background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; outline: none; }
 select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 select option { background: var(--panel); }

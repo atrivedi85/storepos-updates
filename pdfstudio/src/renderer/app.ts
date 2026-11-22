@@ -167,7 +167,7 @@ export class App implements PageHooks {
     document.querySelectorAll<HTMLButtonElement>('.tb.tool').forEach((b) => b.classList.toggle('active', !!t && b.dataset.tool === this.editor.tool));
     document.querySelectorAll<HTMLButtonElement>('#toolbar .tb').forEach((b) => {
       const a = b.dataset.action;
-      if (b.classList.contains('tool') || (a && ['image', 'sign', 'save', 'saveAs', 'pagesMenu', 'zoomIn', 'zoomOut', 'search'].includes(a))) b.disabled = !t;
+      if (b.classList.contains('tool') || (a && ['image', 'save', 'saveAs', 'pagesMenu', 'zoomIn', 'zoomOut', 'search'].includes(a))) b.disabled = !t;
     });
     ($('[data-action=undo]') as HTMLButtonElement).disabled = !t || !t.past.length;
     ($('[data-action=redo]') as HTMLButtonElement).disabled = !t || !t.future.length;
@@ -540,13 +540,13 @@ export class App implements PageHooks {
   }
 
   signMenu(b: HTMLElement) {
-    if (!this.active) return;
     const r = b.getBoundingClientRect();
+    const has = !!this.active;
     showMenu([
-      { label: 'Add signature…', icon: 'sign', action: () => this.sign('signature') },
-      { label: 'Add initials…', icon: 'type', action: () => this.sign('initials') },
+      { label: 'Add signature…', icon: 'sign', action: () => this.sign('signature'), disabled: !has },
+      { label: 'Add initials…', icon: 'type', action: () => this.sign('initials'), disabled: !has },
       { sep: true },
-      { label: 'Send for others to sign…', icon: 'sign', action: () => { void startSend(this); } },
+      { label: 'Send for others to sign…', icon: 'sign', action: () => { void startSend(this); }, disabled: !has },
       { label: 'Signing requests…', icon: 'open', action: () => { void requestsPanel(this); } },
     ], r.left, r.bottom + 4);
   }

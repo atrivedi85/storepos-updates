@@ -26,6 +26,13 @@ so all the software (Store POS, Ledger Desk, Hotel Desk, PdfStudio, website) liv
 - **Desktop installer:** still built on a Windows PC: `npm install`, bump `version` in `package.json`,
   `npm run dist`, `npm run prepare-upload`, then upload to the R2 bucket as in `HANDOFF.md`. Only when the owner asks.
 
+## Send for signature (added 2026-11-22)
+
+Sign menu → **Send for others to sign…** / **Signing requests…**. Code: `src/renderer/esign.ts` (owner side, builds the signed PDF
+with a certificate page), `src/signer/` (public signing page at `/pdfstudio/s/<link>`), `worker/esign.js` (API, D1 tables `esign_*`
+created on first use, files in the FILES bucket under `esign/<id>/`). Emails go through Resend: the key is the GitHub secret
+`RESEND_API_KEY`, which `pdfstudio.yml` hands to the Worker on every deploy. Sender address: `SIGN_FROM` in `worker/wrangler.toml`.
+
 ## Never put in this repo
 
 - `keys/private.pem` (signs licence keys) and `keys/issued.log` — they stay on the PC and in the NAS private folder.
