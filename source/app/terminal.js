@@ -116,12 +116,12 @@ function valorDriver(cfg, hooks) {
   const port = +cfg.termPort || 5000;
   const cport = +cfg.termCancelPort || 5001;
   const framing = cfg.termFraming === 'raw' ? 'raw' : 'stx';
-  const timeoutMs = Math.max(5, +cfg.termTimeoutSec || 200) * 1000;
+  const timeoutMs = Math.max(1, +cfg.termTimeoutSec || 200) * 1000;
   const active = hooks.active; // { ref, cancelRequested, stan }
 
   /** One request, one connection. Resolves with the first real (non-ACK) result object.
    *  Rejects with Error having .kind = 'unreachable' | 'timeout' | 'dropped'. */
-  function exchange(p, obj, ms, track) {
+  function exchange(p, obj, ms, track, lenient) {
     return new Promise((resolve, reject) => {
       if (!host) { const e = new Error('No terminal IP address is set (Settings, Card terminal).'); e.kind = 'unreachable'; reject(e); return; }
       const sock = new net.Socket();
@@ -136,12 +136,12 @@ function valorDriver(cfg, hooks) {
       sock.on('data', d => {
         for (const o of rd.push(d.toString('utf8'))) {
           if (track) { const s = str(o.STAN_ID || o.STAN_NO); if (s) track.stan = s; }
-          if (isAck(o)) continue;
+          if (isAck(o) && !lenient) continue;
           finish(null, o); return;
         }
       });
       sock.on('error', e => finish(bad(connected ? 'dropped' : 'unreachable', connected ? 'Lost the connection to the terminal' : `Could not connect to the terminal at ${host}:${p} (${e.code || e.message})`)));
-      sock.on('close', () => finish(bad(connected ? 'dropped' : 'unreachable', connected ? 'Lost the connection to the terminal' : `Could not connect to the terminal at ${host}:${p}`)));
+      sock.on('close', () => lenient && connected ? finish(null, { STATE: '0', MSG: 'closed' }) : finish(bad(connected ? 'dropped' : 'unreachable', connected ? 'Lost the connection to the terminal' : `Could not connect to the terminal at ${host}:${p}`)));
       sock.connect(p, host);
     });
   }
@@ -152,7 +152,7 @@ function valorDriver(cfg, hooks) {
   };
 
   async function cancel({ ref } = {}) {
-    try { const r = await exchange(cport, { TRAN_MODE: '99', REQ_TXN_ID: str(ref || active.ref) }, 6000); const n = normalizeValor(r); n.ok = true; n.message = 'Cancel sent to the terminal'; return n; }
+    try { const r = await exchange(cport, { TRAN_MODE: '99', REQ_TXN_ID: str(ref || active.ref) }, 6000, null, true); const n = normalizeValor(r); n.ok = true; n.message = 'Cancel sent to the terminal'; return n; }
     catch (e) { return failure('Could not send cancel to the terminal: ' + e.message); }
   }
 
