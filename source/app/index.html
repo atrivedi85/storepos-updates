@@ -499,7 +499,7 @@ function renderPay(){const c=calc(S.cart);const bal=c.balance;
  <section class="tend"><div class="tg">${tendersList().map(t=>`<button class="tb" data-a="tender" data-v="${t}">${t}</button>`).join('')}<button class="tb amber" data-a="disc">Discounts</button><button class="tb slate" data-a="payout">Pay Out</button><button class="tb amber" data-a="splitPay">Split Cash + Card</button><button class="tb slate" data-a="split">Split Evenly</button></div>
  <h4>Quick Cash Payments</h4><div class="qc">${qc.slice(0,7).map((v,i)=>`<button data-a="qcash" data-v="${v}">${i===0?'<small>Exact</small>':''}$${money(v)}</button>`).join('')||'<div class="hint">Nothing due</div>'}</div></section>
  <section class="pmid"><div class="pbig"><small>${c.total<0?'Refund due to customer':'Balance Due'}</small><b>$${money(Math.abs(bal))}</b></div>
- <div class="ptable"><div class="phead"><span>Payment Type</span><span>Amount</span><span></span></div>${S.cart.payments.map((p,i)=>`<div class="prow"><span>${esc(p.type)}${p.ref?` <small class="hint">${esc(p.ref)}</small>`:''}</span><span>$${money(p.amount)}</span><button class="btn sm red" data-a="rmPay" data-i="${i}">✕</button></div>`).join('')||'<div class="empty">No payments yet. Tap a payment type.</div>'}</div></section>
+ <div class="ptable"><div class="phead"><span>Payment Type</span><span>Amount</span><span></span></div>${S.cart.payments.map((p,i)=>`<div class="prow"><span>${esc(p.type)}${p.term&&p.last4?` <small class="hint">${esc(p.brand||'')} \u2022\u2022${esc(p.last4)}${p.surcharge>0.004?' +$'+money(p.surcharge)+' surcharge':''}</small>`:''}${p.ref?` <small class="hint">${esc(p.ref)}</small>`:''}</span><span>$${money(p.amount)}</span><button class="btn sm red" data-a="rmPay" data-i="${i}">✕</button></div>`).join('')||'<div class="empty">No payments yet. Tap a payment type.</div>'}</div></section>
  <section class="psum"><div class="plines">${S.cart.lines.map(l=>`<div><span>${l.qty!==1?l.qty+' × ':''}${esc(l.name)}</span><span>${money(l.price*l.qty)}</span></div>`).join('')}</div>${summaryHtml(c)}</section>
  <aside class="side">${sideHtml()}</aside></div>`}
 
@@ -572,7 +572,7 @@ async function printHtml(html){if(rawMode()){try{const r=await posAPI.rawPrint(r
 const noSaleSlip=()=>`<div class="rc"><div class="c"><b>NO SALE</b><br>${fmtDT(Date.now())}<br>${esc(S.user?S.user.name:'')}</div></div>`;
 async function openDrawer(){if(!DESK){printHtml(noSaleSlip());return}const m=S.cfg.drawerMode||'raw';if(m==='none')return;if(m==='driver'){printHtml(noSaleSlip());return}const r=await posAPI.openDrawer();if(!r.ok)toast('Cash drawer: '+r.error,1)}
 const cleanScan=c=>String(c).replace(/[\x00-\x1f\x7f]/g,'').trim().replace(/^\][A-Za-z][0-9A-Za-z]/,'');
-function onScan(code){code=cleanScan(code);if(!code)return;S.lastScan={code,time:Date.now()};const ls=$('#lastScan');if(ls){const p=findSku(code);ls.innerHTML=`<b>${esc(code)}</b> — ${p?'matches '+esc(p.name):'<span class="warn">not in your items</span>'}`}
+function onScan(code){code=cleanScan(code);if(!code||S.termBusy)return;S.lastScan={code,time:Date.now()};const ls=$('#lastScan');if(ls){const p=findSku(code);ls.innerHTML=`<b>${esc(code)}</b> — ${p?'matches '+esc(p.name):'<span class="warn">not in your items</span>'}`}
  if(!S.user||(modalOpen()&&!(S.screen==='po'&&DC.poPicker)))return;
  if(S.screen==='po'){if(DC.poPicker){DC.poPicker=0;closeModal()}poScanAdd(code);return}
  if(S.screen==='items'){const p=findSku(code);if(p)openItem(p.sku);else if(can('items_edit'))newItem(code);return}
@@ -1274,7 +1274,7 @@ function termFields(r){const f={term:true};
 async function termRun(title,sub,ref,call){
  S.termBusy=ref;
  openModal(`<div class="twait"><div class="tspin"></div><div class="mtitle" style="text-align:center">${title}</div><div class="msub" style="text-align:center">${sub}</div>${S.cfg.termDriver==='demo'?'<div class="hint" style="text-align:center"><b>TRAINING MODE</b> - simulated terminal, no real card</div>':''}
- <div class="mbtns"><button class="btn red" id="tcancel" style="min-height:76px;font-size:24px;width:100%" data-a="cb" data-id="${cb(()=>{const b=$('#tcancel');if(b){b.disabled=true;b.textContent='Cancelling...'}posAPI.termCancel({ref})})}">Cancel</button></div></div>`,'sm');
+ <div class="mbtns"><button class="btn red" id="tcancel" style="min-height:76px;font-size:24px;flex:1" data-a="cb" data-id="${cb(()=>{const b=$('#tcancel');if(b){b.disabled=true;b.textContent='Cancelling...'}posAPI.termCancel({ref})})}">Cancel</button></div></div>`,'sm');
  let r;try{r=await call()}catch(e){r={ok:false,message:String(e&&e.message||e)}}
  S.termBusy=null;closeModal();return r}
 function termInfo(title,html,btns){openModal(`<div class="mtitle">${title}</div><div class="msub">${html}</div><div class="mbtns col">${btns||cancelBtn('OK')}</div>`,'sm')}
@@ -1917,6 +1917,7 @@ document.addEventListener('keydown',e=>{const t=e.target,tag=t.tagName;
  if(e.key==='Enter'||e.key===' ')e.preventDefault();
  if(S.kp){if(/^[0-9]$/.test(e.key)){kpPress(e.key);return}if(e.key==='Backspace'){kpPress('⌫');return}if(e.key==='.'&&S.kp.mode==='dec'){kpPress('.');return}if(e.key==='Enter'){const ok=$('#mok');ok&&ok.click();return}if(e.key==='Escape'){closeModal();return}return}
  if(!S.user){if(/^[0-9]$/.test(e.key))A.pinK({k:e.key});else if(e.key==='Backspace')A.pinK({k:'⌫'});else if(e.key==='Enter')A.pinOk();return}
+ if(S.termBusy&&e.key==='Escape')return;
  if(e.key==='Escape'&&modalOpen()){closeModal();return}
  if(e.key==='Enter'||e.key==='NumpadEnter'){if(scanDone()<3&&modalOpen()){const ok=$('#mok');ok&&ok.click()}return}
  if(e.key==='Tab'){if(scanBuf.length>=3){e.preventDefault();scanDone()}return}

@@ -34,3 +34,25 @@ removal in the change log, so linked registers, tablets and the web copy remove 
 - A browser or device signed in through an account gets a device entry marked `acct`; it only works while the relay says the same person is asking. Role "Reports only" cannot send changes.
 - Web back office (`web-shim.js`): the sign-in gate uses the shared Trivedi sign-in, lists "My stores", unlocks the store key in the browser (kept in memory only, never in browser storage) and connects. "Connect with a code instead" still works. Settings → **Members (accounts)** (owners only) invites people, changes roles and removes them. Roles: Owner = full, Manager = Manager preset, Cashier = Cashier preset, Reports only = reports and transaction look-up. The account signs in to the register without a PIN.
 - `build_update.py` and `windows.yml` now include `acct.js`.
+
+
+## Card terminal (PAX A35, `terminal.js`) — not released yet
+Windows app only. Settings are **per PC** (Settings → Card terminal → saved in that PC's `config.json`, never synced).
+When it is switched on, the Credit, Debit, EBT Food and EBT Cash buttons send the amount to the terminal over the store Wi-Fi instead of asking for the card's last 4.
+A "Waiting for card on terminal" box with a big Cancel button shows until the terminal answers. The old last-4 way stays available through the "Enter card manually (terminal not working)" links, and when the switch is off nothing changes.
+
+How it is built: `terminal.js` has one driver per terminal program, all with the same calls (`test, sale, refund, void, settle, ebtBalance, status, cancel`) and the same answer shape, so the screens never change when a driver is added.
+- `valor` — Valor semi-integration: the terminal is a TCP server (its IP, port 5000, cancel on port 5001), JSON text wrapped in STX/ETX (Settings → Advanced can switch to plain JSON). Amounts are in cents. One connection per request.
+  If the answer never comes or the link drops after the request was sent, the POS sends Cancel, asks the terminal for the transaction status, and then shows "check the terminal screen". It **never sends the sale again**, so a card cannot be charged twice.
+- `demo` — a pretend terminal inside the app for training: approves after 2 s; an amount ending **.13** is declined, **.51** is half approved, **.99** shows the "check the terminal" screen.
+- `poslink` — PAX BroadPOS/POSLink: placeholder only ("not available yet").
+
+What is saved on a card payment: brand, last 4 only, auth code, entry mode (tap/chip/swipe), RRN, tran/batch/STAN numbers, AID, and the surcharge if the terminal added one. Never a full card number.
+**Surcharge:** the terminal decides it. It is saved on the payment (`surcharge`) and on the order (`surcharge`), printed on the receipt as "Card surcharge" and "Total charged to card", but the sale total, tax and reports are not changed (the sale is still paid by `amount`). Do not use the POS "Card Fee" button together with a terminal surcharge (the POS warns if both are present).
+Refunds of a terminal card payment offer Void on terminal (same batch), Refund to card, or Already refunded / by hand.
+
+Test it without a terminal:
+1. `node source/tools/mock-valor-terminal.js` (pretend terminal on this PC, ports 5000/5001; `--surcharge 3`, `--framing raw`, `--delay 3000` available; amounts ending .13 decline, .51 partial, .77 drop the line, .88 never answer).
+2. In Store POS: Settings → Card terminal → switch on, Valor, IP `127.0.0.1`, Test connection.
+3. `node source/tools/test-terminal.js` runs the automatic checks of the driver against the mock (approve, decline, partial, cancel, drop/hang, void, refund, settle, EBT balance, both message formats).
+`build_update.py` includes `terminal.js` in the update file.
