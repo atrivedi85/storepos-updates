@@ -63,7 +63,7 @@ select option { background: var(--panel); }
 
 /* tabs */
 #tabbar { display: flex; gap: 2px; padding: 5px 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); overflow-x: auto; min-height: 33px; }
-.tab { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; max-width: 220px; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.tab { touch-action: none; user-select: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; max-width: 220px; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; cursor: pointer; color: var(--muted); white-space: nowrap; }
 .tab.active { background: var(--stage); color: var(--text); border-color: var(--accent); }
 .tab .tname { overflow: hidden; text-overflow: ellipsis; }
 .tab .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2); flex: none; }

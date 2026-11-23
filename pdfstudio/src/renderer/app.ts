@@ -125,11 +125,74 @@ export class App implements PageHooks {
     for (const t of this.tabs) {
       const d = el('div', 'tab' + (t === this.active ? ' active' : ''), { title: t.path || t.name });
       d.innerHTML = `${t.dirty ? '<span class="dot"></span>' : ''}<span class="tname">${esc(t.name)}</span><span class="x">${icon('close')}</span>`;
-      d.onclick = () => this.activate(t);
+      d.onclick = () => { if (this.tabDragged) { this.tabDragged = false; return; } this.activate(t); };
+      d.onpointerdown = (e) => this.tabPointerDown(e, d, t);
       d.onauxclick = (e) => { if (e.button === 1) this.closeTab(t); };
       (d.querySelector('.x') as HTMLElement).onclick = (e) => { e.stopPropagation(); this.closeTab(t); };
       bar.appendChild(d);
     }
+  }
+
+  tabDragged = false;
+
+  /** Chrome-style tab dragging: press, move more than 5px, other tabs slide aside, drop to reorder. */
+  tabPointerDown(e: PointerEvent, d: HTMLElement, t: DocTab) {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('.x')) return;
+    const bar = $('#tabbar');
+    const els = Array.from(bar.children) as HTMLElement[];
+    const from = els.indexOf(d);
+    if (from < 0 || els.length < 2) return;
+    const startX = e.clientX, startScroll = bar.scrollLeft;
+    const lefts = els.map((x) => x.offsetLeft), widths = els.map((x) => x.offsetWidth);
+    const gap = els.length > 1 ? lefts[1] - lefts[0] - widths[0] : 2;
+    let dragging = false, curX = startX, to = from, raf = 0;
+    const layout = () => {
+      const dx = curX - startX + (bar.scrollLeft - startScroll);
+      const lo = -lefts[from], hi = bar.scrollWidth - lefts[from] - widths[from];
+      const mx = Math.max(lo, Math.min(hi, dx));
+      d.style.transform = `translateX(${mx}px)`;
+      const centre = lefts[from] + widths[from] / 2 + mx;
+      to = 0;
+      els.forEach((x, i) => { if (i !== from && lefts[i] + widths[i] / 2 < centre) to++; });
+      els.forEach((x, i) => {
+        if (i === from) return;
+        let sh = 0;
+        if (i > from && i <= to) sh = -(widths[from] + gap);
+        else if (i < from && i >= to) sh = widths[from] + gap;
+        x.style.transform = sh ? `translateX(${sh}px)` : '';
+      });
+    };
+    const tick = () => {
+      if (!dragging) return;
+      const r = bar.getBoundingClientRect();
+      if (curX < r.left + 30) bar.scrollLeft -= 12; else if (curX > r.right - 30) bar.scrollLeft += 12;
+      layout();
+      raf = requestAnimationFrame(tick);
+    };
+    const move = (ev: PointerEvent) => {
+      curX = ev.clientX;
+      if (!dragging) {
+        if (Math.abs(curX - startX) < 5) return;
+        dragging = true;
+        try { d.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
+        d.style.transition = 'none'; d.style.zIndex = '5'; d.style.position = 'relative'; d.style.opacity = '.9';
+        els.forEach((x) => { if (x !== d) x.style.transition = 'transform .15s ease'; });
+        raf = requestAnimationFrame(tick);
+      }
+      layout();
+    };
+    const end = (ev: PointerEvent) => {
+      d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', end); d.removeEventListener('pointercancel', end);
+      cancelAnimationFrame(raf);
+      if (!dragging) return;
+      dragging = false;
+      this.tabDragged = true;
+      setTimeout(() => { this.tabDragged = false; }, 0);
+      if (ev.type === 'pointercancel') to = from;
+      if (to !== from) { this.tabs.splice(from, 1); this.tabs.splice(to, 0, t); }
+      this.renderTabs();
+    };
+    d.addEventListener('pointermove', move); d.addEventListener('pointerup', end); d.addEventListener('pointercancel', end);
   }
 
   onPageChanged(i: number) {
