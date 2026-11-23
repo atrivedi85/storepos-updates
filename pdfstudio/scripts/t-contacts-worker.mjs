@@ -1,9 +1,10 @@
 // Unit test for the saved-contacts API of the worker (worker/esign.js handleContacts), using Node's built-in SQLite as a stand-in for D1.
 // Run:  node scripts/t-contacts-worker.mjs
 import { DatabaseSync } from 'node:sqlite';
-import { handleContacts } from '../worker/esign.js';
+import { handleContacts, handleProfile } from '../worker/esign.js';
 const sql = new DatabaseSync(':memory:');
 sql.exec(`CREATE TABLE esign_contacts (owner_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, last_used INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (owner_id, email))`);
+sql.exec('CREATE TABLE esign_profile (owner_id TEXT PRIMARY KEY, from_name TEXT, notify_email TEXT)');
 const stmt = (q, a = []) => ({
   bind: (...x) => stmt(q, x),
   run: async () => { sql.prepare(q).run(...a); return {}; },
@@ -25,4 +26,11 @@ check('other user sees nothing', (await call(B, 'GET')).contacts.length === 0);
 r = await call(A, 'DELETE', { email: 'Bob@x.com' });
 check('delete one', r.contacts.length === 1 && r.contacts[0].email === 'ann@x.com');
 check('bad body rejected', (await handleContacts(new Request('https://x/', { method: 'POST', body: 'zzz' }), env, A)).status === 400);
+r = await call(A, 'POST', { contacts: [{ name: 'Placeholder', email: 'milan@ledger.invalid' }] });
+check('.invalid contact refused', !r.contacts.some((c) => c.email.endsWith('.invalid')));
+const prof = async (me, method, body) => { const x = await handleProfile(new Request('https://x/', { method, body: body === undefined ? undefined : JSON.stringify(body) }), env, me); return { status: x.status, j: await x.json() }; };
+let pr = await prof(A, 'GET'); check('profile starts empty', pr.j.fromName === '' && pr.j.notifyEmail === '');
+pr = await prof(A, 'PUT', { fromName: ' Milan D ', notifyEmail: 'Milan@Real.com' }); check('profile saved', pr.j.fromName === 'Milan D' && pr.j.notifyEmail === 'milan@real.com', JSON.stringify(pr.j));
+pr = await prof(A, 'PUT', { fromName: 'x', notifyEmail: 'milan@ledger.invalid' }); check('.invalid email refused for profile', pr.status === 400);
+check('profile is per user', (await prof(B, 'GET')).j.notifyEmail === '');
 console.log(fails ? fails + ' FAILED' : 'ALL PASSED'); process.exit(fails ? 1 : 0);

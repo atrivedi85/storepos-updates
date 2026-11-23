@@ -10,7 +10,7 @@ import { buildPdf } from './pdfops';
 import { SIGNER_COLORS } from './editor';
 import { el, esc, modal, toast, download } from './util';
 import { dataUrlToBytes } from './sign';
-import { loadContacts, recordUsed, attachSuggest, contactsPanel, getSavePref, setSavePref, EMAIL_OK, type Contact } from './contacts';
+import { loadProfile, saveProfile, loadContacts, recordUsed, attachSuggest, contactsPanel, getSavePref, setSavePref, EMAIL_OK, type Contact } from './contacts';
 
 interface Signer {
   id: string; idx: number; name: string; email: string; status: string; link: string;
@@ -128,17 +128,19 @@ async function send(app: App) {
   if (missing.length) { toast(`${missing.map((m) => m.name).join(', ')} ${missing.length > 1 ? 'have' : 'has'} no boxes yet. Add one, or remove them in Edit signers.`, true); return; }
   const body = el('div');
   body.innerHTML = `<p style="margin:0">PdfStudio will email a signing link to:</p><ul style="margin:6px 0">${d.signers.map((s) => `<li><b>${esc(s.name)}</b> &lt;${esc(s.email)}&gt;: ${fields.filter((f) => f.signer === d.signers.indexOf(s)).length} box(es)</li>`).join('')}</ul>
-    <div class="row"><label>From</label><input id="frm" placeholder="Your name or company, as signers will see it"></div>
-    <div class="row"><label>Tell me at</label><input id="ntf" type="email" placeholder="your email for updates"></div>`;
+    <div class="row"><label class="wide">Your name (shown to signers)</label><input id="frm" placeholder="Your name or company"></div>
+    <div class="row"><label class="wide">Email me when everyone has signed</label><input id="ntf" type="email" placeholder="your email"></div>`;
   const ntf = body.querySelector('#ntf') as HTMLInputElement, frm = body.querySelector('#frm') as HTMLInputElement;
   const me = await window.api.authStatus().catch(() => ({} as any));
-  try { ntf.value = localStorage.getItem('pdfstudio.esignNotify') || (EMAIL_RE.test(me.email || '') ? me.email : ''); frm.value = localStorage.getItem('pdfstudio.esignFrom') || me.username || ''; } catch { /* none */ }
+  { const pr = await loadProfile(me.username || '', me.email || ''); ntf.value = pr.notifyEmail; frm.value = pr.fromName; }
   const ok = await modal(`Send "${d.title}"?`, body, [{ label: 'Back', value: 'cancel' }, { label: 'Send now', kind: 'primary', value: 'ok' }]);
   if (ok !== 'ok') return;
-  const notifyEmail = ntf.value.trim();
-  if (notifyEmail && !EMAIL_RE.test(notifyEmail)) { toast('That email for updates does not look right', true); return; }
+  const notifyEmail = ntf.value.trim().toLowerCase();
+  try { localStorage.setItem('pdfstudio.esignFrom', frm.value.trim()); if (EMAIL_OK.test(notifyEmail)) localStorage.setItem('pdfstudio.esignNotify', notifyEmail); } catch { /* none */ }
+  if (!EMAIL_OK.test(notifyEmail)) { toast('Type your real email address, so you are told when everyone has signed', true); return send(app); }
   const fromName = frm.value.trim();
-  try { localStorage.setItem('pdfstudio.esignNotify', notifyEmail); localStorage.setItem('pdfstudio.esignFrom', fromName); } catch { /* none */ }
+  if (!fromName) { toast('Type your name, so the signers know who sent it', true); return send(app); }
+  void saveProfile({ fromName, notifyEmail });
   try {
     app.editor.select(null);
     toast('Sending…');

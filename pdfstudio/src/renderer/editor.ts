@@ -175,8 +175,8 @@ export class Editor {
         e.classList.add('movable');
         const col = SIGNER_COLORS[o.signer % SIGNER_COLORS.length];
         const who = this.esign?.signers[o.signer]?.name || `Signer ${o.signer + 1}`;
-        e.style.cssText += `;border:1.5px dashed ${col};background:${col}22;color:${col};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;overflow:hidden`;
-        e.innerHTML = `<span>${esc(o.label || SF_LABEL[o.kind])}<br><span style="font-weight:400">${esc(who)}</span></span>`;
+        e.style.cssText += `;border:1.5px dashed ${col};background:${col}22;color:${col};font-size:10px;font-weight:700`;
+        e.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1;overflow:hidden"><span>${esc(o.label || SF_LABEL[o.kind])}<br><span style="font-weight:400">${esc(who)}</span></span></div>`;
         e.title = `${SF_LABEL[o.kind]} for ${who}`;
         break;
       }
@@ -222,7 +222,7 @@ export class Editor {
   }
 
   private drawSelection(pv: PageView) {
-    pv.objLayer.querySelectorAll('.handle').forEach((h) => h.remove());
+    pv.objLayer.querySelectorAll('.handle,.sfdel').forEach((h) => h.remove());
     pv.objLayer.querySelectorAll('.obj.sel').forEach((x) => x.classList.remove('sel'));
     if (!this.sel || this.sel.page !== pv.index) return;
     const e = pv.objLayer.querySelector(`.obj[data-id="${this.sel.id}"]`) as HTMLElement | null;
@@ -234,6 +234,12 @@ export class Editor {
       const d = el('div', 'handle'); d.dataset.h = h;
       d.addEventListener('pointerdown', (ev) => this.resizeDown(pv, o, h, ev));
       e.appendChild(d);
+    }
+    if (o.type === 'signfield') {
+      const x = el('div', 'sfdel', { title: 'Delete this box' }, '\u00d7');
+      x.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      x.addEventListener('click', (ev) => { ev.stopPropagation(); this.deleteSelected(); });
+      e.appendChild(x);
     }
   }
 
@@ -249,8 +255,9 @@ export class Editor {
 
   // ---------------- move / resize ----------------
   private objDown(pv: PageView, o: Obj, e: HTMLElement, ev: PointerEvent) {
-    if (this.tool !== 'select' || ev.button !== 0) return;
-    if ((ev.target as HTMLElement).classList.contains('handle')) return;
+    const sfMode = this.tool === 'signfield' && o.type === 'signfield';
+    if ((this.tool !== 'select' && !sfMode) || ev.button !== 0) return;
+    if ((ev.target as HTMLElement).classList.contains('handle') || (ev.target as HTMLElement).classList.contains('sfdel')) return;
     if (e.isContentEditable) return;
     ev.stopPropagation();
     this.select({ page: pv.index, id: o.id });
@@ -263,6 +270,7 @@ export class Editor {
       if (!moved && Math.hypot(dx, dy) * z < 3) return;
       if (!moved) { tab.push(); moved = true; }
       o.x = ox + dx; o.y = oy + dy;
+      if (o.type === 'signfield') { o.x = clamp(o.x, 0, Math.max(0, pv.info.w - o.w)); o.y = clamp(o.y, 0, Math.max(0, pv.info.h - o.h)); }
       const cur = pv.objLayer.querySelector(`.obj[data-id="${o.id}"]`) as HTMLElement;
       if (cur) { cur.style.left = `${o.x}px`; cur.style.top = `${o.y}px`; }
     };
@@ -295,8 +303,14 @@ export class Editor {
         if (h.includes('w')) x = b.x + b.w - w;
         if (h.includes('n')) y = b.y + b.h - hh;
       }
-      if (w < 6) { if (h.includes('w')) x -= 6 - w; w = 6; }
-      if (hh < 6) { if (h.includes('n')) y -= 6 - hh; hh = 6; }
+      const mw = o.type === 'signfield' ? 30 : 6, mh = o.type === 'signfield' ? 16 : 6;
+      if (w < mw) { if (h.includes('w')) x -= mw - w; w = mw; }
+      if (hh < mh) { if (h.includes('n')) y -= mh - hh; hh = mh; }
+      if (o.type === 'signfield') {   // keep the box on the page
+        if (x < 0) { w += x; x = 0; } if (y < 0) { hh += y; y = 0; }
+        if (x + w > pv.info.w) w = pv.info.w - x; if (y + hh > pv.info.h) hh = pv.info.h - y;
+        w = Math.max(w, mw); hh = Math.max(hh, mh);
+      }
       o.x = x; o.y = y; o.w = w; o.h = hh;
       const old = pv.objLayer.querySelector(`.obj[data-id="${o.id}"]`);
       if (old) { const ne = this.buildEl(pv, o); old.replaceWith(ne); this.drawSelection(pv); }
@@ -424,6 +438,8 @@ export class Editor {
         const sf: SignFieldObj = { id: uid(), type: 'signfield', kind: k, signer: this.esign.cur, label: SF_LABEL[k],
           x: clamp(x, 0, Math.max(0, pv.info.w - bw)), y: clamp(y, 0, Math.max(0, pv.info.h - bh)), w: bw, h: bh };
         this.addObj(pv, sf, true);
+        this.sfOrder.push(sf.id);
+        this.select({ page: pv.index, id: sf.id });
       } else if (this.tool === 'field') {
         let fw = w < 8 ? (this.opt.fieldKind === 'check' ? 18 : 160) : w, fh = h < 8 ? (this.opt.fieldKind === 'check' ? 18 : 24) : h;
         if (this.opt.fieldKind === 'check') fw = fh = Math.max(14, Math.min(fw, fh) || 18);
@@ -433,6 +449,30 @@ export class Editor {
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     void tab;
+  }
+
+  /** ids of signing boxes in the order they were placed (for "Undo last box") */
+  sfOrder: string[] = [];
+  undoLastBox() {
+    const t = this.tab; if (!t) return;
+    while (this.sfOrder.length) {
+      const id = this.sfOrder.pop()!;
+      for (const k of Object.keys(t.objects)) {
+        const list = t.objects[Number(k)] || [];
+        if (list.some((o) => o.id === id)) {
+          t.push(); t.objects[Number(k)] = list.filter((o) => o.id !== id);
+          if (this.sel?.id === id) this.sel = null;
+          this.refresh(); this.buildOptions(); return;
+        }
+      }
+    }
+    toast('No boxes to undo');
+  }
+  clearBoxesFor(signer: number) {
+    const t = this.tab; if (!t) return;
+    t.push();
+    for (const k of Object.keys(t.objects)) t.objects[Number(k)] = (t.objects[Number(k)] || []).filter((o) => !(o.type === 'signfield' && o.signer === signer));
+    this.sel = null; this.refresh(); this.buildOptions();
   }
 
   addObj(pv: PageView, o: Obj, keepSel = false) {
@@ -853,7 +893,11 @@ export class Editor {
         });
         const eb = el('button', 'btn', {}, 'Edit signers…'); eb.style.padding = '4px 10px'; eb.onclick = () => this.onEsign?.editSigners(); chips.appendChild(eb);
         seg([['signature', 'Signature'], ['initials', 'Initials'], ['date', 'Date signed'], ['text', 'Name / text']], d.kind, (v) => { d.kind = v as SignFieldObj['kind']; });
-        add('<span>Click on the page where this person fills in</span>');
+        add('<span>Click on the page where this person fills in. Click a box to move, resize or delete it.</span>');
+        const fix = add('');
+        const ub = el('button', 'btn', {}, 'Undo last box'); ub.style.padding = '4px 10px'; ub.onclick = () => this.undoLastBox();
+        const cb2 = el('button', 'btn', {}, 'Clear this signer\u2019s boxes'); cb2.style.padding = '4px 10px'; cb2.onclick = () => this.clearBoxesFor(d.cur);
+        fix.append(ub, cb2);
         const acts = add('');
         const send = el('button', 'btn primary', {}, 'Send…'); send.onclick = () => this.onEsign?.send();
         const cancel = el('button', 'btn', {}, 'Cancel'); cancel.onclick = () => this.onEsign?.cancel();

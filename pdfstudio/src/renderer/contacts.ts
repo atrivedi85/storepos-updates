@@ -6,7 +6,9 @@ import { el, esc, toast } from './util';
 export interface Contact { name: string; email: string; lastUsed: number; count: number }
 interface Pending { name: string; email: string; lastUsed: number; uses: number }
 
-export const EMAIL_OK = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+const EMAIL_SYNTAX = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+/** a usable address: valid shape and not the account's placeholder (name@ledger.invalid) */
+export const EMAIL_OK = { test: (e: string) => EMAIL_SYNTAX.test(e) && !/\.(invalid|test|example|localhost)$/i.test(e) };
 const K_LIST = 'pdfstudio.contacts', K_PEND = 'pdfstudio.contactsPending', K_DEL = 'pdfstudio.contactsDeleted', K_SAVE = 'pdfstudio.saveContacts';
 
 const read = <T>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : d; } catch { return d; } };
@@ -158,4 +160,22 @@ export function contactsPanel(all: () => Contact[], taken: () => Set<string>, on
   addBtn.onclick = () => { const sel = all().filter((c) => ticked.has(c.email)); ticked.clear(); box.style.display = 'none'; if (sel.length) onAdd(sel); };
   close.onclick = () => { box.style.display = 'none'; };
   return { el: box, destroy: () => window.removeEventListener('keydown', onEnter, true), toggle: () => { const on = box.style.display === 'none'; box.style.display = on ? 'flex' : 'none'; if (on) { q.value = ''; render(); q.focus(); } } };
+}
+
+// ---- sender details for the final "Send ...?" box: remembered on the server per user, copy kept locally ----
+export interface Profile { fromName: string; notifyEmail: string }
+const K_FROM = 'pdfstudio.esignFrom', K_NOTIFY = 'pdfstudio.esignNotify';
+const lget = (k: string) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+export async function loadProfile(fallbackName: string, accountEmail: string): Promise<Profile> {
+  let p: Profile = { fromName: '', notifyEmail: '' };
+  try { p = await window.api.esign('GET', 'profile'); } catch { /* offline: use the local copy */ }
+  const local = lget(K_NOTIFY);
+  return {
+    fromName: p.fromName || lget(K_FROM) || fallbackName,
+    notifyEmail: [p.notifyEmail, local, accountEmail].find((e) => e && EMAIL_OK.test(e)) || '',
+  };
+}
+export async function saveProfile(p: Profile) {
+  try { localStorage.setItem(K_FROM, p.fromName); localStorage.setItem(K_NOTIFY, p.notifyEmail); } catch { /* none */ }
+  try { await window.api.esign('PUT', 'profile', p); } catch { /* kept locally; saved on the server next time */ }
 }

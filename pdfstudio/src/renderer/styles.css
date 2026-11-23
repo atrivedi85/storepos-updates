@@ -199,6 +199,7 @@ select option { background: var(--panel); }
 .modal .body { color: var(--muted); margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
 .modal .row { display: flex; align-items: center; gap: 8px; }
 .modal .row label { min-width: 80px; }
+.modal .row label.wide { min-width: 150px; max-width: 170px; }
 .modal .row input, .modal .row select { flex: 1; }
 .modal .footer { display: flex; justify-content: flex-end; gap: 8px; }
 .tabs2 { display: flex; gap: 4px; margin-bottom: 10px; }
@@ -274,3 +275,8 @@ input.fieldinput:focus, textarea.fieldinput:focus, select.fieldinput:focus { bor
 .cpanel .crow .ct { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cpanel .crow small { color: var(--muted); }
 .cpanel .row { justify-content: flex-end; }
+
+/* send for signature: placed boxes can be selected, moved, resized and deleted while the box tool is active */
+.page.tool-signfield .objLayer { z-index: 7; }
+.page.tool-signfield .obj.signfield { pointer-events: auto; cursor: move; }
+.sfdel { position: absolute; right: -9px; top: -20px; width: 18px; height: 18px; line-height: 16px; text-align: center; border-radius: 50%; background: var(--danger); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; z-index: 11; }

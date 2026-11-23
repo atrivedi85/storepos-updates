@@ -13,6 +13,8 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, 
 const fail = (status, error) => json({ error }, status);
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+// the account's placeholder address (name@ledger.invalid) is not a real mailbox: never use it
+const realEmail = (e) => EMAIL_RE.test(e) && !/\.invalid$/i.test(e) && !/@[^@]*\.(invalid|test|example|localhost)$/i.test(e);
 const TOKEN_RE = /^[a-f0-9]{48}$/;
 const KINDS = new Set(['signature', 'initials', 'date', 'text']);
 const MAX_PDF = 25 * 1024 * 1024;
@@ -36,6 +38,7 @@ async function ensureTables(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_contacts (
       owner_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, last_used INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (owner_id, email))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_profile (owner_id TEXT PRIMARY KEY, from_name TEXT, notify_email TEXT)`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_req_owner ON esign_requests(owner_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_sig_req ON esign_signers(request_id)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_ev_req ON esign_events(request_id, at)'),
@@ -50,9 +53,10 @@ async function logEvent(env, reqId, who, what, ip = '') {
 // ---------- email (Resend) ----------
 async function sendMail(env, { to, subject, html, text, replyTo }) {
   if (!env.RESEND_API_KEY) return { ok: false, error: 'Email sending is not set up yet.' };
+  if (!realEmail(String(to || ''))) return { ok: false, error: 'No real email address to send to.' };
   try {
     const body = { from: env.SIGN_FROM || 'PdfStudio Signing <sign@trivedipos.com>', to: [to], subject, html, text };
-    if (replyTo && EMAIL_RE.test(replyTo)) body.reply_to = replyTo;
+    if (replyTo && realEmail(replyTo)) body.reply_to = replyTo;
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${String(env.RESEND_API_KEY).trim()}`, 'content-type': 'application/json' },
@@ -123,6 +127,25 @@ function cleanFields(list, nSigners) {
 }
 
 // ---------- router ----------
+// ---------- sender profile: the name signers see and the address for "everyone signed" emails ----------
+// GET /esign/profile -> { fromName, notifyEmail };  PUT /esign/profile { fromName, notifyEmail } -> same
+export async function handleProfile(request, env, me) {
+  const read = async () => {
+    const r = await env.DB.prepare('SELECT from_name, notify_email FROM esign_profile WHERE owner_id = ?').bind(me.id).first();
+    return json({ fromName: r?.from_name || '', notifyEmail: realEmail(r?.notify_email || '') ? r.notify_email : '' });
+  };
+  if (request.method === 'GET') return read();
+  if (request.method !== 'PUT' && request.method !== 'POST') return fail(405, 'Not allowed.');
+  let b = {};
+  try { b = await request.json(); } catch { return fail(400, 'Bad request.'); }
+  const fromName = String(b.fromName || '').trim().slice(0, 100);
+  const notifyEmail = String(b.notifyEmail || '').trim().toLowerCase().slice(0, 200);
+  if (notifyEmail && !realEmail(notifyEmail)) return fail(400, 'That email address does not look right.');
+  await env.DB.prepare('INSERT INTO esign_profile (owner_id, from_name, notify_email) VALUES (?,?,?) ON CONFLICT(owner_id) DO UPDATE SET from_name = excluded.from_name, notify_email = excluded.notify_email')
+    .bind(me.id, fromName, notifyEmail).run();
+  return read();
+}
+
 // ---------- saved contacts (names + emails only), one list per signed-in user ----------
 const MAX_CONTACTS = 2000;
 const MAX_CONTACT_BATCH = 500;
@@ -153,7 +176,7 @@ export async function handleContacts(request, env, me) {
   for (const x of items) {
     const email = String(x?.email || '').trim().toLowerCase().slice(0, 200);
     const name = String(x?.name || '').trim().slice(0, 100);
-    if (!name || !EMAIL_RE.test(email)) continue;
+    if (!name || !realEmail(email)) continue;
     const lastUsed = Math.min(now, Math.max(0, Math.floor(Number(x.lastUsed) || now)));
     const uses = Math.min(1000, Math.max(0, Math.floor(Number(x.uses ?? 1)) || 0));
     const o = clean.get(email);
@@ -273,6 +296,7 @@ export async function handleEsign(request, env, url, route, getAuth) {
   const me = auth.user;
 
   if (route === 'esign/contacts') return handleContacts(request, env, me);
+  if (route === 'esign/profile') return handleProfile(request, env, me);
 
   if (route === 'esign/requests' && method === 'GET') {
     const { results } = await env.DB.prepare('SELECT * FROM esign_requests WHERE owner_id = ? ORDER BY created_at DESC LIMIT 100').bind(me.id).all();
@@ -296,11 +320,11 @@ export async function handleEsign(request, env, url, route, getAuth) {
     if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') return fail(400, 'That is not a PDF.');
     const title = String(meta.title || '').trim().slice(0, 150) || 'Document';
     const message = String(meta.message || '').trim().slice(0, 2000);
-    const notify = String(meta.notifyEmail || me.email || '').trim().toLowerCase();
+    const notify = String(meta.notifyEmail || '').trim().toLowerCase();   // never fall back to the account's placeholder address
     const signers = Array.isArray(meta.signers) ? meta.signers : [];
     if (!signers.length || signers.length > MAX_SIGNERS) return fail(400, `Add between 1 and ${MAX_SIGNERS} signers.`);
     const cleanSigners = signers.map((x) => ({ name: String(x.name || '').trim().slice(0, 100), email: String(x.email || '').trim().toLowerCase().slice(0, 200) }));
-    for (const x of cleanSigners) if (!x.name || !EMAIL_RE.test(x.email)) return fail(400, `Check the name and email for every signer${x.email ? ` (${x.email})` : ''}.`);
+    for (const x of cleanSigners) if (!x.name || !realEmail(x.email)) return fail(400, `Check the name and email for every signer${x.email ? ` (${x.email})` : ''}.`);
     const fields = cleanFields(meta.fields, cleanSigners.length);
     if (!fields) return fail(400, 'Place at least one box on the document for the signers.');
     for (let i = 0; i < cleanSigners.length; i++) if (!fields.some((f) => f.signer === i)) return fail(400, `${cleanSigners[i].name} has no boxes to fill in. Add at least one, or remove them.`);
@@ -312,7 +336,7 @@ export async function handleEsign(request, env, url, route, getAuth) {
     await env.FILES.put(`esign/${id}/original.pdf`, pdf, { httpMetadata: { contentType: 'application/pdf' } });
     const ownerName = String(meta.fromName || me.username || '').trim().slice(0, 100);
     await env.DB.prepare('INSERT INTO esign_requests (id, owner_id, owner_name, notify_email, title, message, file_name, fields, status, doc_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(id, me.id, ownerName, EMAIL_RE.test(notify) ? notify : null, title, message, String(meta.fileName || 'document.pdf').slice(0, 150), JSON.stringify(fields), 'sent', docHash, now).run();
+      .bind(id, me.id, ownerName, realEmail(notify) ? notify : null, title, message, String(meta.fileName || 'document.pdf').slice(0, 150), JSON.stringify(fields), 'sent', docHash, now).run();
     const rows = cleanSigners.map((x, i) => ({ id: rand(8), idx: i, token: rand(24), ...x }));
     await env.DB.batch(rows.map((s) => env.DB.prepare('INSERT INTO esign_signers (id, request_id, idx, name, email, token, status) VALUES (?,?,?,?,?,?,?)').bind(s.id, id, s.idx, s.name, s.email, s.token, 'sent')));
     await logEvent(env, id, `${ownerName} (${me.username})`, `Sent "${title}" for signature to ${cleanSigners.map((x) => `${x.name} <${x.email}>`).join(', ')}`, ipOf(request));
