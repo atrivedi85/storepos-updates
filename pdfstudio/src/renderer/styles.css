@@ -262,3 +262,15 @@ input.fieldinput:focus, textarea.fieldinput:focus, select.fieldinput:focus { bor
 .cloud-name small { color: var(--muted); }
 .cloud-btns { display: flex; gap: 6px; flex-shrink: 0; }
 #stCloud { margin-left: 12px; color: var(--accent2); }
+/* saved contacts (Send for signature) */
+.suggest { position: fixed; z-index: 400; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px #000a; overflow: hidden; }
+.suggest .sg { display: flex; flex-direction: column; padding: 6px 10px; cursor: pointer; color: var(--text); }
+.suggest .sg span { color: var(--muted); font-size: 12px; }
+.suggest .sg:hover, .suggest .sg.hi { background: var(--hover); }
+.cpanel { flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.cpanel .clist { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.cpanel .crow { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; cursor: pointer; color: var(--text); }
+.cpanel .crow:hover { background: var(--hover); }
+.cpanel .crow .ct { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpanel .crow small { color: var(--muted); }
+.cpanel .row { justify-content: flex-end; }

@@ -10,6 +10,7 @@ import { buildPdf } from './pdfops';
 import { SIGNER_COLORS } from './editor';
 import { el, esc, modal, toast, download } from './util';
 import { dataUrlToBytes } from './sign';
+import { loadContacts, recordUsed, attachSuggest, contactsPanel, getSavePref, setSavePref, EMAIL_OK, type Contact } from './contacts';
 
 interface Signer {
   id: string; idx: number; name: string; email: string; status: string; link: string;
@@ -43,6 +44,10 @@ async function editSigners(app: App, first: boolean): Promise<boolean> {
   const list = el('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:6px';
   const rows: { name: HTMLInputElement; email: HTMLInputElement }[] = [];
+  let contacts: Contact[] = [];
+  const taken = (except?: { name: HTMLInputElement; email: HTMLInputElement }) => new Set(rows.filter((x) => x !== except).map((x) => x.email.value.trim().toLowerCase()).filter(Boolean));
+  const fillRow = (ent: { name: HTMLInputElement; email: HTMLInputElement }, c: Contact) => { ent.name.value = c.name; ent.email.value = c.email; };
+  const hooks: ReturnType<typeof attachSuggest>[] = [];
   const addRow = (n = '', e = '') => {
     const i = rows.length;
     const r = el('div', 'row');
@@ -53,19 +58,37 @@ async function editSigners(app: App, first: boolean): Promise<boolean> {
     rm.onclick = () => { const k = rows.indexOf(ent); if (rows.length > 1 && k >= 0) { rows.splice(k, 1); r.remove(); } };
     const ent = { name, email };
     r.append(dot, name, email, rm); list.appendChild(r); rows.push(ent);
+    for (const inp of [name, email]) hooks.push(attachSuggest([inp], () => contacts, () => taken(ent), (c) => fillRow(ent, c)));
   };
   d.signers.forEach((s) => addRow(s.name, s.email));
   const more = el('button', 'btn', {}, '+ Add another signer');
   more.onclick = () => { if (rows.length < 10) addRow(); };
+  const panel = contactsPanel(() => contacts, () => taken(), (picked) => {
+    for (const c of picked) {
+      if (rows.length >= 10) { toast('You can add up to 10 signers', true); break; }
+      const empty = rows.find((x) => !x.name.value.trim() && !x.email.value.trim());
+      if (empty) fillRow(empty, c); else { addRow(c.name, c.email); }
+    }
+  }, (email) => { contacts = contacts.filter((c) => c.email !== email); });
+  const fromContacts = el('button', 'btn', {}, '\u{1F465} Add from contacts');
+  fromContacts.onclick = () => panel.toggle();
+  const btns = el('div', 'row'); btns.append(more, fromContacts);
+  const saveBox = el('input', '', { type: 'checkbox', id: 'saveContacts' }) as HTMLInputElement;
+  saveBox.checked = getSavePref();
+  saveBox.onchange = () => setSavePref(saveBox.checked);
+  const saveRow = el('label'); saveRow.style.cssText = 'display:flex;align-items:center;justify-content:flex-start;gap:8px;cursor:pointer;color:var(--text)';
+  saveRow.append(saveBox, el('span', '', {}, 'Save new people to my contacts'));
+  void loadContacts().then((l) => { contacts = l; });
   const title = el('input', '', { value: d.title }) as HTMLInputElement;
   const msg = el('textarea', '', { rows: '3', placeholder: 'Message to the signers (optional)' }) as HTMLTextAreaElement;
   msg.value = d.message;
   const tRow = el('div', 'row'); tRow.append(el('label', '', {}, 'Subject'), title);
-  box.append(el('div', '', {}, 'Who needs to sign? They get an email link and do not need an account.'), list, more, tRow, msg);
+  box.append(el('div', '', {}, 'Who needs to sign? They get an email link and do not need an account.'), list, btns, panel.el, saveRow, tRow, msg);
   const r = await modal(first ? 'Send for signature' : 'Signers', box, [{ label: 'Cancel', value: 'cancel' }, { label: first ? 'Next: place boxes' : 'Save', kind: 'primary', value: 'ok' }]);
+  hooks.forEach((h) => h.destroy()); panel.destroy();
   if (r !== 'ok') return false;
   const signers = rows.map((x) => ({ name: x.name.value.trim(), email: x.email.value.trim().toLowerCase() })).filter((x) => x.name || x.email);
-  const bad = signers.find((x) => !x.name || !EMAIL_RE.test(x.email));
+  const bad = signers.find((x) => !x.name || !EMAIL_OK.test(x.email));
   if (!signers.length || bad) { toast(bad ? `Check the name and email for ${bad.name || bad.email}` : 'Add at least one signer', true); return editSigners(app, first); }
   ed.esign = { ...d, signers, title: title.value.trim() || d.title, message: msg.value.trim(), cur: Math.min(d.cur, signers.length - 1) };
   // boxes for signers that were removed go back to the first signer
@@ -122,6 +145,7 @@ async function send(app: App) {
     const { bytes } = await buildPdf(t);
     const meta = { title: d.title, message: d.message, fileName: t.name, signers: d.signers, fields, notifyEmail, fromName: fromName || me.username || '' };
     const res = await window.api.esignCreate(meta, bytes) as Req;
+    void recordUsed(d.signers, getSavePref()).catch(() => { /* contacts are a convenience only */ });
     // the boxes were only for sending: remove them from the open document
     t.push();
     for (const k of Object.keys(t.objects)) t.objects[Number(k)] = (t.objects[Number(k)] || []).filter((o) => o.type !== 'signfield');

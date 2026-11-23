@@ -33,6 +33,9 @@ async function ensureTables(env) {
       token TEXT NOT NULL UNIQUE, status TEXT NOT NULL, emailed_at INTEGER, email_error TEXT, viewed_at INTEGER,
       signed_at INTEGER, declined_at INTEGER, decline_reason TEXT, ip TEXT, ua TEXT)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_events (request_id TEXT NOT NULL, at INTEGER NOT NULL, who TEXT, what TEXT NOT NULL, ip TEXT)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_contacts (
+      owner_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, last_used INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (owner_id, email))`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_req_owner ON esign_requests(owner_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_sig_req ON esign_signers(request_id)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_ev_req ON esign_events(request_id, at)'),
@@ -120,6 +123,53 @@ function cleanFields(list, nSigners) {
 }
 
 // ---------- router ----------
+// ---------- saved contacts (names + emails only), one list per signed-in user ----------
+const MAX_CONTACTS = 2000;
+const MAX_CONTACT_BATCH = 500;
+const contactOut = (r) => ({ name: r.name, email: r.email, lastUsed: r.last_used, count: r.uses });
+// GET /esign/contacts  -> { contacts }
+// POST /esign/contacts { contacts: [{ name, email, lastUsed?, uses? }] }  -> adds new people; for known emails updates the name,
+//   keeps the newest lastUsed and adds `uses` to the count -> { contacts }
+// DELETE /esign/contacts { email }  -> { contacts }
+export async function handleContacts(request, env, me) {
+  const method = request.method;
+  const list = async () => {
+    const { results } = await env.DB.prepare('SELECT name, email, last_used, uses FROM esign_contacts WHERE owner_id = ? ORDER BY uses DESC, last_used DESC LIMIT ?').bind(me.id, MAX_CONTACTS).all();
+    return json({ contacts: (results || []).map(contactOut) });
+  };
+  if (method === 'GET') return list();
+  let b = {};
+  try { b = await request.json(); } catch { return fail(400, 'Bad request.'); }
+  if (method === 'DELETE') {
+    const email = String(b.email || '').trim().toLowerCase();
+    if (!email) return fail(400, 'Which contact?');
+    await env.DB.prepare('DELETE FROM esign_contacts WHERE owner_id = ? AND email = ?').bind(me.id, email).run();
+    return list();
+  }
+  if (method !== 'POST') return fail(405, 'Not allowed.');
+  const items = Array.isArray(b.contacts) ? b.contacts.slice(0, MAX_CONTACT_BATCH) : [];
+  const now = Date.now();
+  const clean = new Map();
+  for (const x of items) {
+    const email = String(x?.email || '').trim().toLowerCase().slice(0, 200);
+    const name = String(x?.name || '').trim().slice(0, 100);
+    if (!name || !EMAIL_RE.test(email)) continue;
+    const lastUsed = Math.min(now, Math.max(0, Math.floor(Number(x.lastUsed) || now)));
+    const uses = Math.min(1000, Math.max(0, Math.floor(Number(x.uses ?? 1)) || 0));
+    const o = clean.get(email);
+    clean.set(email, o ? { name, email, lastUsed: Math.max(o.lastUsed, lastUsed), uses: o.uses + uses } : { name, email, lastUsed, uses });
+  }
+  if (clean.size) {
+    const have = await env.DB.prepare('SELECT COUNT(*) AS n FROM esign_contacts WHERE owner_id = ?').bind(me.id).first();
+    if ((have?.n || 0) + clean.size > MAX_CONTACTS + MAX_CONTACT_BATCH) return fail(400, 'Too many saved contacts. Remove some first.');
+    await env.DB.batch([...clean.values()].map((c) => env.DB.prepare(
+      `INSERT INTO esign_contacts (owner_id, email, name, last_used, uses) VALUES (?,?,?,?,?)
+       ON CONFLICT(owner_id, email) DO UPDATE SET name = excluded.name, last_used = MAX(last_used, excluded.last_used), uses = uses + excluded.uses`,
+    ).bind(me.id, c.email, c.name, c.lastUsed, c.uses)));
+  }
+  return list();
+}
+
 export async function handleEsign(request, env, url, route, getAuth) {
   await ensureTables(env);
   const method = request.method;
@@ -221,6 +271,8 @@ export async function handleEsign(request, env, url, route, getAuth) {
   const auth = await getAuth();
   if (!auth) return fail(401, 'Not signed in.');
   const me = auth.user;
+
+  if (route === 'esign/contacts') return handleContacts(request, env, me);
 
   if (route === 'esign/requests' && method === 'GET') {
     const { results } = await env.DB.prepare('SELECT * FROM esign_requests WHERE owner_id = ? ORDER BY created_at DESC LIMIT 100').bind(me.id).all();

@@ -46,3 +46,10 @@ Anyone who can sign in to Ledger Desk. Ledger Desk is the only on/off switch (Pd
 ## Known open items
 
 - Home page: edited in ONE place, `cloud/site/index.html` (the PdfStudio tile is there). The old override route `trivedipos.com/` was removed on 2026-11-21.
+
+## Saved contacts (Send for signature)
+
+The "Send for signature" dialog remembers the people you send to (name + email only, nothing secret).
+The list is kept on the PdfStudio server per signed-in user (D1 table `esign_contacts`, created on first use; API `GET/POST/DELETE /pdfstudio/api/esign/contacts`
+in `worker/esign.js`), so the web version and the desktop app show the same list. Offline, a copy in the browser/app is used and new people are sent to the server next time.
+Code: `src/renderer/contacts.ts` (+ `src/renderer/esign.ts`). Tests: `node scripts/t-contacts-worker.mjs`, `node scripts/t-contacts.js`, `node scripts/t-tabs.js [folder] [web]`.
