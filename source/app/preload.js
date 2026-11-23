@@ -59,5 +59,13 @@ contextBridge.exposeInMainWorld('posAPI', {
   linkPair: o => ipcRenderer.invoke('linkPair', o),
   linkSyncNow: () => ipcRenderer.invoke('linkSyncNow'),
   unlink: () => ipcRenderer.invoke('unlink'),
-  onLink: cb => ipcRenderer.on('link', (e, s) => cb(s))
+  onLink: cb => ipcRenderer.on('link', (e, s) => cb(s)),
+  termTest: () => ipcRenderer.invoke('termTest'),
+  termSale: o => ipcRenderer.invoke('termSale', o),
+  termRefund: o => ipcRenderer.invoke('termRefund', o),
+  termVoid: o => ipcRenderer.invoke('termVoid', o),
+  termSettle: () => ipcRenderer.invoke('termSettle'),
+  termEbtBalance: o => ipcRenderer.invoke('termEbtBalance', o),
+  termCancel: o => ipcRenderer.invoke('termCancel', o),
+  termStatus: o => ipcRenderer.invoke('termStatus', o)
 });

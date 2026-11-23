@@ -470,7 +470,7 @@ ipcMain.handle('loadLicenseFile', async () => {
 /* ---------- config / app ---------- */
 ipcMain.handle('getConfig', () => ({ ...cfg, appVersion: require('./package.json').version, bundledVersion: BOOT.bundledVersion, runningUpdate: !!BOOT.updateDir, rolledBack: BOOT.rolledBack, hasPrevious: fs.existsSync(path.join(UPDATE_DIR, 'previous')) || !!BOOT.updateDir, dataDir: DATA_DIR, backupRoot: BACKUP_DIR, version: app.getVersion(), platform: process.platform }));
 ipcMain.handle('setConfig', (e, patch) => {
-  const allowed = ['printer', 'paper', 'drawerOnCash', 'drawerMode', 'kiosk', 'autoStart', 'reportPrinter', 'rcptConn', 'cmdSet', 'cols', 'cut', 'feed', 'drawerPin', 'netHost', 'netPort', 'comPort', 'comBaud', 'comFlow', 'scanCom', 'scanBaud', 'labelPrinter', 'updateUrl'];
+  const allowed = ['printer', 'paper', 'drawerOnCash', 'drawerMode', 'kiosk', 'autoStart', 'reportPrinter', 'rcptConn', 'cmdSet', 'cols', 'cut', 'feed', 'drawerPin', 'netHost', 'netPort', 'comPort', 'comBaud', 'comFlow', 'scanCom', 'scanBaud', 'labelPrinter', 'updateUrl', 'termEnabled', 'termDriver', 'termIp', 'termPort', 'termCancelPort', 'termFraming', 'termTimeoutSec', 'termDemoSurchargePct'];
   for (const k of Object.keys(patch || {})) if (allowed.includes(k)) cfg[k] = patch[k];
   saveCfg();
   if ('kiosk' in patch && win) { win.setKiosk(!!cfg.kiosk); if (!cfg.kiosk) win.setFullScreen(true); }
@@ -478,6 +478,14 @@ ipcMain.handle('setConfig', (e, patch) => {
   if ('scanCom' in patch || 'scanBaud' in patch) startScanner();
   return cfg;
 });
+/* ---------- card terminal (PAX A35 etc.): see terminal.js and README "Card terminal". Settings are per PC (cfg), never synced ---------- */
+let termMgr = null;
+try { termMgr = require('./terminal').createManager(() => cfg); } catch (e) { console.error('terminal.js not loaded:', e.message); }
+const termCall = name => async (e, o) => {
+  if (!termMgr) return { ok: false, message: 'Card terminal support is not installed in this version.' };
+  try { return await termMgr[name](o); } catch (err) { return { ok: false, message: String(err && err.message || err) }; }
+};
+for (const n of ['test', 'sale', 'refund', 'void', 'settle', 'ebtBalance', 'cancel', 'status']) ipcMain.handle('term' + n[0].toUpperCase() + n.slice(1), termCall(n));
 /* ---------- install / undo a small update file (.posupdate) ---------- */
 const vm = require('vm');
 ipcMain.handle('installUpdate', async () => {
