@@ -83,6 +83,7 @@ footer .lock,footer .fs{min-height:46px;padding:0 14px;border-radius:8px;backgro
 /* modals */
 .mback{position:fixed;inset:0;background:rgba(5,12,25,.55);display:flex;align-items:center;justify-content:center;z-index:50}
 .mbox{background:#fff;border-radius:16px;padding:20px;width:min(560px,94vw);max-height:94vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.twait{display:flex;flex-direction:column;align-items:center;gap:6px}.tspin{width:54px;height:54px;border:6px solid #dbe3f3;border-top-color:#1d4ed8;border-radius:50%;animation:tsp 1s linear infinite;margin:6px 0 10px}@keyframes tsp{to{transform:rotate(360deg)}}.lnk{color:#1d4ed8;font-weight:700}
 .mbox.sm{width:min(460px,94vw)}.mbox.kpm{width:min(400px,94vw)}.mbox.wide{width:min(900px,96vw)}.mbox.tm{width:min(760px,96vw)}
 .mtitle{font-size:21px;font-weight:800;margin-bottom:8px}.msub{color:var(--mut);margin-bottom:10px;font-size:15px}
 .mbtns{display:flex;gap:10px;margin-top:14px}.mbtns .btn{flex:1}.mbtns.col{flex-direction:column}
@@ -209,7 +210,7 @@ function setP(o,p,v){const ks=p.split('.');const last=ks.pop();const t=ks.reduce
 const PALETTE=['#d9481c','#1f9d55','#0f7c8c','#1aa3c4','#2563c9','#1d3f8a','#6b4fc8','#a23aa8','#c2317a','#b7791f','#4a5a75','#2f855a'];
 const DAYS='Sun Mon Tue Wed Thu Fri Sat'.split(' ');
 const TENDERS=['Cash','Credit','Debit','EBT Food','Check','Gift Card','Other'];
-const CARDLIKE=['Credit','Debit','EBT Food','Gift Card'];
+const CARDLIKE=['Credit','Debit','EBT Food','EBT Cash','Gift Card'];
 let AC;function beep(f=880,ms=110){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.08;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+ms/1000);}catch(e){}}
 let toastT;function toast(m,bad){const t=$('#toast');t.textContent=m;t.className='show'+(bad?' bad':'');clearTimeout(toastT);toastT=setTimeout(()=>t.className='',2800);}
 function download(name,text,type='text/plain'){if(ANDROID){posAPI.saveDownload(name,text,type).then(r=>toast(r.ok?'Saved to '+r.path:'Could not save: '+(r.error||''),!r.ok));return}const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800);}
@@ -495,7 +496,7 @@ function sideHtml(){const held=S.held.length;const hasFee=S.cart.lines.some(l=>l
 function renderPay(){const c=calc(S.cart);const bal=c.balance;
  const qc=[];if(bal>0){qc.push(bal);const n1=Math.ceil(bal-0.001);if(n1>bal+0.004)qc.push(n1);const n5=Math.ceil(bal/5)*5;if(n5>n1&&n5>bal+0.004)qc.push(n5);[10,20,50,100].forEach(v=>{if(v>bal&&!qc.includes(v))qc.push(v)})}
  return `<div class="pay">
- <section class="tend"><div class="tg">${TENDERS.map(t=>`<button class="tb" data-a="tender" data-v="${t}">${t}</button>`).join('')}<button class="tb amber" data-a="disc">Discounts</button><button class="tb slate" data-a="payout">Pay Out</button><button class="tb amber" data-a="splitPay">Split Cash + Card</button><button class="tb slate" data-a="split">Split Evenly</button></div>
+ <section class="tend"><div class="tg">${tendersList().map(t=>`<button class="tb" data-a="tender" data-v="${t}">${t}</button>`).join('')}<button class="tb amber" data-a="disc">Discounts</button><button class="tb slate" data-a="payout">Pay Out</button><button class="tb amber" data-a="splitPay">Split Cash + Card</button><button class="tb slate" data-a="split">Split Evenly</button></div>
  <h4>Quick Cash Payments</h4><div class="qc">${qc.slice(0,7).map((v,i)=>`<button data-a="qcash" data-v="${v}">${i===0?'<small>Exact</small>':''}$${money(v)}</button>`).join('')||'<div class="hint">Nothing due</div>'}</div></section>
  <section class="pmid"><div class="pbig"><small>${c.total<0?'Refund due to customer':'Balance Due'}</small><b>$${money(Math.abs(bal))}</b></div>
  <div class="ptable"><div class="phead"><span>Payment Type</span><span>Amount</span><span></span></div>${S.cart.payments.map((p,i)=>`<div class="prow"><span>${esc(p.type)}${p.ref?` <small class="hint">${esc(p.ref)}</small>`:''}</span><span>$${money(p.amount)}</span><button class="btn sm red" data-a="rmPay" data-i="${i}">✕</button></div>`).join('')||'<div class="empty">No payments yet. Tap a payment type.</div>'}</div></section>
@@ -589,10 +590,10 @@ function tenderModal(type){const c=calc(S.cart);const bal=c.balance;
  let max=bal;if(type==='EBT Food'){const lim=c.ebtRemain;if(lim<=0.004){toast(c.ebtElig>0?'EBT already covers all the EBT items':'No EBT-eligible items in this sale',1);return}max=Math.min(bal,lim)}
  S.kp={mode:'dec',buf:money(max),fresh:true,onKey:null,onOk:null};
  const keys=[7,8,9,4,5,6,1,2,3,'Clear',0,'.'];
- openModal(`<div class="tmod"><div><div class="bal">Balance</div><div class="balv">$${money(bal)}</div><div class="bal">${esc(type)} Amount:</div><div class="kpd fresh" id="kpd">${kpDisp()}</div>${type==='EBT Food'?`<div class="hint">EBT can pay up to <b>$${money(max)}</b> (the EBT food items, tax free). Everything else is paid another way.</div>`:''}${CARDLIKE.includes(type)&&S.settings.cardMin>0?`<div class="hint">Card minimum: $${money(S.settings.cardMin)}</div>`:''}</div>
+ openModal(`<div class="tmod"><div><div class="bal">Balance</div><div class="balv">$${money(bal)}</div><div class="bal">${esc(type)} Amount:</div><div class="kpd fresh" id="kpd">${kpDisp()}</div>${type==='EBT Food'?`<div class="hint">EBT can pay up to <b>$${money(max)}</b> (the EBT food items, tax free). Everything else is paid another way.</div>`:''}${CARDLIKE.includes(type)&&S.settings.cardMin>0?`<div class="hint">Card minimum: $${money(S.settings.cardMin)}</div>`:''}${TERM_MODE[type]&&termOn()?`<div class="hint" style="margin-top:10px">The amount is sent to the card terminal. <a href="#" class="lnk" data-a="cb" data-id="${cb(()=>{const a=r2(kpVal());closeModal();tender(type,a,{manual:true})})}">Enter card manually (terminal not working)</a></div>`:''}</div>
  <div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div></div></div>
  <div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(closeModal)}">Cancel</button><span class="flex"></span><button class="btn green" style="flex:2" id="mok" data-a="cb" data-id="${cb(()=>{const a=r2(kpVal());closeModal();tender(type,a)})}">Pay</button></div>`,'tm')}
-function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
+function tender(type,amt,opt){const c=calc(S.cart);const bal=c.balance;
  if(!S.cart.lines.length){toast('No items in the order');return}
  if(Math.abs(bal)<0.005){finishSale();return}
  if(bal<0){confirmBox(`Give the customer <b>$${money(-bal)}</b> back as ${esc(type)}?`,'Refund',()=>addPay(type,bal));return}
@@ -600,15 +601,16 @@ function tender(type,amt){const c=calc(S.cart);const bal=c.balance;
  if(type!=='Cash'&&a>bal)a=bal;
  if(type==='EBT Food'){const lim=c.ebtRemain;if(lim<=0.004){toast(c.ebtElig>0?'EBT already covers all the EBT items':'No EBT-eligible items in this sale',1);return}a=Math.min(a,lim)}
  const card=CARDLIKE.includes(type);
- const go=()=>{if(card)cardApprove(type,a);else addPay(type,a)};
+ const go=()=>{if(card&&TERM_MODE[type]&&termOn()&&!(opt&&opt.manual))termPay(type,a);else if(card)cardApprove(type,a);else addPay(type,a)};
  if((type==='Credit'||type==='Debit')&&a<S.settings.cardMin)confirmBox(`Card minimum is $${money(S.settings.cardMin)}.<br>This charge is $${money(a)}. Continue anyway?`,'Continue',go);else go()}
-function addPay(type,a,last4){const pe={type,amount:r2(a),time:Date.now()};if(last4)pe.last4=last4;S.cart.payments.push(pe);const c=calc(S.cart);
+function addPay(type,a,last4,extra){const pe={type,amount:r2(a),time:Date.now()};if(last4)pe.last4=last4;if(extra)Object.assign(pe,extra);S.cart.payments.push(pe);const c=calc(S.cart);
  if((c.total>=0&&c.balance<=0.004)||(c.total<0&&Math.abs(c.balance)<0.005))finishSale();else{S.screen='pay';render()}}
 function finishSale(){if(DESK&&S.lic&&S.lic.locked){toast('The register is locked — a license is needed',1);render();return}const c=calc(S.cart),cart=S.cart;
  const change=c.total>=0?r2(c.paid-c.total):0;
  const o={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:cart.label,
   lines:cart.lines.map((l,i)=>({ebt:!!l.ebt,sku:l.sku,name:l.name,qty:l.qty,price:l.price,origPrice:l.origPrice??l.price,cost:+l.cost||0,cat:l.cat||'',taxes:l.taxes||[],misc:!!l.misc,fee:!!l.fee,inv:!!l.inv,disc:r2(c.lineDisc[i]),net:r2(c.lineNet[i]),tax:r2(c.lineTax[i]),note:c.lineNotes[i]||''})),
   subtotal:c.subtotal,discount:c.discount,taxes:c.taxByGroup,tax:c.tax,total:c.total,payments:cart.payments,change,status:c.total<0?'refund':'paid',ageOk:cart.ageOk,approvals:cart.approvals||[],ebtExempt:c.ebtExempt||0};
+ {const sc=r2(sum(cart.payments,p=>+p.surcharge||0));if(sc>0)o.surcharge=sc}
  for(const l of o.lines){if(!l.inv)continue;const p=findSku(l.sku);if(p&&!p.nonInventory){p.stock=r2((+p.stock||0)-l.qty);DB.put('products',p)}}
  S.orders.push(o);DB.put('orders',o);DC.det[o.id]=o;bumpOrders();saveKV('settings');
  S.cart=newCart();S.sel=null;S.screen='register';render();beep(1300,90);
@@ -625,8 +627,12 @@ function receiptHtml(o){const s=S.settings;const tend={};o.payments.forEach(p=>{
  ${o.taxes.map(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false?'':`<div class="r"><span>${esc(t.name)}</span><span>${money(t.amount)}</span></div>`}).join('')}
  ${o.taxes.some(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false})?`<div class="r"><span>Other tax</span><span>${money(sum(o.taxes.filter(t=>{const g=s.taxGroups.find(x=>x.id===t.id);return g&&g.show===false}),t=>t.amount))}</span></div>`:''}
  ${o.ebtExempt>0.004?`<div class="r"><span>Tax exempt (EBT)</span><span>-${money(o.ebtExempt)}</span></div>`:''}<div class="r b"><span>TOTAL</span><span>$${money(o.total)}</span></div>
- ${Object.entries(tend).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}${o.change>0.004?`<div class="r b"><span>CHANGE</span><span>${money(o.change)}</span></div>`:''}
+ ${Object.entries(tend).map(([k,v])=>`<div class="r"><span>${esc(k)}</span><span>${money(v)}</span></div>`).join('')}${termReceiptHtml(o)}${o.change>0.004?`<div class="r b"><span>CHANGE</span><span>${money(o.change)}</span></div>`:''}
  <div class="sm">Items: ${sum(o.lines.filter(l=>!l.fee),l=>l.qty)}${o.lines.some(l=>l.ebt)?' · F = EBT eligible':''}</div><hr><div class="c">${esc(s.footer).replace(/\n/g,'<br>')}</div><br></div>`}
+function termReceiptHtml(o){const L=(o.payments||[]).filter(p=>p.term);if(!L.length)return '';
+ return L.map(p=>{const bits=[p.brand,p.last4?'\u2022\u2022'+p.last4:'',p.entry].filter(Boolean).join(' ');
+  const how=p.refundMethod?`<div class="sm">${p.refundMethod==='void'?'Voided on card terminal':p.refundMethod==='refund'?'Refunded to card':'Refunded on terminal (manual)'}</div>`:'';
+  return `<div class="sm">${esc(p.type)} ${esc(bits)}</div>${p.authCode?`<div class="sm">Auth: ${esc(p.authCode)}${p.aid?' &nbsp; AID: '+esc(p.aid):''}</div>`:''}${how}${p.surcharge>0.004?`<div class="r"><span>Card surcharge</span><span>${money(p.surcharge)}</span></div><div class="r"><span>Total charged to card</span><span>${money(p.amount+p.surcharge)}</span></div>`:''}${p.demo?'<div class="sm c">*** TRAINING - NOT A REAL CARD ***</div>':''}`}).join('')}
 const printReceipt=o=>printHtml(receiptHtml(o));
 
 /* ---------- items screen ---------- */
@@ -727,7 +733,7 @@ function orderDetail(o){const tend={};o.payments.forEach(p=>{const k=p.type+(p.l
  return `<div class="ehead"><div><div class="etitle">Transaction #${o.num} ${o.status==='void'?`<span class="badge r">VOID</span></div><div class="warn">Voided ${fmtDT(o.voidTime)} by ${esc(o.voidBy||'')} — ${esc(o.voidReason||'')}. Not counted in sales or reports.</div><div>`:''}${o.status==='refund'?'<span class="badge r">REFUND</span>':o.status==='refunded'?`<span class="badge b">refunded in #${(o.refundNums||[o.refundNum]).join(', #')}</span>`:o.refundNums&&o.refundNums.length?`<span class="badge b">part refunded in #${o.refundNums.join(', #')}</span>`:''}</div><div class="hint">${fmtDT(o.time)} · ${esc(o.user)}${o.label?' · '+esc(o.label):''}${o.ageOk?' · ID checked':''}</div></div><div class="ekpis"><div><small>Total</small><b>$${money(o.total)}</b></div></div></div>
  <div class="ebody">${(o.approvals||[]).length?`<div class="sec" style="padding:8px 12px;margin-bottom:10px"><b>Manager approvals:</b> ${o.approvals.map(a=>`${esc(PERM_NAMES[a.action]||a.action)} — approved by <b>${esc(a.by)}</b> for ${esc(a.cashier||'')}`).join(' · ')}</div>`:''}<table class="tbl"><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Discount</th><th class="n">Net</th></tr>${o.lines.map(l=>`<tr><td>${esc(l.name)}<div class="hint">${esc(l.sku)}${l.note?' · '+esc(l.note):''}</div></td><td class="n">${l.qty}${o.refQty&&o.refQty[o.lines.indexOf(l)]?`<div class="hint">${o.refQty[o.lines.indexOf(l)]} refunded</div>`:''}</td><td class="n">${money(l.price)}</td><td class="n">${l.disc?'-'+money(l.disc):''}</td><td class="n">${money(l.net)}</td></tr>`).join('')}</table>
  <div class="cols"><table class="tbl"><tr><th>Totals</th><th class="n"></th></tr><tr><td>Subtotal</td><td class="n">${money(o.subtotal)}</td></tr><tr><td>Discount</td><td class="n">-${money(o.discount)}</td></tr>${o.taxes.map(t=>`<tr><td>${esc(t.name)}</td><td class="n">${money(t.amount)}</td></tr>`).join('')}<tr><td><b>Total</b></td><td class="n"><b>${money(o.total)}</b></td></tr></table>
- <table class="tbl"><tr><th>Payments</th><th class="n"></th></tr>${Object.entries(tend).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('')}${o.change?`<tr><td>Change given</td><td class="n">${money(o.change)}</td></tr>`:''}</table></div></div>
+ <table class="tbl"><tr><th>Payments</th><th class="n"></th></tr>${Object.entries(tend).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('')}${o.change?`<tr><td>Change given</td><td class="n">${money(o.change)}</td></tr>`:''}${o.payments.filter(p=>p.term).map(p=>`<tr><td colspan="2"><div class="hint">${esc(p.type)} ${esc([p.brand,p.last4?'\u2022\u2022'+p.last4:'',p.entry].filter(Boolean).join(' '))}${p.authCode?' · Auth '+esc(p.authCode):''}${p.tranNo?' · Tran '+esc(p.tranNo):''}${p.batchNo?' · Batch '+esc(p.batchNo):''}${p.surcharge>0.004?' · Surcharge $'+money(p.surcharge):''}${p.refundMethod?' · '+(p.refundMethod==='void'?'voided on terminal':p.refundMethod==='refund'?'refunded to card':'refunded manually'):''}${p.manual?' · entered by hand':''}${p.demo?' · TRAINING':''}</div></td></tr>`).join('')}</table></div></div>
  <div class="ebar"><button class="btn blue" data-a="reprint">Reprint Receipt</button><span class="flex"></span>${o.status==='paid'&&!(o.refundNums&&o.refundNums.length)?'<button class="btn" style="background:#7f1d1d;color:#fff" data-a="voidTxn">🗑 Void / Delete</button>':''}${o.status==='paid'&&can('refund')?'<button class="btn red" data-a="refund">Refund…</button>':''}</div>`}
 
 /* ---------- reports ---------- */
@@ -826,6 +832,20 @@ const SETT={
  <p class="hint">Not sure? Most USB receipt printers work with the first option once their Windows driver is installed. If receipts print blank, tiny or slow, choose the second option. Network printers print their IP address on a self-test page (hold FEED while turning the printer on).</p></div>
  <div class="sec"><h4 style="margin-top:0">Cash drawer</h4><div class="fgrid"><label class="fld wide"><span>How the drawer opens</span>${sel('drawerMode',c.drawerMode||'raw',[['raw','Plugged into the receipt printer — send open command'],['driver','Printer driver opens it when anything prints'],['none','No cash drawer']])}</label>${(c.drawerMode||'raw')==='raw'&&c.cmdSet!=='star'?`<label class="fld"><span>Drawer connector</span>${sel('drawerPin',c.drawerPin||2,[[2,'Pin 2 (standard)'],[5,'Pin 5 (second drawer)']])}</label>`:''}</div>${ck('drawerOnCash',c.drawerOnCash!==false,'Open drawer automatically on cash sales')}<button class="btn blue" data-a="hwTestDrawer">Test drawer</button></div>
  <div class="sec"><h4 style="margin-top:0">Barcode labels</h4><div class="fgrid"><label class="fld"><span>Label printer</span>${sel('labelPrinter',c.labelPrinter||'',[['','Choose…'],...pr.map(p=>[p.name,p.name])])}</label><label class="fld"><span>Label size (inches)</span><select data-o="set" data-f="labelSize">${Object.keys(LABEL_SIZES).map(k=>`<option ${S.settings.labelSize===k?'selected':''}>${k}</option>`).join('')}</select></label></div><p class="hint">Works with label printers like Zebra, DYMO, Rollo, Brother and Munbyn. Set the same label size in the printer's Windows settings. Print labels from Items → Print Labels.</p></div>`},
+ terminal:()=>{const c=S.cfg,drv=c.termDriver||'valor';const sel=(f,v,opts)=>`<select data-cfg="${f}">${opts.map(([a,b])=>`<option value="${esc(a)}" ${String(a)===String(v)?'selected':''}>${esc(b)}</option>`).join('')}</select>`;
+ const on=!!c.termEnabled,real=drv==='valor';
+ return `<h2>Card terminal</h2><p class="hint">Connect the PAX card terminal on your store Wi-Fi. When this is on, Credit, Debit and EBT send the amount to the terminal and the customer pays there. This setting is for <b>this register only</b>.</p>
+ <div class="sec"><label class="tog"><input type="checkbox" data-cfg="termEnabled" ${on?'checked':''}><span><b>Use the card terminal on this register</b></span></label>
+ <div class="fgrid"><label class="fld wide"><span>Terminal type</span>${sel('termDriver',drv,[['valor','Valor (PAX A35 running the Valor app)'],['poslink','PAX POSLink / BroadPOS (coming soon)'],['demo','Demo for training (no real terminal, no real cards)']])}</label>
+ ${real?`<label class="fld"><span>Terminal IP address</span><input data-cfg="termIp" value="${esc(c.termIp||'')}" placeholder="192.168.1.50" inputmode="decimal" autocomplete="off"></label><label class="fld"><span>Port</span><input data-cfg="termPort" value="${esc(c.termPort||5000)}" inputmode="numeric"></label>`:''}</div>
+ ${real?`<p class="hint"><b>Where do I find the IP address?</b> Look at the terminal's screen when it is idle. It says <b>"Server is Waiting for Transaction"</b> and shows its IP address (4 numbers with dots, like 192.168.1.50). Type that here. The terminal and this register must be on the same Wi-Fi. Ask your internet person to give the terminal a fixed address so it never changes.</p>`:''}
+ ${drv==='demo'?`<p class="hint"><b>Training mode.</b> Pretends to be a terminal. It approves after 2 seconds. An amount ending in <b>.13</b> is declined, ending in <b>.51</b> is only half approved, ending in <b>.99</b> shows the "check the terminal" screen. Nothing is charged.</p><div class="fgrid"><label class="fld"><span>Pretend surcharge % on credit (0 = none)</span><input data-cfg="termDemoSurchargePct" value="${esc(c.termDemoSurchargePct||0)}" inputmode="decimal"></label></div>`:''}
+ ${drv==='poslink'?'<p class="warn">PAX POSLink is not built yet. Choose Valor or Demo for now.</p>':''}
+ ${real?`<details class="adv"><summary>Advanced (leave as is unless support tells you)</summary><div class="fgrid"><label class="fld"><span>Cancel port</span><input data-cfg="termCancelPort" value="${esc(c.termCancelPort||5001)}" inputmode="numeric"></label><label class="fld"><span>Message format</span>${sel('termFraming',c.termFraming||'stx',[['stx','Standard (wrapped in start/end marks)'],['raw','Plain']])}</label><label class="fld"><span>Wait for the card (seconds)</span><input data-cfg="termTimeoutSec" value="${esc(c.termTimeoutSec||200)}" inputmode="numeric"></label></div></details>`:''}</div>
+ <div class="sec"><h4 style="margin-top:0">Check it</h4><button class="btn blue" data-a="termTest">Test connection</button><button class="btn" data-a="termEbt">EBT balance check</button><button class="btn amber" data-a="termSettle">Close batch now</button>
+ <p class="hint"><b>Test connection</b> asks the terminal if it is awake and shows its version. <b>Close batch now</b> sends the day's card sales to the bank (settlement). Do it once a day after you close, unless the terminal does it by itself. <b>EBT balance</b>: the customer swipes their EBT card on the terminal to see what is left.</p>
+ <p class="hint">If the terminal adds its own card surcharge, do not also use the POS "Card Fee" button, or the customer pays twice.</p></div>
+ <div class="sec"><h4 style="margin-top:0">If the terminal stops working</h4><p class="hint">On the pay screen, tap the amount box's <b>"Enter card manually"</b> link to type the last 4 digits yourself like before. Or turn the switch above off.</p></div>`},
  hw:()=>{const c=S.cfg;const pr=S.printers;if(ANDROID)return `<h2>Tablet & backups</h2>
  <div class="sec"><h4 style="margin-top:0">Barcode scanner</h4><p class="hint">Pair a Bluetooth scanner in Android settings (keyboard / HID mode), or plug in a USB scanner. It works with no setup.</p><div class="card" style="margin-top:6px"><small>Scan test — scan any barcode now</small><div id="lastScan" style="font-size:17px;margin-top:4px">${S.lastScan?esc(S.lastScan.code):'Waiting for a scan…'}</div></div></div>
  <div class="sec"><h4 style="margin-top:0">App</h4><p class="hint">Store POS ${esc(c.appVersion||'')} · Android app ${esc(c.version||'')}</p><button class="btn red" data-a="hwExit">Exit Store POS</button></div>
@@ -875,7 +895,7 @@ ${WEB?`<div class="sec"><h4 style="margin-top:0">Backups</h4><p class="hint">Bac
  <div class="sec"><h4 style="margin-top:0">Clean up</h4><p class="hint">${S.products.filter(p=>p.sample).length} sample items are loaded for testing.</p><button class="btn" data-a="wipeSample">Remove sample items</button><button class="btn red" data-a="wipeItems">Delete ALL items</button><button class="btn red" data-a="wipeSales">Delete ALL sales history</button></div>
 `} <div class="sec"><div class="hint" id="stinfo">${S.products.length.toLocaleString()} items · ${(DESK&&S.stats?S.stats.orders:S.orders.length).toLocaleString()} transactions saved${DESK&&S.stats&&S.stats.firstOrder?' · history since '+new Date(S.stats.firstOrder).toLocaleDateString():''}${DB.mem?' · <b class="warn">STORAGE NOT AVAILABLE — nothing is being saved</b>':''}</div></div>`
 };
-function renderSettings(){const tabs=WEB?[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(S.user&&S.user.acctRole==='owner'?[['members','Members (accounts)']]:[]),['link','This browser'],['data','Import / Export']]:[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(DESK?[['printers','Printers & Drawer'],['hw',ANDROID?'Tablet & Backups':'Scanner, App & Backups']]:[]),...(ANDROID?[['link','Link to Store PC']]:DESK?[['tablets','Tablets'],['link','Link to Store PC']]:[]),['data','Import / Backup'],...(DESK&&!ANDROID?[['license','License']]:[])];
+function renderSettings(){const tabs=WEB?[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(S.user&&S.user.acctRole==='owner'?[['members','Members (accounts)']]:[]),['link','This browser'],['data','Import / Export']]:[['store','Store & Receipt'],['tax','Tax Groups'],['cats','Categories'],['qk','Quick Keys'],['users','Users & PINs'],...(DESK?[['printers','Printers & Drawer']]:[]),...(DESK&&!ANDROID?[['terminal','Card terminal']]:[]),...(DESK?[['hw',ANDROID?'Tablet & Backups':'Scanner, App & Backups']]:[]),...(ANDROID?[['link','Link to Store PC']]:DESK?[['tablets','Tablets'],['link','Link to Store PC']]:[]),['data','Import / Backup'],...(DESK&&!ANDROID?[['license','License']]:[])];
  return `<div class="sett"><nav class="stabs">${tabs.map(([k,t])=>`<button class="${S.setTab===k?'on':''}" data-a="setTab" data-v="${k}">${t}</button>`).join('')}</nav><section class="sbody">${SETT[S.setTab]()}${saveBar()}</section></div>`}
 
 /* ---------- import / export ---------- */
@@ -928,7 +948,10 @@ const A={
  cardQuick(d){if(!S.cart.lines.length){toast('Add items first');return}tenderModal(d.v)},
  tender(d){tenderModal(d.v)},
  qcash(d){tender('Cash',+d.v)},
- rmPay(d){const p=S.cart.payments[+d.i];if(!p)return;confirmBox(`Remove ${esc(p.type)} payment of $${money(p.amount)}?${CARDLIKE.includes(p.type)?'<br><br><b>Also void it on the card terminal.</b>':''}`,'Remove',()=>{S.cart.payments.splice(+d.i,1);render()},{danger:true})},
+ rmPay(d){const p=S.cart.payments[+d.i];if(!p)return;
+  if(p.term&&!p.manual&&p.tranNo&&termOn()){termInfo('Remove this card payment?',`${esc(p.type)} $${money(p.amount)} ${esc(p.brand||'')} ${p.last4?'\u2022\u2022'+esc(p.last4):''} was already charged on the terminal.`,
+   termBtn('green','Void it on the terminal and remove',async()=>{closeModal();const ref=termRef();const r=await termRun('Voiding on terminal...',`$${money(p.amount)}`,ref,()=>posAPI.termVoid({tranNo:p.tranNo,ref}));const i=S.cart.payments.indexOf(p);if(r.ok&&i>=0){S.cart.payments.splice(i,1);render();toast('Card payment voided')}else termInfo('Not voided',esc(r.message||'')+'<br><br>The payment is still on the sale.')})+termBtn('','Remove only (I already voided it on the terminal)',()=>{closeModal();const i=S.cart.payments.indexOf(p);if(i>=0)S.cart.payments.splice(i,1);render()})+cancelBtn());return}
+  confirmBox(`Remove ${esc(p.type)} payment of $${money(p.amount)}?${CARDLIKE.includes(p.type)?'<br><br><b>Also void it on the card terminal.</b>':''}`,'Remove',()=>{S.cart.payments.splice(+d.i,1);render()},{danger:true})},
  splitPay(){if(!S.cart.lines.length){toast('Add items first');return}const c=calc(S.cart);if(c.balance<=0.004)return;
   keypad({title:'Split payment — cash part',sub:`Total due <b>$${money(c.balance)}</b>. Enter how much the customer pays in <b>cash</b>.<br>The rest goes on a card next.`,okLabel:'Next',
    onOk:v=>{v=r2(v);if(!(v>0))return;if(v>=c.balance-0.004){tender('Cash',v);return}
@@ -1045,14 +1068,14 @@ const A={
    $('#rfTot').innerHTML=`Refund <b>$${money(R.total)}</b>${R.tax?` <small>(includes $${money(R.tax)} tax)</small>`:''}`;$('#mok').disabled=!(R.total>0.004||rows.some(r=>q[r.i]>0))};
   const go=()=>{const R=calcR();if(!rows.some(r=>q[r.i]>0)){toast('Pick at least one item',1);return}
    const tl=to==='same'?Object.entries(paidT).filter(([k,v])=>Math.abs(v)>0.004):[[to,R.total]];
-   confirmBox(`Refund <b>$${money(R.total)}</b> from transaction #${o.num}?<br><br>${tl.map(([k,v])=>`${esc(k)}: $${money(v)}`).join('<br>')}<br><br><small>Items go back into stock.${tl.some(([k])=>CARDLIKE.includes(k))?' <b>Also refund the card on the card terminal.</b>':''}</small>`,'Refund',()=>{
-    let r;if(R.full){r={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:'',refundOf:o.num,lines:o.lines.map(l=>({...l,qty:-l.qty,disc:-l.disc,net:-l.net,tax:-l.tax})),subtotal:-o.subtotal,discount:-o.discount,taxes:o.taxes.map(x=>({...x,amount:-x.amount})),tax:-o.tax,total:-o.total,payments:tl.map(([k,v])=>({type:k,amount:-r2(v),time:Date.now()})),change:0,status:'refund'}}
+   confirmBox(`Refund <b>$${money(R.total)}</b> from transaction #${o.num}?<br><br>${tl.map(([k,v])=>`${esc(k)}: $${money(v)}`).join('<br>')}<br><br><small>Items go back into stock.${tl.some(([k])=>CARDLIKE.includes(k))?' <b>Also refund the card on the card terminal.</b>':''}</small>`,'Refund',()=>{termRefunds(o,tl).then(ex=>{if(!ex)return;
+    let r;if(R.full){r={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:'',refundOf:o.num,lines:o.lines.map(l=>({...l,qty:-l.qty,disc:-l.disc,net:-l.net,tax:-l.tax})),subtotal:-o.subtotal,discount:-o.discount,taxes:o.taxes.map(x=>({...x,amount:-x.amount})),tax:-o.tax,total:-o.total,payments:tl.map(([k,v])=>({type:k,amount:-r2(v),time:Date.now(),...(ex[k]||{})})),change:0,status:'refund'}}
     else{const lines=[];rows.forEach(r=>{const k=q[r.i]||0;if(!k)return;const f=k/r.l.qty;lines.push({...r.l,qty:-k,disc:-r2((+r.l.disc||0)*f),net:-r2((+r.l.net||0)*f),tax:-r2((+r.l.tax||0)*f)})});
-     const tf=o.tax?R.tax/o.tax:0;r={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:'',refundOf:o.num,lines,subtotal:-R.sub,discount:-R.disc,taxes:(o.taxes||[]).map(x=>({...x,amount:-r2(x.amount*tf)})),tax:-R.tax,total:-R.total,payments:tl.map(([k,v])=>({type:k,amount:-r2(v),time:Date.now()})),change:0,status:'refund'}}
+     const tf=o.tax?R.tax/o.tax:0;r={id:uid(),num:S.settings.nextOrder++,time:Date.now(),user:S.user.name,label:'',refundOf:o.num,lines,subtotal:-R.sub,discount:-R.disc,taxes:(o.taxes||[]).map(x=>({...x,amount:-r2(x.amount*tf)})),tax:-R.tax,total:-R.total,payments:tl.map(([k,v])=>({type:k,amount:-r2(v),time:Date.now(),...(ex[k]||{})})),change:0,status:'refund'}}
     r.lines.forEach(l=>{if(!l.inv)return;const p=findSku(l.sku);if(p&&!p.nonInventory){p.stock=r2((+p.stock||0)-l.qty);DB.put('products',p)}});
     o.refQty=o.refQty||{};rows.forEach(r=>{if(q[r.i])o.refQty[r.i]=r2((o.refQty[r.i]||0)+q[r.i])});o.refundNums=[...(o.refundNums||[]),r.num];o.refundNum=r.num;
     if(o.lines.every((l,i)=>(o.refQty[i]||0)>=l.qty))o.status='refunded';
-    DB.put('orders',o);S.orders.push(r);DB.put('orders',r);DC.det[r.id]=r;bumpOrders();saveKV('settings');S.ordSel=r.id;render();toast('Refund recorded');printReceipt(r)},{danger:true})};
+    DB.put('orders',o);S.orders.push(r);DB.put('orders',r);DC.det[r.id]=r;bumpOrders();saveKV('settings');S.ordSel=r.id;render();toast('Refund recorded');printReceipt(r)})},{danger:true})};
   openModal(`<div class="mtitle">Refund transaction #${o.num}</div><div class="msub">Pick the items and quantities to refund. Everything is selected — tap − to keep an item.</div>
    <div class="seg"><button data-a="cb" data-id="${cb(()=>{rows.forEach(r=>q[r.i]=r.max);draw()})}">Select all</button><button data-a="cb" data-id="${cb(()=>{rows.forEach(r=>q[r.i]=0);draw()})}">Select none</button></div>
    <div id="rfBody" class="rfbody"></div><h4 style="margin:10px 0 4px">Give money back as</h4><div class="seg" id="rfTo"></div><div class="rftot" id="rfTot"></div>
@@ -1118,6 +1141,13 @@ const A={
  async hwRefresh(){if(ANDROID){await A.btLoad();toast(`${(S.btDevices||[]).length} Bluetooth printers paired`);return}S.printers=await posAPI.printers();S.comPorts=await posAPI.comPorts();render();toast(`${S.printers.length} printers, ${S.comPorts.length} COM ports found`)},
  async hwTestPrint(){const ok=await printHtml(`<div class="rc"><div class="c b">${esc(S.settings.storeName)}</div><hr><div class="c">PRINTER TEST</div><div class="r"><span>Paper</span><span>${S.cfg.paper||80} mm</span></div><div>${fmtDT(Date.now())}</div><hr><div class="c">If you can read this, receipts are working.</div><br></div>`);if(ok)toast('Sent to printer')},
  async hwTestDrawer(){if((S.cfg.drawerMode||'raw')==='raw'){toast('Sending drawer command…');const r=await posAPI.openDrawer();toast(r.ok?'Drawer command sent to '+r.printer:'Cash drawer: '+r.error,!r.ok)}else openDrawer()},
+ async termTest(){if(!can('settings'))return;const r=await termRun('Testing the terminal...','Asking it to answer','test',()=>posAPI.termTest());termShowResult(r.ok?'Terminal answered':'Terminal did not answer',r)},
+ termSettle(){if(!can('settings'))return;confirmBox('Close the batch now?<br><small>This sends all card sales since the last close to the bank. Do it once a day.</small>','Close batch',async()=>{const r=await termRun('Closing the batch...','Please wait','settle',()=>posAPI.termSettle());
+   const raw=r.raw||{},cnt=Object.entries(raw).find(([k])=>/COUNT|CNT/i.test(k));
+   termShowResult(r.ok?'Batch closed':'Batch not closed',r,r.ok?`<br><br>${r.batchNo?'Batch <b>'+esc(r.batchNo)+'</b><br>':''}${cnt?'Card sales: <b>'+esc(cnt[1])+'</b><br>':''}${r.totalCents?'Total: <b>$'+money(fromCents(r.totalCents))+'</b>':''}`:'')})},
+ termEbt(){if(!can('settings'))return;termInfo('EBT balance check','Which EBT account? Then the customer swipes their EBT card and types their PIN on the terminal.',termBtn('green','EBT Food',()=>A.termEbtGo('ebt_food'))+termBtn('green','EBT Cash',()=>A.termEbtGo('ebt_cash'))+cancelBtn())},
+ async termEbtGo(mode){closeModal();const ref=termRef();const r=await termRun('Waiting for EBT card on terminal...',mode==='ebt_cash'?'EBT Cash balance':'EBT Food balance',ref,()=>posAPI.termEbtBalance({mode,ref}));
+   termShowResult(r.ok?'EBT balance':'No balance',r,r.ok&&r.ebtBalanceCents!=null?`<br><br><b style="font-size:26px">$${money(fromCents(r.ebtBalanceCents))}</b>`:'')},
  async hwBackup(){const r=await posAPI.backupNow();S.cfg=await posAPI.getConfig();render();toast(r.ok?'Backup saved':'Backup problem: '+r.errors.join('; '),!r.ok)},
  async hwBackupDir(){await posAPI.chooseBackupDir();S.cfg=await posAPI.getConfig();render()},
  hwOpen(d){posAPI.openFolder(d.v)},
@@ -1132,7 +1162,7 @@ const A={
  async saveUpdUrl(d){const i=$('#updUrl');if(!i)return;const v=i.value.trim();if(v&&!/^https:\/\//i.test(v)){toast('The address must start with https://',1);return}S.cfg.updateUrl=v;await posAPI.setConfig({updateUrl:v});if(!(d&&d.quiet)){savedMark();toast(v?'✓ Update address saved':'Update address cleared')}},
  async saveAll(){const el=document.activeElement;if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT')){el.dispatchEvent(new Event('change',{bubbles:true}));el.blur()}
   for(const k of ['settings','users','discounts'])await DB.put('kv',clone(S[k]),k);
-  if(DESK){const u=$('#updUrl');if(u)S.cfg.updateUrl=u.value.trim();const pick=['netHost','netPort','comPort','comBaud','comFlow','updateUrl','printer','paper','cols','feed','cut','cmdSet','drawerMode','drawerPin','drawerOnCash','labelPrinter','reportPrinter','rcptConn'];const patch={};pick.forEach(k=>{if(S.cfg[k]!==undefined)patch[k]=S.cfg[k]});await posAPI.setConfig(patch)}
+  if(DESK){const u=$('#updUrl');if(u)S.cfg.updateUrl=u.value.trim();const pick=['netHost','netPort','comPort','comBaud','comFlow','updateUrl','printer','paper','cols','feed','cut','cmdSet','drawerMode','drawerPin','drawerOnCash','labelPrinter','reportPrinter','rcptConn','termEnabled','termDriver','termIp','termPort','termCancelPort','termFraming','termTimeoutSec','termDemoSurchargePct'];const patch={};pick.forEach(k=>{if(S.cfg[k]!==undefined)patch[k]=S.cfg[k]});await posAPI.setConfig(patch)}
   savedMark();toast('✓ All changes saved')},
  async undoUpdate(){await posAPI.undoUpdate()},
  async chkUpdate(){toast('Checking…');const r=await posAPI.checkUpdate();if(!r.ok)toast('Update check: '+r.error,1);else if(r.available){S.updAvail=r.available;render();A.dlUpdate&&confirmBox(`Store POS <b>${esc(r.available.version)}</b> is available.<br><small>${esc(r.available.notes||'')}</small>`,'Download & install',()=>A.dlUpdate())}else toast('You have the latest version ('+(S.cfg.appVersion||'')+')')},
@@ -1164,7 +1194,7 @@ function histUI(h){const el=$('#hist');if(!el)return;
  if(h.finished)toast(`Sales history imported: ${h.done.toLocaleString()} transactions`);else if(h.error)toast('History import problem: '+h.error,1)}
 function splitRest(){const c=calc(S.cart);if(c.balance<=0.004){finishSale();return}
  const cash=sum(S.cart.payments.filter(p=>p.type==='Cash'),p=>p.amount);
- openModal(`<div class="mtitle">Remaining: $${money(c.balance)}</div><div class="msub">Cash taken: $${money(cash)}. How is the customer paying the rest?</div><div class="dgrid">${['Credit','Debit','EBT Food','Gift Card','Check','Other'].map(t=>`<button class="btn green" style="min-height:64px" data-a="cb" data-id="${cb(()=>{closeModal();tender(t,c.balance)})}">${t}</button>`).join('')}</div><div class="mbtns">${cancelBtn('Choose later')}</div>`,'wide')}
+ openModal(`<div class="mtitle">Remaining: $${money(c.balance)}</div><div class="msub">Cash taken: $${money(cash)}. How is the customer paying the rest?</div><div class="dgrid">${['Credit','Debit','EBT Food',...(termOn()?['EBT Cash']:[]),'Gift Card','Check','Other'].map(t=>`<button class="btn green" style="min-height:64px" data-a="cb" data-id="${cb(()=>{closeModal();tender(t,c.balance)})}">${t}</button>`).join('')}</div><div class="mbtns">${cancelBtn('Choose later')}</div>`,'wide')}
 /* ---------- barcodes ---------- */
 const EAN_L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
 const EAN_R=EAN_L.map(c=>c.replace(/./g,b=>b==='0'?'1':'0'));
@@ -1230,6 +1260,72 @@ function cardApprove(type,a){const ask=S.settings.askLast4!==false&&S.settings.a
  openModal(`<div class="mtitle">Run $${money(a)} as ${esc(type)}</div><div class="msub">Swipe / tap / insert on the card terminal. When it's approved, type the <b>last 4 digits of the card</b> (shown on the terminal or slip).</div>
  <div class="kpd" id="kpd" style="text-align:center;letter-spacing:6px">_ _ _ _</div><div class="kp">${keys.map(k=>`<button data-a="kpK" data-k="${k}">${k}</button>`).join('')}</div>
  <div class="mbtns"><button class="btn red" data-a="cb" data-id="${cb(()=>{closeModal();toast('Card payment cancelled')})}">Declined / Cancel</button><button class="btn" data-a="cb" data-id="${cb(()=>{closeModal();addPay(type,a)})}">Approved — skip</button><button class="btn green" id="mok" data-a="cb" data-id="${cb(()=>{const l4=S.kp.buf;if(!/^\d{4}$/.test(l4)){toast('Enter all 4 digits, or tap Approved — skip',1);return}closeModal();addPay(type,a,l4)})}">Approved</button></div>`,'kpm')}
+/* ---------- card terminal (PAX A35 / Valor): see source/README.md "Card terminal" ---------- */
+const TERM_MODE={'Credit':'credit','Debit':'debit','EBT Food':'ebt_food','EBT Cash':'ebt_cash'};
+const termOn=()=>!!(DESK&&!ANDROID&&!WEB&&S.cfg&&S.cfg.termEnabled&&window.posAPI&&posAPI.termSale);
+const tendersList=()=>termOn()?['Cash','Credit','Debit','EBT Food','EBT Cash','Check','Gift Card','Other']:TENDERS;
+const termRef=()=>String(Date.now()).slice(-9)+Math.floor(Math.random()*10);
+const toCents=v=>Math.round(r2(v)*100);
+const fromCents=c=>r2((+c||0)/100);
+function termFields(r){const f={term:true};
+ if(r.last4)f.last4=r.last4;if(r.brand)f.brand=r.brand;if(r.authCode)f.authCode=r.authCode;if(r.entry)f.entry=r.entry;if(r.rrn)f.rrn=r.rrn;if(r.tranNo)f.tranNo=r.tranNo;if(r.batchNo)f.batchNo=r.batchNo;if(r.stan)f.stan=r.stan;if(r.aid)f.aid=r.aid;if(r.txnId)f.txnId=r.txnId;
+ if(r.surchargeCents>0)f.surcharge=fromCents(r.surchargeCents);if(r.cashbackCents>0)f.cashback=fromCents(r.cashbackCents);if(S.cfg.termDriver==='demo')f.demo=true;return f}
+/* shows "Waiting for card" with a big Cancel button, runs the terminal call, then closes the box and returns the result */
+async function termRun(title,sub,ref,call){
+ S.termBusy=ref;
+ openModal(`<div class="twait"><div class="tspin"></div><div class="mtitle" style="text-align:center">${title}</div><div class="msub" style="text-align:center">${sub}</div>${S.cfg.termDriver==='demo'?'<div class="hint" style="text-align:center"><b>TRAINING MODE</b> - simulated terminal, no real card</div>':''}
+ <div class="mbtns"><button class="btn red" id="tcancel" style="min-height:76px;font-size:24px;width:100%" data-a="cb" data-id="${cb(()=>{const b=$('#tcancel');if(b){b.disabled=true;b.textContent='Cancelling...'}posAPI.termCancel({ref})})}">Cancel</button></div></div>`,'sm');
+ let r;try{r=await call()}catch(e){r={ok:false,message:String(e&&e.message||e)}}
+ S.termBusy=null;closeModal();return r}
+function termInfo(title,html,btns){openModal(`<div class="mtitle">${title}</div><div class="msub">${html}</div><div class="mbtns col">${btns||cancelBtn('OK')}</div>`,'sm')}
+const termBtn=(cls,t,fn)=>`<button class="btn ${cls}" style="min-height:56px" data-a="cb" data-id="${cb(fn)}">${t}</button>`;
+function termPay(type,a){
+ if(S.termBusy){toast('The card terminal is busy',1);return}
+ const ref=termRef(),mode=TERM_MODE[type];
+ termRun('Waiting for card on terminal...',`<b style="font-size:30px">$${money(a)}</b><br>${esc(type)} - the customer pays on the terminal`,ref,()=>posAPI.termSale({mode,cents:toCents(a),ref})).then(r=>termSaleDone(type,a,r))}
+function termSaleDone(type,a,r){
+ const again=()=>termPay(type,a),manual=()=>cardApprove(type,a);
+ if(r.ok){let got=r.approvedCents>0?fromCents(r.approvedCents):a;if(got>a+0.004)got=a;
+  const part=!!r.partial||got<a-0.004,f=termFields(r),dbl=f.surcharge&&S.cart.lines.some(l=>l.fee);
+  addPay(type,got,r.last4||'',f);
+  if(dbl)setTimeout(()=>toast('The terminal added a surcharge AND this sale has the POS Card Fee. Tell the manager.',1),300);
+  if(part&&S.cart.payments.length){const c=calc(S.cart);if(c.balance>0.004)termInfo('Only part was approved',`The card approved <b>$${money(got)}</b> of $${money(a)}.<br><br><b>$${money(c.balance)} is still due.</b> Take the rest another way.`)}
+  return}
+ if(r.cancelled){toast('Card payment cancelled');return}
+ if(r.busy){toast(r.message||'Terminal busy',1);return}
+ if(r.unknown){termUnknown(type,a,r);return}
+ if(r.unreachable||r.disabled){termInfo('Cannot reach the card terminal',`${esc(r.message||'')}<br><br>Check that the terminal is on and on the store Wi-Fi.`,
+  termBtn('green','Try again',()=>{closeModal();again()})+termBtn('','Enter card manually (terminal not working)',()=>{closeModal();manual()})+cancelBtn());return}
+ termInfo('Card not approved',`<b>${esc(r.message||'Declined')}</b><br><br>Nothing was charged and nothing was added to the sale.`,termBtn('green','Try again',()=>{closeModal();again()})+cancelBtn('OK'))}
+function termUnknown(type,a,r){
+ termInfo('Check the terminal screen',`${esc(r.message||'')}<br><br>Look at the terminal and its receipt. Was the card charged <b>$${money(a)}</b>?`,
+  termBtn('green','It was approved',()=>termManualApproved(type,a))+termBtn('red','It was not approved',()=>{closeModal();toast('Nothing recorded. You can try again.')}))}
+function termManualApproved(type,a){
+ openModal(`<div class="mtitle">Record the approved card</div><div class="msub">Type what the terminal showed or printed for the $${money(a)} ${esc(type)} payment.</div>
+ <label class="fld"><span>Last 4 digits of the card</span><input id="mL4" inputmode="numeric" maxlength="4" autocomplete="off"></label><label class="fld"><span>Approval / auth code</span><input id="mAuth" maxlength="12" autocomplete="off"></label>
+ <div class="mbtns">${cancelBtn()}<button class="btn green" id="mok" data-a="cb" data-id="${cb(()=>{const l4=($('#mL4').value||'').trim(),au=($('#mAuth').value||'').trim();if(!/^\d{4}$/.test(l4)){toast('Enter the 4 digits',1);return}closeModal();addPay(type,a,l4,{term:true,manual:true,authCode:au})})}">Save payment</button></div>`,'sm');setTimeout(()=>{const i=$('#mL4');i&&i.focus()},60)}
+/* Refunding a card payment that was taken on the terminal: void / refund to card / already done.
+   Resolves {payment type: extra fields} to put on the refund's payment, or null if the cashier cancelled. */
+async function termRefunds(o,tl){
+ const ex={};if(!termOn())return ex;
+ for(const [k,v] of tl){
+  if(!TERM_MODE[k])continue;
+  const orig=(o.payments||[]).find(p=>p.type===k&&p.term&&!p.manual&&p.tranNo);if(!orig)continue;
+  const full=v>=orig.amount-0.004&&!(o.refundNums&&o.refundNums.length);
+  for(;;){
+   const ch=await new Promise(res=>{openModal(`<div class="mtitle">Refund $${money(v)} to the ${esc(k)} card</div><div class="msub">${esc(orig.brand||'Card')} ending <b>${esc(orig.last4||'----')}</b> - paid on the card terminal.</div>
+    <div class="mbtns col">${full?termBtn('green','Void on terminal<br><small>Same day / same batch. The customer does not need the card.</small>',()=>{closeModal();res('void')}):''}${termBtn('blue','Refund to card<br><small>The customer taps or inserts their card on the terminal.</small>',()=>{closeModal();res('refund')})}${termBtn('','Already refunded on terminal / do it by hand',()=>{closeModal();res('manual')})}${termBtn('red','Cancel the refund',()=>{closeModal();res(null)})}</div>`,'sm')});
+   if(!ch)return null;
+   if(ch==='manual'){ex[k]={term:true,refundMethod:'manual',refundOfTran:orig.tranNo};break}
+   const ref=termRef();
+   const r=await termRun(ch==='void'?'Voiding on terminal...':'Waiting for card on terminal...',`<b style="font-size:30px">$${money(v)}</b>`,ref,()=>ch==='void'?posAPI.termVoid({tranNo:orig.tranNo,ref}):posAPI.termRefund({mode:TERM_MODE[k],cents:toCents(v),ref}));
+   if(r.ok){ex[k]=Object.assign(termFields(r),{refundMethod:ch,refundOfTran:orig.tranNo});delete ex[k].surcharge;break}
+   if(r.cancelled)continue;
+   await new Promise(res=>termInfo(r.unknown?'Check the terminal screen':'Not done',`${esc(r.message||'')}${r.unknown?'<br><br>Look at the terminal before trying again so the customer is not refunded twice.':''}`,termBtn('green','OK',()=>{closeModal();res()})))}
+ }
+ return ex}
+/* Settings > Card terminal buttons */
+function termShowResult(title,r,more){termInfo(title,`${r.ok?'':'<b class="warn">Problem:</b> '}${esc(r.message||'')}${more||''}`,cancelBtn('OK'))}
 function setQK(i,v){S.settings.quickKeys[i]=v;saveKV('settings');closeModal();render()}
 const searchHtml=(q,act,extra='')=>{q=q.trim().toUpperCase();const r=q?qFilter(S.products.filter(p=>!p.discontinued),q).slice(0,40):[];return r.map(p=>`<button class="fr" data-a="${act}" data-sku="${esc(p.sku)}" ${extra}><span><b>${esc(p.name)}</b><small>${esc(p.sku)} · ${esc(p.cat)}${p.sub?' › '+esc(p.sub):''}</small></span><b>$${money(p.price)}</b></button>`).join('')||`<div class="empty">${q?'No matches':'Start typing…'}</div>`};
 const IN={vpart(t){if(!S.edit)return;const v=(S.edit.vendors||[])[+t.dataset.i];if(v){v.part=t.value;S.dirty=true}},
@@ -1807,12 +1903,12 @@ document.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preven
 function onField(e){const t=e.target;if(t.dataset.f)setField(t);if(t.dataset.tax&&S.edit){const a=S.edit.taxes,id=t.dataset.tax,i=a.indexOf(id);if(t.checked&&i<0)a.push(id);if(!t.checked&&i>=0)a.splice(i,1);S.dirty=true}if(t.dataset.in&&IN[t.dataset.in]&&e.type==='input')IN[t.dataset.in](t)}
 document.addEventListener('input',onField);
 document.addEventListener('input',e=>{const t=e.target;if(!t.dataset.itmu||!S.edit)return;const c=+S.edit.cost||0;if(!(c>0)||t.value.trim()==='')return;S.edit.price=roundPrice(c*(1+rvN(t.value)/100));S.dirty=true;const pi=document.querySelector('[data-o=edit][data-f=price]');if(pi)pi.value=S.edit.price;const m=$('#margin');if(m)m.textContent=marginTxt(S.edit);const mk=$('#markupK');if(mk)mk.textContent=markupTxt(S.edit)});
-document.addEventListener('input',e=>{const t=e.target;if(DESK&&t.dataset.cfg&&t.tagName==='INPUT'&&t.type!=='checkbox'){clearTimeout(t._cfgT);t._cfgT=setTimeout(()=>{let v=t.value;if(['netPort','comBaud','scanBaud'].includes(t.dataset.cfg))v=+v||0;S.cfg[t.dataset.cfg]=v;posAPI.setConfig({[t.dataset.cfg]:v}).then(savedMark)},400)}});
+document.addEventListener('input',e=>{const t=e.target;if(DESK&&t.dataset.cfg&&t.tagName==='INPUT'&&t.type!=='checkbox'){clearTimeout(t._cfgT);t._cfgT=setTimeout(()=>{let v=t.value;if(['netPort','comBaud','scanBaud','termPort','termCancelPort','termTimeoutSec','termDemoSurchargePct'].includes(t.dataset.cfg))v=+v||0;S.cfg[t.dataset.cfg]=v;posAPI.setConfig({[t.dataset.cfg]:v}).then(savedMark)},400)}});
 document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.a2==='lanOn'){posAPI.lanSet(t.checked).then(l=>{S.lan=l;render();savedMark()});return}if(t.dataset.a2==='cloudOn'){posAPI.cloudSet(t.checked).then(l=>{S.lan=l;render();savedMark();setTimeout(()=>posAPI.lanState().then(x=>{S.lan=x;if(S.setTab==='tablets')render()}),2500)});return}
  if(t.dataset.a2==='mbRole'){posAPI.acctRole(t.dataset.u,t.value).then(()=>{toast('Role changed');A.mbLoad()},e=>{toast(e.message,1);A.mbLoad()});return}
  if(t.dataset.a2==='role'){const u=S.users[+t.dataset.i];if(u.role==='admin'&&t.value!=='admin'&&S.users.filter(x=>x.role==='admin').length<2){toast('Keep at least one Owner',1);t.value='admin';return}u.role=t.value;delete u.perms;saveKV('users');render();return}
- if(t.dataset.perm&&S.permUser!=null){const u=S.users[S.permUser];u.perms={...(u.perms||ROLE_PRESET[u.role]||{})};u.perms[t.dataset.perm]=t.checked;saveKV('users');return}if(t.dataset.cfg&&DESK){const f=t.dataset.cfg;let v=t.type==='checkbox'?t.checked:t.value;if(['paper','cols','feed','drawerPin','netPort','comBaud','scanBaud'].includes(f))v=+v||0;if(f==='paper'&&S.cfg.rcptConn!=='driver')S.cfg.cols=v===58?32:48;S.cfg[f]=v;posAPI.setConfig(f==='paper'?{paper:v,cols:S.cfg.cols}:{[f]:v}).then(savedMark);if(['rcptConn','cmdSet','drawerMode','scanCom','paper'].includes(f))render();return}if(t.dataset.file){const f=t.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>FILE[t.dataset.file](rd.result,f.name);if(t.dataset.file==='logo')rd.readAsDataURL(f);else rd.readAsText(f);t.value='';return}if(t.type==='checkbox'||t.tagName==='SELECT')onField(e)});
+ if(t.dataset.perm&&S.permUser!=null){const u=S.users[S.permUser];u.perms={...(u.perms||ROLE_PRESET[u.role]||{})};u.perms[t.dataset.perm]=t.checked;saveKV('users');return}if(t.dataset.cfg&&DESK){const f=t.dataset.cfg;let v=t.type==='checkbox'?t.checked:t.value;if(['paper','cols','feed','drawerPin','netPort','comBaud','scanBaud','termPort','termCancelPort','termTimeoutSec','termDemoSurchargePct'].includes(f))v=+v||0;if(f==='paper'&&S.cfg.rcptConn!=='driver')S.cfg.cols=v===58?32:48;S.cfg[f]=v;posAPI.setConfig(f==='paper'?{paper:v,cols:S.cfg.cols}:{[f]:v}).then(savedMark);if(['rcptConn','cmdSet','drawerMode','scanCom','paper','termEnabled','termDriver','termFraming'].includes(f))render();return}if(t.dataset.file){const f=t.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>FILE[t.dataset.file](rd.result,f.name);if(t.dataset.file==='logo')rd.readAsDataURL(f);else rd.readAsText(f);t.value='';return}if(t.type==='checkbox'||t.tagName==='SELECT')onField(e)});
 let scanBuf='',scanT=0,scanT0=0,scanIdle=null;
 function scanDone(){clearTimeout(scanIdle);const c=scanBuf,dur=scanT-scanT0;scanBuf='';if(c.length>=3)onScan(c);return c.length}
 function scanLooksFast(){return scanBuf.length>=6&&(scanT-scanT0)/(scanBuf.length-1)<35}
