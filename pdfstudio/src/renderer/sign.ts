@@ -1,16 +1,10 @@
 import { el, modal, toast } from './util';
 import { pdfjsLib } from './doc';
 
-export type SigKind = 'signature' | 'initials';
-let KEY = 'pdfstudio.signatures';
-const FONTS = ['Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Ink Free', 'Segoe Print', 'cursive'];
+import { cachedSigs, refreshSigs, addSig, removeSig, type SigKind } from './sigstore';
 
-function loadSaved(): string[] {
-  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
-}
-function saveSaved(list: string[]) {
-  try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 100))); } catch { /* ignore */ }
-}
+export type { SigKind };
+const FONTS = ['Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Ink Free', 'Segoe Print', 'cursive'];
 
 /** Crop transparent margins of a canvas and return a PNG data URL */
 function trim(c: HTMLCanvasElement): string | null {
@@ -71,10 +65,10 @@ function removeWhite(src: HTMLCanvasElement): HTMLCanvasElement {
   return c;
 }
 export async function getSignature(kind: SigKind = 'signature'): Promise<string | null> {
-  KEY = kind === 'initials' ? 'pdfstudio.initials' : 'pdfstudio.signatures';
   const noun = kind === 'initials' ? 'initials' : 'signature';
   let color = '#111827';
-  let mode: 'draw' | 'type' | 'upload' | 'saved' = loadSaved().length ? 'saved' : 'draw';
+  let saved = cachedSigs(kind);   // shown at once; refreshed from the account below
+  let mode: 'draw' | 'type' | 'upload' | 'saved' = saved.length ? 'saved' : 'draw';
   let chosenSaved: string | null = null;
   let remember = true;
 
@@ -160,7 +154,7 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
       refreshUpload();
       pane.append(r, fileIn, upPrev, stripRow, remRow);
     } else {
-      const list = loadSaved();
+      const list = saved;
       const box = el('div', 'sig-saved');
       if (!list.length) box.innerHTML = '<span>No saved ' + noun + 's yet.</span>';
       for (const u of list) {
@@ -170,7 +164,7 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
         it.ondblclick = () => { chosenSaved = u; (document.querySelector('.modal .footer .btn.primary') as HTMLElement)?.click(); };
         const del = el('span', '', { title: 'Remove' }, '\u00d7');
         del.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#c33;color:#fff;border-radius:50%;width:16px;height:16px;text-align:center;line-height:15px;font-size:12px';
-        del.onclick = (e) => { e.stopPropagation(); saveSaved(list.filter((x) => x !== u)); if (chosenSaved === u) chosenSaved = null; render(); };
+        del.onclick = (e) => { e.stopPropagation(); saved = saved.filter((x) => x !== u); void removeSig(kind, u); if (chosenSaved === u) chosenSaved = null; render(); };
         it.appendChild(del);
         box.appendChild(it);
       }
@@ -178,8 +172,17 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
     }
   };
   render();
+  let closed = false;
+  void refreshSigs(kind).then((l) => {
+    if (!l || closed) return;
+    saved = l;
+    if (chosenSaved && !saved.includes(chosenSaved)) chosenSaved = null;
+    if (mode === 'draw' && !drew && saved.length) mode = 'saved';
+    if (mode === 'saved') render();
+  });
 
   const r = await modal('Add ' + noun, root, [{ label: 'Cancel', value: 'cancel' }, { label: 'Use ' + noun, kind: 'primary', value: 'ok' }]);
+  closed = true;
   if (r !== 'ok') return null;
   let url: string | null = null;
   const md = mode as string;
@@ -193,7 +196,7 @@ export async function getSignature(kind: SigKind = 'signature'): Promise<string 
     url = trim(c);
   } else if (md === 'upload') url = uploadUrl;
   else url = chosenSaved;
-  if (url && md !== 'saved' && remember) saveSaved([url, ...loadSaved().filter((x) => x !== url)]);
+  if (url && md !== 'saved' && remember) void addSig(kind, url);
   return url;
 }
 

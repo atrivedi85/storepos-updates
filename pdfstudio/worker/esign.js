@@ -38,6 +38,9 @@ async function ensureTables(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_contacts (
       owner_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, last_used INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (owner_id, email))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_signatures (
+      owner_id TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, png TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (owner_id, id))`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS esign_profile (owner_id TEXT PRIMARY KEY, from_name TEXT, notify_email TEXT)`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_req_owner ON esign_requests(owner_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS esign_sig_req ON esign_signers(request_id)'),
@@ -193,6 +196,56 @@ export async function handleContacts(request, env, me) {
   return list();
 }
 
+// ---------- saved signatures / initials, one set per signed-in user (only the owner can read or change them) ----------
+const MAX_SIG_URL = 300 * 1024;   // one saved picture (data URL length)
+const MAX_SIGS = 30;              // per owner, per kind; the oldest are dropped beyond this
+const MAX_SIG_BATCH = 40;
+const SIG_PREFIX = 'data:image/png;base64,';
+const SIG_KINDS = new Set(['signature', 'initials']);
+// GET /esign/signatures -> { signatures: [{ id, kind, png, createdAt }] } newest first
+// POST /esign/signatures { kind, signatures: [dataUrl, ...] } (first = newest) -> same list; { skipped } counts refused pictures
+// DELETE /esign/signatures { id } or { png } -> same list
+export async function handleSignatures(request, env, me) {
+  const method = request.method;
+  const list = async (extra = {}) => {
+    const { results } = await env.DB.prepare('SELECT id, kind, png, created_at FROM esign_signatures WHERE owner_id = ? ORDER BY created_at DESC').bind(me.id).all();
+    return json({ signatures: (results || []).map((r) => ({ id: r.id, kind: r.kind, png: r.png, createdAt: r.created_at })), ...extra });
+  };
+  if (method === 'GET') return list();
+  let b = {};
+  try { b = await request.json(); } catch { return fail(400, 'Bad request.'); }
+  if (method === 'DELETE') {
+    const id = typeof b.png === 'string' ? await sha256Bytes(enc.encode(b.png)) : String(b.id || '');
+    if (!/^[a-f0-9]{64}$/.test(id)) return fail(400, 'Which signature?');
+    await env.DB.prepare('DELETE FROM esign_signatures WHERE owner_id = ? AND id = ?').bind(me.id, id).run();
+    return list();
+  }
+  if (method !== 'POST') return fail(405, 'Not allowed.');
+  const kind = String(b.kind || '');
+  if (!SIG_KINDS.has(kind)) return fail(400, 'Signature or initials?');
+  const items = Array.isArray(b.signatures) ? b.signatures.slice(0, MAX_SIG_BATCH) : [];
+  const now = Date.now();
+  const clean = new Map();
+  let skipped = 0;
+  for (let i = 0; i < items.length; i++) {
+    const png = items[i];
+    if (typeof png !== 'string' || !png.startsWith(SIG_PREFIX) || png.length > MAX_SIG_URL || !/^[A-Za-z0-9+/]+={0,2}$/.test(png.slice(SIG_PREFIX.length))) { skipped++; continue; }
+    const id = await sha256Bytes(enc.encode(png));
+    if (!clean.has(id)) clean.set(id, { id, png, at: now - i });   // keeps the order the client sent
+  }
+  if (clean.size) {
+    await env.DB.batch([...clean.values()].map((c) => env.DB.prepare(
+      'INSERT INTO esign_signatures (owner_id, id, kind, png, created_at) VALUES (?,?,?,?,?) ON CONFLICT(owner_id, id) DO NOTHING',
+    ).bind(me.id, c.id, kind, c.png, c.at)));
+    // keep only the newest MAX_SIGS of this kind
+    await env.DB.prepare(
+      `DELETE FROM esign_signatures WHERE owner_id = ? AND kind = ? AND id NOT IN
+       (SELECT id FROM esign_signatures WHERE owner_id = ? AND kind = ? ORDER BY created_at DESC LIMIT ?)`,
+    ).bind(me.id, kind, me.id, kind, MAX_SIGS).run();
+  }
+  return list({ skipped });
+}
+
 export async function handleEsign(request, env, url, route, getAuth) {
   await ensureTables(env);
   const method = request.method;
@@ -296,6 +349,7 @@ export async function handleEsign(request, env, url, route, getAuth) {
   const me = auth.user;
 
   if (route === 'esign/contacts') return handleContacts(request, env, me);
+  if (route === 'esign/signatures') return handleSignatures(request, env, me);
   if (route === 'esign/profile') return handleProfile(request, env, me);
 
   if (route === 'esign/requests' && method === 'GET') {
