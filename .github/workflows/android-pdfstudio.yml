@@ -29,6 +29,7 @@ jobs:
           VERSION_CODE: ${{ github.run_number }}
         run: |
           export VERSION_NAME=$(python3 -c "import json;print(json.load(open('pdfstudio/package.json'))['version'])")
+          set -o pipefail
           gradle -p android-pdfstudio assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee build.log
       - name: Publish to the pdfstudio-android-latest release
         env:
