@@ -14,7 +14,7 @@
 
   var slot = document.getElementById('acctSlot'), host = slot || document.createElement('div');
   host.setAttribute('data-account-bar', '');
-  if (!slot) { host.style.cssText = 'all:initial;position:fixed;top:10px;right:12px;z-index:2147483000;'; }
+  if (!slot) { host.style.cssText = 'all:initial;position:fixed;top:10px;right:16px;z-index:2147483000;'; }
   var root = host.attachShadow({ mode: 'open' });
   var css = document.createElement('style');
   css.textContent =

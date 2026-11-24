@@ -15,6 +15,8 @@ input,textarea,select{user-select:text;font:inherit;color:var(--ink)}
 button{font:inherit;border:0;cursor:pointer;touch-action:manipulation;color:inherit;background:none}
 button:active{filter:brightness(.86);transform:scale(.985)}
 #app{height:100vh;display:flex;flex-direction:column}
+#webAcctBar{height:46px;background:#0b1424;display:flex;align-items:center;justify-content:flex-end;padding:0 16px;border-bottom:1px solid #22324d}
+body.webacct #app{height:calc(100vh - 46px)}body.webacct .login{height:calc(100vh - 46px)}
 main{flex:1;min-height:0;background:var(--panel);overflow:hidden}
 .green{background:var(--green)!important;color:#fff!important}.red{background:var(--red)!important;color:#fff!important}.blue{background:var(--blue)!important;color:#fff!important}.amber{background:var(--amber)!important;color:#fff!important}.slate{background:var(--slate)!important;color:#fff!important}.teal{background:var(--teal)!important;color:#fff!important}
 .btn{background:#d5ddea;border-radius:10px;padding:10px 18px;font-weight:700;font-size:16px;min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-direction:column;line-height:1.15}
@@ -1828,6 +1830,7 @@ window.addEventListener('beforeunload',e=>{if(!DESK&&S.dirty){e.preventDefault()
 
 /* ---------- boot ---------- */
 async function boot(){
+ if(WEB){const b=document.createElement('div');b.id='webAcctBar';b.innerHTML='<div id="acctSlot"></div>';document.body.insertBefore(b,document.getElementById('app'));document.body.classList.add('webacct')}
  try{await DB.open()}catch(err){DB.mem=true}
  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
  const saved=await DB.get('settings');

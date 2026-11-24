@@ -39,7 +39,7 @@ export async function start({ port = 0, publicDir = path.join(root, 'cloud/publi
     if (u.pathname === '/pdfstudio/apps.js') return new Response(fs.readFileSync(path.join(root, 'pdfstudio/worker/apps-switcher.txt')), { headers: { 'Content-Type': 'text/javascript' } });
     if (u.pathname === '/pdfstudio/api/logout') return new Response('{"ok":true}', { headers: { 'Content-Type': 'application/json' } });
     if (u.pathname.startsWith('/pdfstudio')) return new Response('<!doctype html><title>PdfStudio</title><body>PdfStudio stand-in</body>', { headers: { 'Content-Type': 'text/html' } });
-    if ((req.method === 'GET' || req.method === 'HEAD') && !u.pathname.startsWith('/api/') && !u.pathname.startsWith('/v1/') && !u.pathname.startsWith('/dl/') && u.pathname !== '/download' && !/^\/(books\/(login|invite)|hotel\/api)/.test(u.pathname)) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && !u.pathname.startsWith('/api/') && !u.pathname.startsWith('/v1/') && !u.pathname.startsWith('/dl/') && u.pathname !== '/download' && !/^\/(books\/(login|invite)(\/|$)|hotel\/api)/.test(u.pathname)) {
       const r = await assets(req); if (r.status !== 404) return r;
     }
     return worker.fetch(req, env);

@@ -18,7 +18,7 @@ a{color:var(--accent)}
 
 /* header: logo left, navigation, account button top-right */
 .top{position:sticky;top:0;z-index:50;background:rgba(11,21,38,.92);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid rgba(255,255,255,.08)}
-.top .wrap{display:flex;align-items:center;gap:20px;min-height:66px;flex-wrap:wrap}
+.top .wrap{display:flex;align-items:center;gap:20px;min-height:66px;flex-wrap:wrap;max-width:none;padding:8px 16px}
 .brand{display:flex;align-items:center;gap:11px;color:#fff;text-decoration:none;font-weight:800;font-size:19px;letter-spacing:-.01em}
 .brand img{width:34px;height:34px;border-radius:9px}
 .nav{display:flex;gap:4px;margin-left:12px}
