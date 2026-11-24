@@ -302,6 +302,7 @@ export async function handleApi(request, env, url) {
     if ((m = sub.match(/^users\/([a-f0-9]+)$/)) && method === 'DELETE') {
       if (m[1] === auth.user.id) return fail(400, 'You cannot delete your own account.');
       await purgeUserFiles(env, m[1]);
+      await purgeUserEsign(env, m[1]);
       await env.DB.batch([
         env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(m[1]),
         env.DB.prepare('DELETE FROM users WHERE id = ?').bind(m[1]),
@@ -359,3 +360,28 @@ async function makeInvite(env, url, { email, role, userId = null, createdBy, sen
   return out;
 }
 const inviteResponse = (r) => r.error ? fail(r.status, r.error) : json(r);
+
+// Deleting a user also removes everything PdfStudio keeps for them: saved signatures, contacts,
+// sender profile, and documents they sent for signature (rows + stored PDFs). Tables may not exist yet.
+async function purgeUserEsign(env, uid) {
+  const run = async (sql, ...a) => { try { return await env.DB.prepare(sql).bind(...a).run(); } catch (e) { return null; } };
+  let reqs = [];
+  try { reqs = (await env.DB.prepare('SELECT id FROM esign_requests WHERE owner_id = ?').bind(uid).all()).results || []; } catch (e) { reqs = []; }
+  for (const r of reqs) {
+    try {
+      let cursor;
+      do {
+        const page = await env.FILES.list({ prefix: `esign/${r.id}/`, cursor });
+        const keys = page.objects.map(o => o.key);
+        if (keys.length) await env.FILES.delete(keys);
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+    } catch (e) { /* keep going */ }
+    await run('DELETE FROM esign_events WHERE request_id = ?', r.id);
+    await run('DELETE FROM esign_signers WHERE request_id = ?', r.id);
+  }
+  await run('DELETE FROM esign_requests WHERE owner_id = ?', uid);
+  await run('DELETE FROM esign_signatures WHERE owner_id = ?', uid);
+  await run('DELETE FROM esign_contacts WHERE owner_id = ?', uid);
+  await run('DELETE FROM esign_profile WHERE owner_id = ?', uid);
+}

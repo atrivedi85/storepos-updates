@@ -66,6 +66,12 @@ export default {
     if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
     if (path === '/dl/info') return posInfo();
     if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
+    // Privacy (PdfStudio) and Delete account pages: same asset trick as /account (Cloudflare redirects "x.html" to "x")
+    if (path === '/pdfstudio-privacy' || path === '/delete-account') {
+      const r = await env.ASSETS.fetch(new Request(new URL(path, req.url), { method: 'GET' }));
+      if (r.status >= 300 && r.status < 400) { const r2 = await env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || path + '.html', req.url), { method: 'GET' })); return new Response(r2.body, { status: 200, headers: r2.headers }); }
+      return r;
+    }
     // My account page (trivedipos.com/account): same asset trick as /download (Cloudflare redirects "account.html" to "account")
     if (path === '/account' || path === '/account/') {
       const r = await env.ASSETS.fetch(new Request(new URL('/account', req.url), { method: 'GET' }));
