@@ -591,3 +591,7 @@ main.ios .rsearch{color:var(--ios-gray)}
 /* recovery code screen + banner (Nov 2026) */
 #modal .rccode{font:700 28px/1.2 ui-monospace,Consolas,monospace;letter-spacing:2px;text-align:center;background:var(--ios-fill);border-radius:12px;padding:16px 8px;margin:14px 0;user-select:all;-webkit-user-select:all}
 .rcbanner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:#fff8e1;border:1px solid #f0c36d;border-radius:12px;padding:10px 14px;margin:0 0 12px;color:#1c1c1e}
+
+/* import rooms from a list (Nov 2026) */
+#modal #im_text{border:1px solid var(--ios-sep,#c6c6c8);border-radius:10px;padding:10px;font-size:14px}
+#modal #im_probs{font-size:14px}

@@ -266,6 +266,31 @@ await step('Setup home, Rooms, Room Types, Taxes, Posting Codes, Policies, Prope
   // phone size: the page itself does not scroll sideways
   await p.setViewportSize({ width: 390, height: 800 }); for (const t of ['rooms', 'rates', 'codes']) { await p.click('[data-act=setupHome]'); await p.click(`main [data-tab=${t}]`); await p.waitForSelector('#sdForm table'); const w = await p.evaluate(() => [document.documentElement.scrollWidth, innerWidth]); if (w[0] > w[1] + 2) throw new Error(t + ' page is wider than the phone: ' + w); }
   await p.setViewportSize({ width: 1400, height: 900 }); });
+await step('Setup > Rooms: Import rooms from a list (preview, problems, import, flags)', async () => {
+  await go(p, '[data-nav=setup]'); await p.click('main [data-tab=rooms]'); await p.waitForSelector('[data-act=rmImport]');
+  const n0 = await p.evaluate(() => S.config.rooms.length), t0 = await p.evaluate(() => S.config.types.length);
+  // problem case: unknown type, bad room number, duplicate room
+  await p.click('[data-act=rmImport]'); await p.waitForSelector('#im_text', { timeout: 4000 });
+  if (!await p.isDisabled('#im_go')) throw new Error('Import should be off with nothing pasted');
+  await p.fill('#im_text', '# test\n801 QQQ\nabc ZK\n802 ZK\n802 ZK'); await p.waitForSelector('#im_probs');
+  const pr = await p.textContent('#im_probs'); if (!/QQQ/.test(pr) || !/abc/.test(pr) || !/twice/.test(pr)) throw new Error('problems: ' + pr); if (!await p.isDisabled('#im_go')) throw new Error('Import should be disabled with problems');
+  // good list: 2 TYPE lines, 5 rooms
+  await p.fill('#im_text', '# new wing\nTYPE ZK = Zed King\nTYPE zq = Zed Queen\n\n802 - ZK\n803, zk\n873 ZQ smoking\n875 ZK accessible\n804\tZQ  ADA rentlast');
+  await p.waitForFunction(() => /2 room types \(2 new\), 5 rooms \(5 new, 0 changed, 0 unchanged\)/.test(document.querySelector('#im_sum').textContent)); if (await p.locator('#im_probs').count()) throw new Error('unexpected problems'); if (await p.isDisabled('#im_go')) throw new Error('Import should be on');
+  if (!/ZK[\s\S]*3[\s\S]*ZQ[\s\S]*2/.test((await p.textContent('#im_tbl')).replace(/\s+/g, ' ').replace(/Zed King/, '').replace(/Zed Queen/, ''))) throw new Error('per-type table: ' + await p.textContent('#im_tbl'));
+  if (!/Import saves right away/.test(await p.textContent('#modal'))) throw new Error('save-now note missing');
+  await p.screenshot({ path: shots + 'import-rooms.png' });
+  await p.click('#im_go'); await p.waitForSelector('#toast:has-text("Imported 5 rooms.")'); await p.waitForSelector('#sdForm tr:has-text("875")');
+  const got = await p.evaluate(() => ({ n: S.config.rooms.length, t: S.config.types.length, zk: S.config.types.find(t => t.code === 'ZK'), r: Object.fromEntries(S.config.rooms.filter(r => r.no[0] === '8').map(r => [r.no, r])) }));
+  if (got.n !== n0 + 5 || got.t !== t0 + 2 || got.zk.name !== 'Zed King' || got.zk.rate !== 0) throw new Error('import result ' + JSON.stringify(got));
+  const r = got.r; if (r['802'].floor !== '8' || r['802'].type !== 'ZK' || !r['802'].nosmoke || r['802'].accessible || r['873'].nosmoke || r['873'].type !== 'ZQ' || !r['875'].accessible || !r['804'].accessible || !r['804'].rentLast || !r['803'].nosmoke || !r['802'].sched) throw new Error('flags ' + JSON.stringify(r));
+  // a second paste: same list = unchanged; remove option counts rooms not in the list
+  await p.click('[data-act=rmImport]'); await p.fill('#im_text', 'TYPE ZK = Zed King\n802 ZK\n803 ZK smoking'); await p.waitForFunction(() => /1 room type \(0 new\), 2 rooms \(0 new, 1 changed, 1 unchanged\)/.test(document.querySelector('#im_sum').textContent));
+  await p.check('#im_rm'); await p.waitForFunction(() => new RegExp((S.config.rooms.length - 2) + ' rooms will be removed').test(document.querySelector('#im_sum').textContent)); await p.click('[data-act=closeModal]');
+  // clean up the test rooms and types
+  for (const no of ['802', '803', '804', '873', '875']) await p.click(`#sdForm tr[data-i]:has(b:text-is("${no}")) [data-act=sdDel]`);
+  await p.click('[data-act=setupSave]'); await p.waitForSelector('#toast:has-text("Saved")');
+  await p.evaluate(async () => { await op('configSave', { config: { types: S.config.types.filter(t => !['ZK', 'ZQ'].includes(t.code)) } }); await refresh(); }); if (await p.evaluate(() => S.config.types.length) !== t0) throw new Error('test types not removed'); });
 await step('Setup: Cleaning Schedules (list, add, more days, save), the Rooms column, service words, delete rules', async () => {
   await go(p, '[data-nav=setup]'); await p.click('main [data-tab=schedules]'); await p.waitForSelector('.cslist');
   if (!/Traditional/.test(await p.textContent('.cslist a.on')) || !/Day 1: Full Day 2: Full/.test(await p.textContent('.cslist a.on'))) throw new Error('starter schedule: ' + await p.textContent('.cslist'));

@@ -981,7 +981,7 @@ function sdTypesPage(c) {
 }
 function sdRoomsPage(c) {
   const opts = c.types.map(t => [t.code, t.code + ' - ' + t.name]), sopts = (c.cleanSchedules || []).map(x => [x.id, x.name]);
-  return `<p class="hint">${SD.rows.length} room${SD.rows.length === 1 ? '' : 's'} in the hotel. "Rent Last" rooms are offered after all the others when a room is picked. Changes are kept when you click Save.</p><div class="bar" style="margin-bottom:8px"><button type="button" class="btn blue" data-act="rmAdd">Add Room</button><button type="button" class="btn" data-act="rmMany">Add Many Rooms</button></div>` +
+  return `<p class="hint">${SD.rows.length} room${SD.rows.length === 1 ? '' : 's'} in the hotel. "Rent Last" rooms are offered after all the others when a room is picked. Changes are kept when you click Save.</p><div class="bar" style="margin-bottom:8px"><button type="button" class="btn blue" data-act="rmAdd">Add Room</button><button type="button" class="btn" data-act="rmMany">Add Many Rooms</button><button type="button" class="btn" data-act="rmImport">Import rooms from a list</button></div>` +
     sdTable(['Room #', 'Type', 'Floor', 'No Smoking', 'Accessible', 'Rent Last', 'Cleaning Schedule', ''], SD.rows.map((r, i) => `<td><b>${esc(r.no)}</b></td><td>${sdSel('type', r.type, opts.some(o => o[0] === r.type) ? opts : opts.concat([[r.type, r.type]]))}</td><td>${sdIn(i, 'floor', r.floor, '', 'maxlength="4" style="width:60px"')}</td><td class="ctr">${sdChk('nosmoke', r.nosmoke, 'No smoking')}</td><td class="ctr">${sdChk('accessible', r.accessible, 'Accessible')}</td><td class="ctr">${sdChk('rentLast', r.rentLast, 'Rent last')}</td><td>${sdSel('sched', r.sched, sopts.some(o => o[0] === r.sched) ? sopts : sopts.concat([[r.sched, r.sched]]))}</td>${sdDelBtn(i)}`), { empty: 'No rooms yet. Click Add Room.' }) + sdFoot('');
 }
 function sdTaxesPage() {
@@ -1124,7 +1124,8 @@ function sdDel(i) {
   sdRead(); const r = SD.rows[i]; if (!r) return;
   if (SD.page === 'types') { const n = S.config.rooms.filter(x => x.type === String(r.code).trim().toUpperCase()).length; if (n) return sdErr('Room type ' + r.code + ' still has ' + n + (n === 1 ? ' room' : ' rooms') + '. Change those rooms to another type (or remove them) in Rooms first.'); }
   if (SD.page === 'codes' && r.code === 'RM') return sdErr('Keep the RM (Room Charge) code. The night audit needs it.');
-  SD.rows.splice(i, 1); render(); sdErr('');
+  SD.rows.splice(i, 1); const f = $('#sdForm'); if (f) f.dataset.page = '';   // the old table must not be read back into the shorter list
+  render(); sdErr('');
 }
 const floorOpts = sel => '<option value="">Same as first digit of the room number</option>' + Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}" ${String(sel) === String(i + 1) ? 'selected' : ''}>${i + 1}</option>`).join('');
 const typeOpts = () => S.config.types.map(t => `<option value="${esc(t.code)}">${esc(t.code)} - ${esc(t.name)}</option>`).join('');
@@ -1147,6 +1148,59 @@ function rmAddGo() {
 function rmManyGo() {
   const L = rmManyList(); if (L.bad) return ($('#rm_err').textContent = L.bad); if (!L.add.length) return ($('#rm_err').textContent = 'All of those rooms already exist.');
   for (const no of L.add) SD.rows.push(rmNew(no, $('#rm_floor').value)); SD.rows.sort(roomSort); $('#modal').innerHTML = ''; render(); toast(L.add.length + ' rooms added. Click Save to keep them.');
+}
+/* ---------- Import rooms from a list (Setup > Rooms) ---------- */
+function rimParse(text) {   // -> { types:[{code,name}], rooms:[{no,type,floor,nosmoke,accessible,rentLast}], problems:[] }
+  const out = { types: [], rooms: [], problems: [] }, tl = new Map(), seen = new Set(), known = new Set(S.config.types.map(t => t.code));
+  const lines = String(text || '').split(/\r?\n/).map((l, i) => ({ l: l.trim(), n: i + 1 })).filter(x => x.l && x.l[0] !== '#');
+  for (const { l, n } of lines) { const m = /^type\s+([A-Za-z0-9]{1,8})\s*[=:]\s*(.*)$/i.exec(l); if (!m) continue; const code = m[1].toUpperCase(), name = m[2].trim().slice(0, 60);
+    if (!name) { out.problems.push('Line ' + n + ': type ' + code + ' has no name after the = sign.'); continue; } if (tl.has(code)) out.problems.push('Line ' + n + ': type ' + code + ' is defined twice.'); tl.set(code, name); known.add(code); }
+  out.types = [...tl].map(([code, name]) => ({ code, name }));
+  for (const { l, n } of lines) {
+    if (/^type\s+[A-Za-z0-9]{1,8}\s*[=:]/i.test(l)) continue;
+    const t = l.split(/[\s,\-–—]+/).filter(Boolean), no = t[0];
+    if (!/^\d{1,6}$/.test(no || '')) { out.problems.push('Line ' + n + ': "' + (no || l).slice(0, 20) + '" is not a room number (digits only).'); continue; }
+    const room = String(+no); if (t.length < 2) { out.problems.push('Line ' + n + ': room ' + room + ' has no room type.'); continue; }
+    const code = t[1].toUpperCase(); let bad = false, smoking = false, ns = false, acc = false, rl = false;
+    if (!known.has(code)) { out.problems.push('Line ' + n + ': room ' + room + ' uses type ' + code + ', which is not a room type here. Add a line like TYPE ' + code + ' = Name.'); bad = true; }
+    for (const f of t.slice(2).map(x => x.toLowerCase())) { if (f === 'smoking') smoking = true; else if (f === 'nosmoking' || f === 'ns') ns = true; else if (f === 'accessible' || f === 'ada') acc = true; else if (f === 'rentlast') rl = true; else { out.problems.push('Line ' + n + ': room ' + room + ' has an unknown word "' + f + '".'); bad = true; } }
+    if (seen.has(room)) { out.problems.push('Line ' + n + ': room ' + room + ' is in the list twice.'); bad = true; } seen.add(room); if (bad) continue;
+    out.rooms.push({ no: room, type: code, floor: String(Math.max(1, Math.floor(+room / 100))), nosmoke: smoking ? false : true, accessible: acc, rentLast: rl });
+  }
+  return out;
+}
+function rimPlan() {
+  const P = rimParse($('#im_text').value), rm = $('#im_rm').checked, have = new Map(SD.rows.map(r => [String(r.no), r])), oldT = new Map(S.config.types.map(t => [t.code, t]));
+  let nw = 0, ch = 0, same = 0; const per = new Map();
+  for (const r of P.rooms) { const o = have.get(r.no); if (!o) nw++; else if (o.type === r.type && String(o.floor) === r.floor && !!o.nosmoke === r.nosmoke && !!o.accessible === r.accessible && !!o.rentLast === r.rentLast) same++; else ch++; per.set(r.type, (per.get(r.type) || 0) + 1); }
+  const typeNew = P.types.filter(t => !oldT.has(t.code)).length, listed = new Set(P.rooms.map(r => r.no)), removed = rm ? SD.rows.filter(r => !listed.has(String(r.no))).length : 0;
+  return { P, rm, nw, ch, same, per, typeNew, removed };
+}
+function rimOpen() {
+  sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox"><div class="mtitle thin">Import rooms from a list</div>
+    <p class="hint" style="margin:0 0 8px">Paste your room list, one per line. Describe a room type with <b>TYPE NK = King</b>. Then list rooms as <b>room number, type code, extras</b>, such as <b>102 NDD</b>, <b>102 - NDD</b>, <b>175 NHK accessible</b> or <b>173 Q smoking</b>. Extras: <b>smoking</b> (rooms are No Smoking unless you say so), <b>accessible</b> (or ada), <b>rentlast</b>. Blank lines and lines starting with # are ignored. New room types start at price 0.00; set prices in Room Types and Rates. The floor is taken from the room number.</p>
+    <textarea id="im_text" rows="9" spellcheck="false" style="width:100%;font-family:ui-monospace,Consolas,monospace" placeholder="TYPE NK = King&#10;TYPE Q = Two Queens&#10;102 NK&#10;173 Q smoking"></textarea>
+    <label class="chk" style="margin:8px 0"><input type="checkbox" id="im_rm">Remove rooms that are not in this list</label>
+    <div id="im_prev" aria-live="polite"></div><div class="err" id="im_err" role="alert"></div>
+    <p class="hint" style="margin:6px 0 0"><b>Import saves right away.</b></p>
+    <div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" id="im_go" data-act="rmImportGo" disabled>Import</button></div></div></div>`; $('#im_text').focus(); rimPreview();
+}
+function rimPreview() {
+  const box = $('#im_prev'); if (!box) return; const x = rimPlan(), P = x.P, n = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
+  const sum = P.types.length || P.rooms.length ? `${n(P.types.length, 'room type')} (${x.typeNew} new), ${n(P.rooms.length, 'room')} (${x.nw} new, ${x.ch} changed, ${x.same} unchanged)${x.rm ? '; ' + n(x.removed, 'room') + ' will be removed' : ''}` : 'Nothing to import yet.';
+  const rows = [...x.per].sort((a, b) => a[0].localeCompare(b[0])).map(([c, k]) => { const t = P.types.find(t => t.code === c) || S.config.types.find(t => t.code === c) || {}; return `<tr><td><b>${esc(c)}</b></td><td>${esc(t.name || '')}</td><td class="num">${k}</td></tr>`; }).join('');
+  box.innerHTML = `<p style="margin:8px 0;font-weight:600" id="im_sum">${esc(sum)}</p>${rows ? `<div class="wrap"><table class="sdt" id="im_tbl"><tr><th>Type</th><th>Name</th><th>Rooms</th></tr>${rows}</table></div>` : ''}${P.problems.length ? `<ul id="im_probs" style="color:#d70015;margin:8px 0 0;padding-left:20px">${P.problems.slice(0, 12).map(p => `<li>${esc(p)}</li>`).join('')}${P.problems.length > 12 ? `<li>…and ${P.problems.length - 12} more.</li>` : ''}</ul>` : ''}`;
+  $('#im_go').disabled = !!P.problems.length || !(P.types.length || P.rooms.length); $('#im_err').textContent = '';
+}
+function rimGo() {
+  const x = rimPlan(), P = x.P; if (P.problems.length || !(P.types.length || P.rooms.length)) return;
+  const types = S.config.types.map(t => ({ code: t.code, name: t.name, rate: t.rate })); for (const t of P.types) { const o = types.find(y => y.code === t.code); if (o) o.name = t.name; else types.push({ code: t.code, name: t.name, rate: 0 }); }
+  const sched0 = ((S.config.cleanSchedules || [])[0] || {}).id, byNo = new Map(SD.rows.map(r => [String(r.no), r])), listed = new Set(P.rooms.map(r => r.no));
+  let rooms = SD.rows.filter(r => x.rm ? listed.has(String(r.no)) : true).map(r => ({ ...r }));
+  for (const r of P.rooms) { const o = byNo.get(r.no), cur = o && rooms.find(y => String(y.no) === r.no); if (cur) Object.assign(cur, { type: r.type, floor: r.floor, nosmoke: r.nosmoke, accessible: r.accessible, rentLast: r.rentLast }); else rooms.push({ ...r, sched: sched0 }); }
+  rooms.sort(roomSort);
+  return run(async () => { try { await op('configSave', { config: { types, rooms } }); } catch (e) { if (e.status === 401 || (e.status === 403 && /turned off/.test(e.message))) throw e; $('#im_err').textContent = e.message; return; }
+    SD = null; $('#modal').innerHTML = ''; await refresh(); toast('Imported ' + P.rooms.length + ' rooms.'); });
 }
 /* ---------- Room Blocking: several rooms at once, and the list of what is out of order now ---------- */
 let BK = null;   // what is typed in the window: from room, to room, floor filter, dates, reason
@@ -1481,6 +1535,8 @@ document.addEventListener('click', async e => {
   if (a === 'sdDel') return sdDel(+el.dataset.i);
   if (a === 'rmAdd') return rmAddOpen();
   if (a === 'rmMany') return rmManyOpen();
+  if (a === 'rmImport') return rimOpen();
+  if (a === 'rmImportGo') return rimGo();
   if (a === 'rmAddGo') return rmAddGo();
   if (a === 'rmManyGo') return rmManyGo();
   if (a === 'setupSave') return setupSave();
@@ -1533,6 +1589,7 @@ document.addEventListener('click', async e => {
   if (a === 'impGo') return impGo();
 });
 document.addEventListener('change', e => {
+  if (e.target.id === 'im_rm') return rimPreview();
   const t = e.target; if (t.id === 'rm_floor') t.dataset.t = '1';
   if (t.dataset.hk) return run(async () => { await op('hkSet', { room: t.dataset.room, [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }); S.roomstate[t.dataset.room] = { ...(S.roomstate[t.dataset.room] || {}), [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }; });
   if (t.id === 'woFilter') { view.woFilter = t.value; return render(); }
@@ -1545,7 +1602,7 @@ document.addEventListener('change', e => {
   if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 's_cancelHours') { const ta = $('#s_cancelText'), h = e.target.value.trim(); if (ta && /^\d+$/.test(h) && ta.value.trim() === ta.dataset.def) { ta.value = defaultCancel(h); ta.dataset.def = ta.value; } } if (e.target.id === 'codeQ') { const q = e.target.value.toLowerCase(); document.querySelectorAll('#sdForm tr[data-i]').forEach(tr => { const t = [...tr.querySelectorAll('[data-f=code],[data-f=name]')].map(x => x.value).join(' ').toLowerCase(); tr.hidden = !!q && !t.includes(q); }); } if (e.target.id === 'rm_no' && $('#rm_floor') && !$('#rm_floor').dataset.t) { const d = e.target.value.trim()[0]; $('#rm_floor').value = d && +d >= 1 ? d : ''; } if (e.target.id === 'rm_from' || e.target.id === 'rm_to') rmPreview(); if (e.target.id === 'rw_q') rwSearchDraw(e.target.value); if (e.target.id === 'p_pts') rwPostVal(); if (ED && ['r_last', 'r_first', 'r_guestId', 'r_phone'].includes(e.target.id)) rwRowUpdate(); if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('input', e => { if (e.target.id === 'im_text') return rimPreview(); if (e.target.id === 's_cancelHours') { const ta = $('#s_cancelText'), h = e.target.value.trim(); if (ta && /^\d+$/.test(h) && ta.value.trim() === ta.dataset.def) { ta.value = defaultCancel(h); ta.dataset.def = ta.value; } } if (e.target.id === 'codeQ') { const q = e.target.value.toLowerCase(); document.querySelectorAll('#sdForm tr[data-i]').forEach(tr => { const t = [...tr.querySelectorAll('[data-f=code],[data-f=name]')].map(x => x.value).join(' ').toLowerCase(); tr.hidden = !!q && !t.includes(q); }); } if (e.target.id === 'rm_no' && $('#rm_floor') && !$('#rm_floor').dataset.t) { const d = e.target.value.trim()[0]; $('#rm_floor').value = d && +d >= 1 ? d : ''; } if (e.target.id === 'rm_from' || e.target.id === 'rm_to') rmPreview(); if (e.target.id === 'rw_q') rwSearchDraw(e.target.value); if (e.target.id === 'p_pts') rwPostVal(); if (ED && ['r_last', 'r_first', 'r_guestId', 'r_phone'].includes(e.target.id)) rwRowUpdate(); if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
 document.addEventListener('focusout', e => { if (ED && ['r_last', 'r_first', 'r_phone', 'r_guestId'].includes(e.target.id)) histLoad(); if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
