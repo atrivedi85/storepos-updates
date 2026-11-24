@@ -1,7 +1,7 @@
 // Hotel Desk: the screens. Talks to the server at /hotel/api (cloud/src/hotel-core.js).
 'use strict';
 let S = null;                       // everything the server sent: config, rooms, reservations, balances
-let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', opt: {}, setup: 'property', listDate: '', listSort: null };
+let view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', opt: {}, setup: '', listDate: '', listSort: null };
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = c => ((c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -311,7 +311,7 @@ function resForm(r, mode) {
   const isNew = !r.id, locked = !isNew && !['reserved', 'inhouse'].includes(r.status);
   const n = nights(r.arrive, r.depart), types = S.config.types;
   const from = r.status === 'inhouse' && B() > r.arrive ? B() : r.arrive;
-  const freeRooms = S.config.rooms.filter(x => (x.no === r.room) || (roomFree(x.no, from, r.depart, r.id)));
+  const freeRooms = rlSort(S.config.rooms.filter(x => (x.no === r.room) || (roomFree(x.no, from, r.depart, r.id))));
   const t = types.find(x => x.code === r.type) || types[0];
   const taxPct = r.taxExempt ? 0 : S.config.taxes.filter(x => ((S.config.codes.find(k => k.code === 'RM') || {}).tax || []).includes(x.code)).reduce((s, x) => s + x.pct, 0);
   const q = r.arrive < r.depart ? quote(r) : [t.rate], manual = !!r.rateManual && r.rate != null, nightly = manual ? q.map(() => r.rate) : q;
@@ -332,7 +332,7 @@ function resForm(r, mode) {
     <label class="c2">Adults<input type="number" id="r_adults" min="1" value="${r.adults || 1}" ${locked ? 'disabled' : ''}></label>
     <label class="c2">Children<input type="number" id="r_children" min="0" value="${r.children || 0}" ${locked ? 'disabled' : ''}></label>
     <label>Room type<select id="r_type" ${locked ? 'disabled' : ''}>${types.map(x => `<option value="${esc(x.code)}" ${x.code === r.type ? 'selected' : ''}>${esc(x.code)} · ${esc(x.name)} · ${availOfType(x.code, from, r.depart, r.id, r.groupId)} left · ${money(rateFor(x.code, r.arrive))}</option>`).join('')}</select></label>
-    <label>Room<select id="r_room" ${locked ? 'disabled' : ''}><option value="">${mode === 'walkin' ? 'Pick a room' : 'Not assigned yet'}</option>${freeRooms.filter(x => x.type === r.type || x.no === r.room).map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)} · ${esc(x.type)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select></label>
+    <label>Room<select id="r_room" ${locked ? 'disabled' : ''}><option value="">${mode === 'walkin' ? 'Pick a room' : 'Not assigned yet'}</option>${freeRooms.filter(x => x.type === r.type || x.no === r.room).map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''} · ${esc(x.type)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select></label>
     <label class="c2">Rate / night<input id="r_rate" inputmode="decimal" value="${(nightly[0] / 100).toFixed(2)}" ${locked ? 'disabled' : ''}></label>
     <label class="c2">Estimated total<input value="${money(est)}" disabled></label>
     <label>Group<select id="r_groupId" ${locked ? 'disabled' : ''}><option value="0">No group</option>${grpOpts.map(g => `<option value="${g.id}" ${g.id === +r.groupId ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label>
@@ -434,10 +434,10 @@ function wizForm() {
       <div class="err" id="r_err"></div><button class="btn blue wzbtn" data-act="wizNext">SEARCH AVAILABILITY</button>`;
     side = `<h3>Guest Search</h3><div class="wzgs"><label for="gs_by">Search Guest By:</label><select id="gs_by"><option value="name" ${ED.gsby === 'name' ? 'selected' : ''}>Name</option><option value="phone" ${ED.gsby === 'phone' ? 'selected' : ''}>Phone</option></select><input id="gs_q" value="${esc(ED.gsq)}" autocomplete="off" aria-label="Guest search"><button class="btn blue" data-act="guestFind">FIND GUEST</button><div id="gs_res">${gsHtml()}</div></div>`;
   } else if (step === 2) {
-    const hi = ED.hi, from = r.arrive, rooms = hi ? S.config.rooms.filter(x => x.type === hi && (x.no === r.room || roomFree(x.no, from, r.depart, 0))) : [];
+    const hi = ED.hi, from = r.arrive, rooms = hi ? rlSort(S.config.rooms.filter(x => x.type === hi && (x.no === r.room || roomFree(x.no, from, r.depart, 0)))) : [];
     main = `<div class="wrap"><table class="wzt"><tr><th>Type</th><th>Description</th><th class="num">Available</th><th class="num">Rate</th><th class="num">Estimated Total</th><th></th></tr>${S.config.types.map(t => { const av = Math.max(0, availOfType(t.code, from, r.depart, 0, r.groupId)), q = stayCalc({ ...r, rateManual: false }, t.code); return `<tr class="click ${t.code === hi ? 'hi' : ''}" data-act="wizHi" data-type="${esc(t.code)}"><td><b>${esc(t.code)}</b></td><td>${esc(t.name)}</td><td class="num">${av}</td><td class="num">${money(q.nightly[0] || 0)}${q.varies ? ' <span class="hint">varies</span>' : ''}</td><td class="num">${money(q.est)}</td><td class="num"><button class="btn sm blue" data-act="wizType" data-type="${esc(t.code)}" ${av < 1 ? 'disabled' : ''}>SELECT</button></td></tr>`; }).join('')}</table></div>
       <p class="hint" style="margin:6px 0 0">Estimated Total is the room nights${c.pk ? ' and the package' : ''} plus tax. ${walk ? 'For a walk-in, click a room type, pick the room below, then SELECT.' : 'Click a row to see its rooms below.'}</p>
-      <div class="wzf" style="margin-top:12px"><label for="r_room">Assigned Room:</label><select id="r_room" ${hi ? '' : 'disabled'}><option value="">${hi ? (walk ? 'Pick a room' : 'Not assigned yet') : 'Click a room type above'}</option>${rooms.map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select>
+      <div class="wzf" style="margin-top:12px"><label for="r_room">Assigned Room:</label><select id="r_room" ${hi ? '' : 'disabled'}><option value="">${hi ? (walk ? 'Pick a room' : 'Not assigned yet') : 'Click a room type above'}</option>${rooms.map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select>
       <label for="r_rate">Rate / night</label><input id="r_rate" inputmode="decimal" value="${((c.nightly[0] || 0) / 100).toFixed(2)}"></div>
       <p class="hint" style="margin:6px 0 0"><span id="rateHint">${rateHint(r, c)}</span> <a href="#" data-act="rateStd" id="rateLink" ${c.manual ? '' : 'hidden'}>Use the standard rate</a></p><div class="err" id="r_err"></div>${hi ? '<button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button>' : ''}`;
     side = wizSide(2);
@@ -571,9 +571,9 @@ async function postSave(kind) {
 
 /* ---------- printing ---------- */
 function printHtml(html) { $('#print').innerHTML = html; window.print(); }
-const letterHead = () => `<h1>${esc(S.config.name)}</h1><div>${esc(S.config.address)}${S.config.phone ? ' · ' + esc(S.config.phone) : ''}</div><hr>`;
-function printReg(r) { printHtml(letterHead() + `<h2>Guest Registration</h2><table><tr><td><b>Guest</b></td><td>${esc(gname(r))}</td><td><b>Conf. #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Address</b></td><td>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}</td><td><b>Phone</b></td><td>${esc(r.phone)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)}</td><td><b>Departure</b></td><td>${dlong(r.depart)}</td></tr><tr><td><b>Room</b></td><td>${esc(r.room || '')} (${esc(r.type)})</td><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td><td><b>Vehicle</b></td><td>${esc(r.vehicle)}</td></tr><tr><td><b>Company</b></td><td>${esc(r.company)}</td><td><b>E-mail</b></td><td>${esc(r.email)}</td></tr></table><p>Check-out time is ${esc(S.config.checkoutTime)}.</p><p>${esc(S.config.regText)}</p><p style="margin-top:40px">Guest signature: ______________________________________ &nbsp; Date: ______________</p>`); }
-function printConf(r) { printHtml(letterHead() + `<h2>Reservation Confirmation</h2><p>Dear ${esc(r.first || '')} ${esc(r.last)},</p><p>Thank you for choosing ${esc(S.config.name)}. Your reservation is confirmed.</p><table><tr><td><b>Confirmation #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)} (check-in from ${esc(S.config.checkinTime)})</td></tr><tr><td><b>Departure</b></td><td>${dlong(r.depart)} (check-out by ${esc(S.config.checkoutTime)})</td></tr><tr><td><b>Room type</b></td><td>${esc((S.config.types.find(t => t.code === r.type) || {}).name || r.type)}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td></tr><tr><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guarantee</b></td><td>${esc(r.guarantee || '')}</td></tr></table><p>We look forward to your stay.</p>`); }
+const letterHead = () => { const c = S.config, a = [c.address, cityLineC(c)].filter(Boolean).join(', '); return `<h1>${esc(c.name)}</h1><div>${esc(a)}${c.phone ? (a ? ' · ' : '') + esc(c.phone) : ''}${c.fax ? ' · Fax ' + esc(c.fax) : ''}</div><hr>`; };
+function printReg(r) { printHtml(letterHead() + `<h2>Guest Registration</h2><table><tr><td><b>Guest</b></td><td>${esc(gname(r))}</td><td><b>Conf. #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Address</b></td><td>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}</td><td><b>Phone</b></td><td>${esc(r.phone)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)}</td><td><b>Departure</b></td><td>${dlong(r.depart)}</td></tr><tr><td><b>Room</b></td><td>${esc(r.room || '')} (${esc(r.type)})</td><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td><td><b>Vehicle</b></td><td>${esc(r.vehicle)}</td></tr><tr><td><b>Company</b></td><td>${esc(r.company)}</td><td><b>E-mail</b></td><td>${esc(r.email)}</td></tr></table><p>Check-out time is ${esc(t12(S.config.checkoutTime))}.</p>${policyHtml()}<p>${esc(S.config.regText)}</p><p style="margin-top:40px">Guest signature: ______________________________________ &nbsp; Date: ______________</p>`); }
+function printConf(r) { printHtml(letterHead() + `<h2>Reservation Confirmation</h2><p>Dear ${esc(r.first || '')} ${esc(r.last)},</p><p>Thank you for choosing ${esc(S.config.name)}. Your reservation is confirmed.</p><table><tr><td><b>Confirmation #</b></td><td>${esc(r.conf)}</td></tr><tr><td><b>Arrival</b></td><td>${dlong(r.arrive)} (check-in from ${esc(t12(S.config.checkinTime))})</td></tr><tr><td><b>Departure</b></td><td>${dlong(r.depart)} (check-out by ${esc(t12(S.config.checkoutTime))})</td></tr><tr><td><b>Room type</b></td><td>${esc((S.config.types.find(t => t.code === r.type) || {}).name || r.type)}</td></tr><tr><td><b>Guests</b></td><td>${r.adults} adults, ${r.children} children</td></tr><tr><td><b>Rate</b></td><td>${r.suppressRate ? 'on file' : money(r.rate) + ' plus tax, per night'}</td></tr><tr><td><b>Guarantee</b></td><td>${esc(r.guarantee || '')}</td></tr></table>${policyHtml()}<p>We look forward to your stay.</p>`); }
 function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Folio</h2><p><b>${esc(gname(r))}</b><br>${esc([r.addr1, r.city, r.state, r.zip].filter(Boolean).join(', '))}<br>Room ${esc(r.room)} · ${dshort(r.arrive)} to ${dshort(r.depart)} · Conf. # ${esc(r.conf)}${r.company ? '<br>' + esc(r.company) : ''}</p>` + folioTable(FO) + '<p style="margin-top:30px">Guest signature: ______________________________________</p>'); }
 
 /* ---------- Reports ---------- */
@@ -859,17 +859,107 @@ function parseLicense(t) {   // AAMVA format used by US and Canadian licenses
 }
 
 /* ---------- Setup (managers) ---------- */
-const SETUP = [['property', 'Property'], ['types', 'Room types and rates'], ['rooms', 'Rooms'], ['taxes', 'Taxes'], ['codes', 'Posting codes'], ['rates', 'Rates by date'], ['packages', 'Packages'], ['hks', 'Housekeepers'], ['rewards', 'Rewards'], ['users', 'Logins'], ['ooo', 'Out of order rooms']];
+const SETUP_GROUPS = [['Hotel Settings', ['property', 'policies', 'types', 'rooms', 'rates', 'packages', 'rewards']], ['Money', ['taxes', 'codes']], ['Housekeeping', ['hks', 'ooo']], ['People', ['users']]];
+const SETUP_NAMES = { property: 'Property', policies: 'Policies', types: 'Room Types and Rates', rooms: 'Rooms', rates: 'Rates by Date', packages: 'Packages', rewards: 'Rewards', taxes: 'Taxes', codes: 'Posting Codes', hks: 'Housekeepers', ooo: 'Out of Order Rooms', users: 'Logins' };
+const CODE_TYPES = [['ROOM', 'ROOM - room charge'], ['MISC', 'MISC - other charge'], ['CASH', 'CASH - cash payment'], ['CRED', 'CRED - card payment'], ['AREC', 'AREC - direct bill'], ['GFTCRD', 'GFTCRD - gift card'], ['ADMIN', 'ADMIN - write-off']];
+const t12 = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return String(t || ''); const h = +m[1]; return ((h % 12) || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM'); };
+const timeOpts = cur => { const l = []; for (let i = 0; i < 48; i++) l.push(String(Math.floor(i / 2)).padStart(2, '0') + ':' + (i % 2 ? '30' : '00')); if (cur && !l.includes(cur)) l.unshift(cur); return l.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(t12(v))}</option>`).join(''); };
+const dollars = c => ((c || 0) / 100).toFixed(2);
+const cityLineC = c => [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+const defaultCancel = h => `Please cancel at least ${h} hours before your arrival to avoid a charge for the first night.`;
+function policyLines() {   // the hotel's policies as plain sentences (only the ones that are filled in)
+  const c = S.config, p = c.policies; if (!p) return []; const m = v => '$' + (v / 100).toFixed(2);
+  const L = [p.cancelText || defaultCancel(p.cancelHours)]; if (p.deposit > 0) L.push(`A deposit of ${m(p.deposit)} is taken when you book.`); if (p.hold > 0) L.push(`A card hold of ${m(p.hold)} per stay is placed for incidentals.`);
+  L.push(p.pets === 'yes' ? 'Pets are allowed' + (p.petFee > 0 ? ` for a fee of ${m(p.petFee)} per night.` : '.') : 'Pets are not allowed.'); if (p.smokingFee > 0) L.push(`A smoking fee of ${m(p.smokingFee)} applies to a room that was smoked in.`); if (p.other) L.push(p.other); return L;
+}
+const policyHtml = () => { const L = policyLines(); return L.length ? '<h3>Hotel Policies</h3>' + L.map(x => `<p>${esc(x)}</p>`).join('') : ''; };
+const rlSort = l => l.slice().sort((a, b) => (a.rentLast ? 1 : 0) - (b.rentLast ? 1 : 0));   // Rent Last rooms go to the end of a list to pick from
+const roomSort = (a, b) => String(a.no).localeCompare(String(b.no), 'en', { numeric: true });
+const makeCode = (name, used, max) => {   // "Two Queens" -> "TQ"; made unique by adding a number
+  let b = String(name || '').split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, max - 2) || 'X', c = b, n = 2; while (used.has(c)) c = b + n++; return c;
+};
+let SD = null;   // the table being edited: { page, rows } (kept when a row is added or removed, dropped after Save)
+function sdRows(page) {
+  const c = S.config;
+  if (page === 'types') return c.types.map(t => ({ code: t.code, name: t.name, rate: dollars(t.rate) }));
+  if (page === 'rooms') return c.rooms.map(r => ({ no: r.no, type: r.type, floor: r.floor, nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast })).sort(roomSort);
+  if (page === 'taxes') return c.taxes.map(t => ({ code: t.code, name: t.name, pct: String(t.pct) }));
+  if (page === 'codes') return c.codes.map(k => ({ code: k.code, name: k.name, type: k.type, tax: (k.tax || []).slice() }));
+  if (page === 'rates') return (c.rateRules || []).map(k => ({ name: k.name, from: k.from, to: k.to, days: (k.days || []).slice(), type: k.type || '*', rate: dollars(k.rate) }));
+  if (page === 'packages') return (c.packages || []).map(k => ({ code: k.code, name: k.name, price: dollars(k.price), charge: k.charge || 'MS' }));
+  if (page === 'hks') return c.housekeepers.map(n => ({ name: n }));
+  return null;
+}
+const sdBlank = page => ({ types: { code: '', name: '', rate: '' }, taxes: { code: '', name: '', pct: '' }, codes: { code: '', name: '', type: 'MISC', tax: [] }, rates: { name: '', from: '', to: '', days: [], type: '*', rate: '' }, packages: { code: '', name: '', price: '', charge: 'MS' }, hks: { name: '' } }[page]);
+function sdStart() { SD = sdRows(view.setup) ? { page: view.setup, rows: sdRows(view.setup) } : null; }
+function sdRead() {   // copy what is typed in the table into SD.rows
+  const f = $('#sdForm'); if (!SD || !f || f.dataset.page !== SD.page) return;
+  f.querySelectorAll('tr[data-i]').forEach(tr => { const o = SD.rows[+tr.dataset.i]; if (!o) return; const multi = {};
+    tr.querySelectorAll('[data-f]').forEach(el => { const k = el.dataset.f; if (el.dataset.v !== undefined) { (multi[k] = multi[k] || []); if (el.checked) multi[k].push(isNaN(el.dataset.v) ? el.dataset.v : +el.dataset.v); } else o[k] = el.type === 'checkbox' ? el.checked : el.value; });
+    Object.assign(o, multi); });
+}
+const sdIn = (i, f, v, ph, extra) => `<input data-f="${f}" value="${esc(v)}" ${ph ? `placeholder="${esc(ph)}"` : ''} ${extra || ''} aria-label="${esc(f)}">`;
+const sdSel = (f, v, opts) => `<select data-f="${f}" aria-label="${esc(f)}">${opts.map(o => `<option value="${esc(o[0])}" ${String(o[0]) === String(v) ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+const sdChk = (f, v, label) => `<input type="checkbox" data-f="${f}" ${v ? 'checked' : ''} aria-label="${esc(label || f)}">`;
+const sdTable = (head, rows, o) => `<div class="wrap"><table class="sdt"><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>${rows.map((r, i) => `<tr data-i="${i}">${r}</tr>`).join('') || `<tr><td colspan="${head.length}" class="empty">${o.empty}</td></tr>`}</table></div>`;
+const sdDelBtn = (i, off) => `<td><button type="button" class="btn sm" data-act="sdDel" data-i="${i}" ${off ? 'disabled' : ''}>Remove</button></td>`;
+const sdFoot = add => `<div class="mfoot sdfoot" style="justify-content:flex-start">${add ? `<button type="button" class="btn blue" data-act="sdAdd">${add}</button>` : ''}<button class="btn green" data-act="setupSave">Save</button><span class="err" id="setupErr" role="alert"></span></div>`;
+function sdTypesPage(c) {
+  const cnt = code => c.rooms.filter(r => r.type === code).length;
+  return `<p class="hint">Your kinds of rooms and what each costs per night. Leave Code empty and one is made from the name (Two Queens becomes TQ). A type that still has rooms cannot be removed.</p>` +
+    sdTable(['Code', 'Name', 'Price per night', 'Rooms', ''], SD.rows.map((t, i) => `<td>${sdIn(i, 'code', t.code, 'auto', 'maxlength="8" style="width:90px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', t.name, 'King', 'maxlength="60"')}</td><td>${sdIn(i, 'rate', t.rate, '0.00', 'inputmode="decimal" style="width:110px"')}</td><td class="num">${cnt(t.code)}</td>${sdDelBtn(i)}`), { empty: 'No room types.' }) + sdFoot('+ Add Room Type');
+}
+function sdRoomsPage(c) {
+  const opts = c.types.map(t => [t.code, t.code + ' - ' + t.name]);
+  return `<p class="hint">${SD.rows.length} room${SD.rows.length === 1 ? '' : 's'} in the hotel. "Rent Last" rooms are offered after all the others when a room is picked. Changes are kept when you click Save.</p><div class="bar" style="margin-bottom:8px"><button type="button" class="btn blue" data-act="rmAdd">Add Room</button><button type="button" class="btn" data-act="rmMany">Add Many Rooms</button></div>` +
+    sdTable(['Room #', 'Type', 'Floor', 'No Smoking', 'Accessible', 'Rent Last', ''], SD.rows.map((r, i) => `<td><b>${esc(r.no)}</b></td><td>${sdSel('type', r.type, opts.some(o => o[0] === r.type) ? opts : opts.concat([[r.type, r.type]]))}</td><td>${sdIn(i, 'floor', r.floor, '', 'maxlength="4" style="width:60px"')}</td><td class="ctr">${sdChk('nosmoke', r.nosmoke, 'No smoking')}</td><td class="ctr">${sdChk('accessible', r.accessible, 'Accessible')}</td><td class="ctr">${sdChk('rentLast', r.rentLast, 'Rent last')}</td>${sdDelBtn(i)}`), { empty: 'No rooms yet. Click Add Room.' }) + sdFoot('');
+}
+function sdTaxesPage() {
+  return `<p class="hint">Taxes added to charges. Choose which taxes each charge gets in Posting Codes.</p>` + sdTable(['Code', 'Name', 'Percent', ''], SD.rows.map((t, i) => `<td>${sdIn(i, 'code', t.code, 'auto', 'maxlength="6" style="width:80px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', t.name, 'State Tax', 'maxlength="60"')}</td><td>${sdIn(i, 'pct', t.pct, '0.00', 'inputmode="decimal" style="width:90px"')}</td>${sdDelBtn(i)}`), { empty: 'No taxes.' }) + sdFoot('+ Add Tax');
+}
+function sdCodesPage(c) {
+  const th = ['Code', 'Name', 'Type'].concat(c.taxes.map(t => esc(t.code)), ['']);
+  const rows = SD.rows.map((k, i) => ({ k, i }));
+  return `<p class="hint">Everything that can be posted to a guest's bill. ROOM and MISC are charges; CASH, CRED, AREC and GFTCRD are payments; ADMIN is for write-offs. Tick the taxes each charge gets. RM (Room Charge) must stay: the night audit posts it.</p>
+    <div class="bar"><input id="codeQ" type="search" placeholder="Quick search" style="max-width:260px" aria-label="Quick search"></div>` +
+    sdTable(th, rows.map(({ k, i }) => `<td>${sdIn(i, 'code', k.code, '', 'maxlength="8" style="width:80px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', k.name, '', 'maxlength="60"')}</td><td>${sdSel('type', k.type, CODE_TYPES)}</td>${c.taxes.map(t => `<td class="ctr"><input type="checkbox" data-f="tax" data-v="${esc(t.code)}" ${(k.tax || []).includes(t.code) ? 'checked' : ''} aria-label="${esc(t.code)}"></td>`).join('')}${sdDelBtn(i, k.code === 'RM')}`), { empty: 'No posting codes.' }) + sdFoot('+ Add Posting Code');
+}
+function sdRatesPage(c) {
+  const types = [['*', 'All types']].concat(c.types.map(t => [t.code, t.code + ' - ' + t.name]));
+  return `<p class="hint">Rates that change by date, such as a holiday or a busy season. Leave every day unticked for all days. When two lines cover the same night, the lower line wins. Nights with no line use the room type's normal price.</p>` +
+    sdTable(['Name', 'From', 'Through', 'Days', 'Room type', 'Rate', ''], SD.rows.map((k, i) => `<td>${sdIn(i, 'name', k.name, 'Derby weekend', 'maxlength="40"')}</td><td><input type="date" data-f="from" value="${esc(k.from)}" aria-label="From"></td><td><input type="date" data-f="to" value="${esc(k.to)}" aria-label="Through"></td><td class="days">${DOW.map((d, n) => `<label class="dchk"><input type="checkbox" data-f="days" data-v="${n}" ${(k.days || []).includes(n) ? 'checked' : ''}>${d}</label>`).join('')}</td><td>${sdSel('type', k.type, types.some(o => o[0] === k.type) ? types : types.concat([[k.type, k.type]]))}</td><td>${sdIn(i, 'rate', k.rate, '0.00', 'inputmode="decimal" style="width:100px"')}</td>${sdDelBtn(i)}`), { empty: 'No special rates.' }) + sdFoot('+ Add Rate');
+}
+function sdPackagesPage(c) {
+  const codes = c.codes.filter(k => ['ROOM', 'MISC'].includes(k.type)).map(k => [k.code, k.code + ' - ' + k.name]);
+  return `<p class="hint">Extras sold with the room and charged every night by the night audit, like breakfast. Taxes follow the posting code.</p>` +
+    sdTable(['Code', 'Name', 'Price per night', 'Posting code', ''], SD.rows.map((k, i) => `<td>${sdIn(i, 'code', k.code, 'auto', 'maxlength="8" style="width:90px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', k.name, 'Breakfast', 'maxlength="60"')}</td><td>${sdIn(i, 'price', k.price, '0.00', 'inputmode="decimal" style="width:100px"')}</td><td>${sdSel('charge', k.charge, codes.some(o => o[0] === k.charge) ? codes : codes.concat([[k.charge, k.charge]]))}</td>${sdDelBtn(i)}`), { empty: 'No packages.' }) + sdFoot('+ Add Package');
+}
+function sdHksPage() {
+  return `<p class="hint">The housekeepers' names, as they appear when you assign rooms.</p>` + sdTable(['Name', ''], SD.rows.map((k, i) => `<td>${sdIn(i, 'name', k.name, 'Name', 'maxlength="40"')}</td>${sdDelBtn(i)}`), { empty: 'No housekeepers yet.' }) + sdFoot('+ Add Housekeeper');
+}
 function vSetup() {
   const c = S.config; let body = '';
-  const save = '<div class="mfoot" style="justify-content:flex-start"><button class="btn green" data-act="setupSave">Save</button></div>';
-  if (view.setup === 'property') body = `<div class="grid card"><label class="c6">Hotel name<input id="s_name" value="${esc(c.name)}" maxlength="80"></label><label class="c6">Phone<input id="s_phone" value="${esc(c.phone)}" maxlength="40"></label><label class="c12">Address<input id="s_address" value="${esc(c.address)}" maxlength="200"></label><label class="c3">Check-in time<input id="s_checkinTime" value="${esc(c.checkinTime)}"></label><label class="c3">Check-out time<input id="s_checkoutTime" value="${esc(c.checkoutTime)}"></label><label class="chk c12"><input type="checkbox" id="s_requireShift" ${c.requireShift ? 'checked' : ''}>Front desk must open a cashier shift before taking payments</label><label class="c12">Words on the registration card<textarea id="s_regText" rows="3" maxlength="1500">${esc(c.regText)}</textarea></label></div>${save}`;
-  else if (view.setup === 'types') body = `<p class="hint">One line per room type: code, name, nightly rate. Example: NK, King, 80.00</p><textarea id="s_types" rows="12" class="card" style="font-family:Consolas,monospace">${esc(c.types.map(t => `${t.code}, ${t.name}, ${(t.rate / 100).toFixed(2)}`).join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'rooms') body = `<p class="hint">One line per room: room number, room type code, floor. Example: 101, NK, 1 &nbsp;(${c.rooms.length} rooms now)</p><textarea id="s_rooms" rows="18" class="card" style="font-family:Consolas,monospace">${esc(c.rooms.map(r => `${r.no}, ${r.type}, ${r.floor}`).join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'taxes') body = `<p class="hint">One line per tax: code, name, percent. Example: T1, State Tax, 6.24</p><textarea id="s_taxes" rows="6" class="card" style="font-family:Consolas,monospace">${esc(c.taxes.map(t => `${t.code}, ${t.name}, ${t.pct}`).join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'codes') body = `<p class="hint">One line per code: code, name, type, taxes that apply (separated by spaces). Types: ROOM and MISC are charges; CASH, CRED, AREC and GFTCRD are payments; ADMIN is for write-offs. Keep RM (the night audit posts it).</p><textarea id="s_codes" rows="20" class="card" style="font-family:Consolas,monospace">${esc(c.codes.map(k => `${k.code}, ${k.name}, ${k.type}, ${(k.tax || []).join(' ')}`).join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'rates') body = `<p class="hint">Rates that change by date. One line each: name, from, through, days, room type, rate. Dates as YYYY-MM-DD. Days: <b>all</b>, or any of Sun Mon Tue Wed Thu Fri Sat. Room type: a code, or * for every type. When two lines cover the same night, the lower line wins. Nights with no line use the room type's normal rate.<br>Example: Derby weekend, 2027-05-01, 2027-05-02, all, *, 189.00 &nbsp;·&nbsp; Summer weekends, 2027-06-01, 2027-08-31, Fri Sat, NQQ, 109.00</p><textarea id="s_rates" rows="12" class="card" style="font-family:Consolas,monospace">${esc((c.rateRules || []).map(k => `${k.name}, ${k.from}, ${k.to}, ${k.days && k.days.length ? k.days.map(d => DOW[d]).join(' ') : 'all'}, ${k.type}, ${(k.rate / 100).toFixed(2)}`).join('\n'))}</textarea>${save}`;
-  else if (view.setup === 'packages') body = `<p class="hint">Extras sold with the room and charged every night by the night audit. One line each: code, name, price per night, posting code (leave blank for MS, Miscellaneous). Taxes follow the posting code.<br>Example: BKF, Breakfast for two, 18.00, MS</p><textarea id="s_packages" rows="8" class="card" style="font-family:Consolas,monospace">${esc((c.packages || []).map(k => `${k.code}, ${k.name}, ${(k.price / 100).toFixed(2)}, ${k.charge}`).join('\n'))}</textarea>${save}`;
+  if (!view.setup) {   // the Setup home: links in columns
+    return `<h1>Hotel Configuration</h1><div class="setcols">${SETUP_GROUPS.map(g => `<div class="card setcol"><h2>${g[0]}</h2>${g[1].map(k => `<a href="#" data-act="setupTab" data-tab="${k}">${SETUP_NAMES[k]}</a>`).join('')}</div>`).join('')}</div>`;
+  }
+  sdRead(); if (!SD || SD.page !== view.setup) sdStart();
+  const save = sdFoot('');
+  if (view.setup === 'property') body = `<div class="grid card"><label class="c6">Hotel name<input id="s_name" value="${esc(c.name)}" maxlength="80"></label><label class="c6">General Manager<input id="s_gm" value="${esc(c.gm)}" maxlength="60"></label><label class="c12">Address<input id="s_address" value="${esc(c.address)}" maxlength="200"></label><label class="c6">City<input id="s_city" value="${esc(c.city)}" maxlength="60"></label><label class="c3">State<input id="s_state" value="${esc(c.state)}" maxlength="30"></label><label class="c3">ZIP<input id="s_zip" value="${esc(c.zip)}" maxlength="15"></label><label class="c3">Phone<input id="s_phone" value="${esc(c.phone)}" maxlength="40"></label><label class="c3">Reservation phone<input id="s_resPhone" value="${esc(c.resPhone)}" maxlength="40"></label><label class="c3">Fax<input id="s_fax" value="${esc(c.fax)}" maxlength="40"></label><label class="c3">Tax ID<input id="s_taxId" value="${esc(c.taxId)}" maxlength="30"></label><label class="c3">Check-in time<select id="s_checkinTime">${timeOpts(c.checkinTime)}</select></label><label class="c3">Check-out time<select id="s_checkoutTime">${timeOpts(c.checkoutTime)}</select></label><label class="chk c12"><input type="checkbox" id="s_requireShift" ${c.requireShift ? 'checked' : ''}>Front desk must open a cashier shift before taking payments</label></div>${save}`;
+  else if (view.setup === 'policies') { const p = c.policies || {}, h = p.cancelHours == null ? 24 : p.cancelHours; body = `<p class="hint">These are printed on the registration card and the confirmation. Nothing here charges a guest by itself; the desk still posts any charge.</p><div class="grid card">
+    <label class="c6">Guests can cancel free up to (hours before arrival)<input id="s_cancelHours" inputmode="numeric" value="${h}"></label><label class="c6"><span>&nbsp;</span><span class="hint" style="font-weight:400">Wording below follows the hours until you change it.</span></label>
+    <label class="c12">Cancellation policy wording<textarea id="s_cancelText" rows="2" maxlength="1500" data-def="${esc(defaultCancel(h))}">${esc(p.cancelText || defaultCancel(h))}</textarea></label>
+    <label class="c3">Deposit taken when booking ($)<input id="s_deposit" inputmode="decimal" value="${dollars(p.deposit)}"></label><label class="c3">Card hold for incidentals ($ per stay)<input id="s_hold" inputmode="decimal" value="${dollars(p.hold)}"></label>
+    <label class="c3">Pets allowed<select id="s_pets"><option value="no" ${p.pets === 'yes' ? '' : 'selected'}>No</option><option value="yes" ${p.pets === 'yes' ? 'selected' : ''}>Yes</option></select></label><label class="c3">Pet fee per night ($)<input id="s_petFee" inputmode="decimal" value="${dollars(p.petFee)}"></label>
+    <label class="c3">Smoking fee ($)<input id="s_smokingFee" inputmode="decimal" value="${dollars(p.smokingFee)}"></label>
+    <label class="c12">Other house rules<textarea id="s_other" rows="3" maxlength="1500">${esc(p.other)}</textarea></label>
+    <label class="c12">Words on the registration card<textarea id="s_regText" rows="3" maxlength="1500">${esc(c.regText)}</textarea></label></div>${save}`; }
+  else if (view.setup === 'types') body = sdTypesPage(c);
+  else if (view.setup === 'rooms') body = sdRoomsPage(c);
+  else if (view.setup === 'taxes') body = sdTaxesPage();
+  else if (view.setup === 'codes') body = sdCodesPage(c);
+  else if (view.setup === 'rates') body = sdRatesPage(c);
+  else if (view.setup === 'packages') body = sdPackagesPage(c);
+  else if (view.setup === 'hks') body = sdHksPage();
   else if (view.setup === 'rewards') { const w = S.rewards; body = `<p class="hint">A guest rewards program the hotel runs for its own guests. Members earn points when they check out, and spend them on the folio (Post Payment, Rewards Redemption). The posting code RW is added for you.</p><div class="grid card">
     <label class="chk c12"><input type="checkbox" id="s_rw_enabled" ${w.enabled ? 'checked' : ''}>Run the rewards program at this hotel</label>
     <label class="c6">Program name<input id="s_rw_name" maxlength="40" value="${esc(w.name)}"></label>
@@ -878,27 +968,70 @@ function vSetup() {
     <label class="c3">Point value when redeemed (cents)<input id="s_rw_pointValue" inputmode="numeric" value="${w.pointValue}"></label><label class="c3">Least points to redeem<input id="s_rw_minRedeem" inputmode="numeric" value="${w.minRedeem}"></label>
     <label class="c12">Tiers (up to 6). One line each: name, minimum lifetime points, welcome amenity, message for the desk. The first tier starts at 0.<textarea id="s_rw_tiers" rows="7" style="font-family:Consolas,monospace">${esc(w.tiers.map(t => `${t.name}, ${t.min}, ${t.amenity}, ${t.message}`).join('\n'))}</textarea></label></div>
     <p class="hint">Now: 1 point is worth ${w.pointValue} cent${w.pointValue === 1 ? '' : 's'}; ${w.earn === 'nights' ? w.perNight + ' points for each paid night' : w.perDollar + ' points for each whole dollar of room revenue'}. The message is shown to the desk at check-in (200 characters at most); the amenity is up to 80.</p>${save}`; }
-  else if (view.setup === 'hks') body = `<p class="hint">One housekeeper's name per line.</p><textarea id="s_hks" rows="8" class="card">${esc(c.housekeepers.join('\n'))}</textarea>${save}`;
   else if (view.setup === 'users') body = `<p class="hint">Everyone signs in with their own e-mail address. A new person gets a link to choose their password, and can reset it later with "Forgot your password?" on the sign-in page.</p><div id="usersBox" class="hint">Loading…</div><h2>Add or change a login</h2><div class="grid card"><label>E-mail address<input id="u_email" type="email" autocapitalize="off" maxlength="120"></label><label class="c3">Name<input id="u_name" maxlength="80"></label><label class="c3">Role<select id="u_role"></select></label><label class="chk c2"><input type="checkbox" id="u_disabled">Turned off</label><label class="c12" style="flex-direction:row;gap:8px"><button class="btn green" data-act="userSave">Save login</button><button class="btn" data-act="userInvite">Send a new password link</button></label></div>`;
   else if (view.setup === 'ooo') body = `<div class="bar"><button class="btn red" data-act="blockNew">Take a room out of order…</button></div><div class="wrap"><table><tr><th>Room</th><th>From</th><th>Through</th><th>Reason</th><th></th></tr>${S.blocks.map(b => `<tr><td><b>${esc(b.room)}</b></td><td>${dshort(b.start)}</td><td>${dshort(b.end)}</td><td>${esc(b.reason)}</td><td><button class="btn sm" data-act="blockRemove" data-id="${b.id}">Put back in order</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No rooms are out of order.</td></tr>'}</table></div>`;
   if (view.setup === 'users') setTimeout(async () => { const box = $('#usersBox'); if (!box) return; try { const R = await api('/account/users'), names = { owner: 'Owner', manager: 'Manager (GM)', desk: 'Front desk', hk: 'Housekeeping only' }; $('#u_role').innerHTML = R.may.map(r => `<option value="${r}">${names[r]}</option>`).join(''); if (R.may.includes('desk')) $('#u_role').value = 'desk';
     box.innerHTML = `<div class="wrap"><table><tr><th>Name</th><th>E-mail address</th><th>Role</th><th>Status</th><th>Last sign-in</th></tr>${R.users.map(x => `<tr class="click" data-act="userPick" data-u="${esc(JSON.stringify(x))}"><td><b>${esc(x.name)}</b></td><td>${esc(x.email)}</td><td>${names[x.role]}</td><td>${x.disabled ? '<span class="badge r">Off</span>' : x.hasPassword ? '<span class="badge g">On</span>' : '<span class="badge a">Has not chosen a password yet</span>'}</td><td>${x.lastLogin ? stamp(x.lastLogin) : ''}</td></tr>`).join('')}</table></div>${R.mailOn ? '' : '<p class="hint">E-mail sending is not set up yet, so copy each new login\'s link and send it yourself.</p>'}`; } catch (e) { box.textContent = e.message; } }, 0);
-  return `<h1>Setup</h1><div class="acts" style="margin-bottom:12px">${SETUP.map(s => `<button class="btn sm ${view.setup === s[0] ? 'blue' : ''}" data-act="setupTab" data-tab="${s[0]}">${s[1]}</button>`).join('')}</div>${body}`;
+  return `<h1>${SETUP_NAMES[view.setup]}</h1><p style="margin:0 0 12px"><a href="#" class="btn sm" data-act="setupHome">‹ Back to Setup</a></p><div id="sdForm" data-page="${view.setup}">${body}</div>`;
+}
+function sdErr(msg) { const el = $('#setupErr'); if (el) el.textContent = msg || ''; }
+const needMoney = (v, label, blankOk) => { const s = String(v == null ? '' : v).trim(); if (!s) { if (blankOk) return 0; throw new Error('Type ' + label + '.'); } const n = toCents(s); if (!Number.isFinite(n) || n < 0) throw new Error('Check ' + label + '. It must be an amount like 80.00.'); return n; };
+function sdCoded(rows, max, what, build) {   // drop empty rows, make a code from the name when it is empty, refuse the same code twice
+  const used = new Set(rows.map(r => String(r.code || '').trim().toUpperCase()).filter(Boolean)), seen = new Set(), out = [];
+  for (const r of rows) {
+    const name = String(r.name || '').trim(); let code = String(r.code || '').trim().toUpperCase(); if (!code && !name && !Object.entries(r).some(([k, v]) => !['code', 'name', 'type', 'tax', 'charge'].includes(k) && String(v || '').trim())) continue;
+    if (!code) { if (!name) throw new Error('Give each ' + what + ' a name or a code.'); code = makeCode(name, used, max); used.add(code); }
+    if (seen.has(code)) throw new Error('Two ' + what + 's have the same code (' + code + '). Change one.'); seen.add(code); out.push(build(code, name || code, r));
+  }
+  return out;
 }
 async function setupSave() {
-  const lines = id => $('#' + id).value.split('\n').map(l => l.split(',').map(x => x.trim())).filter(p => p[0]);
-  const c = {};
-  if (view.setup === 'property') { for (const k of ['name', 'phone', 'address', 'checkinTime', 'checkoutTime', 'regText']) c[k] = $('#s_' + k).value; c.requireShift = $('#s_requireShift').checked; }
-  if (view.setup === 'rates') c.rateRules = lines('s_rates').map(p => ({ name: p[0], from: p[1], to: p[2], days: /^all$/i.test(p[3] || 'all') ? [] : (p[3] || '').split(/\s+/).map(x => DOW.findIndex(d => d.toLowerCase() === x.slice(0, 3).toLowerCase())).filter(x => x >= 0), type: p[4] || '*', rate: toCents(p[5] || '') }));
-  if (view.setup === 'packages') c.packages = lines('s_packages').map(p => ({ code: p[0], name: p[1] || p[0], price: toCents(p[2] || '0'), charge: p[3] || 'MS' }));
-  if (view.setup === 'types') c.types = lines('s_types').map(p => ({ code: p[0], name: p[1] || p[0], rate: toCents(p[2] || '0') }));
-  if (view.setup === 'rooms') c.rooms = lines('s_rooms').map(p => ({ no: p[0], type: p[1] || '', floor: p[2] || p[0][0] }));
-  if (view.setup === 'taxes') c.taxes = lines('s_taxes').map(p => ({ code: p[0], name: p[1] || p[0], pct: parseFloat(p[2]) || 0 }));
-  if (view.setup === 'codes') c.codes = lines('s_codes').map(p => ({ code: p[0], name: p[1] || p[0], type: p[2] || 'MISC', tax: (p[3] || '').split(/\s+/).filter(Boolean).map(x => x.toUpperCase()) }));
-  if (view.setup === 'rewards') c.rewards = { enabled: $('#s_rw_enabled').checked, name: $('#s_rw_name').value, earn: $('#s_rw_earn').value, perNight: $('#s_rw_perNight').value, perDollar: $('#s_rw_perDollar').value, pointValue: $('#s_rw_pointValue').value, minRedeem: $('#s_rw_minRedeem').value,
-    tiers: $('#s_rw_tiers').value.split('\n').filter(l => l.trim()).map(l => { const p = l.split(','); return { name: (p[0] || '').trim(), min: (p[1] || '').trim(), amenity: (p[2] || '').trim(), message: p.slice(3).join(',').trim() }; }) };
-  if (view.setup === 'hks') c.housekeepers = $('#s_hks').value.split('\n').map(x => x.trim()).filter(Boolean);
-  await run(async () => { await op('configSave', { config: c }); await refresh(); toast('Saved.'); });
+  const c = {}, v = id => $('#' + id).value;
+  await run(async () => { try {
+    sdErr(''); sdRead(); const rows = SD && SD.page === view.setup ? SD.rows : [];
+    if (view.setup === 'property') { for (const k of ['name', 'gm', 'phone', 'resPhone', 'fax', 'taxId', 'address', 'city', 'state', 'zip', 'checkinTime', 'checkoutTime']) c[k] = v('s_' + k); c.requireShift = $('#s_requireShift').checked; }
+    if (view.setup === 'policies') { const h = v('s_cancelHours').trim() === '' ? 24 : Math.round(Number(v('s_cancelHours'))); if (!Number.isFinite(h) || h < 0 || h > 720) throw new Error('Guests can cancel free up to a number of hours from 0 to 720.'); const txt = v('s_cancelText').trim();
+      c.regText = v('s_regText'); c.policies = { cancelHours: h, cancelText: txt === defaultCancel(h) ? '' : txt, deposit: needMoney(v('s_deposit'), 'the deposit', true), hold: needMoney(v('s_hold'), 'the card hold', true), pets: v('s_pets'), petFee: needMoney(v('s_petFee'), 'the pet fee', true), smokingFee: needMoney(v('s_smokingFee'), 'the smoking fee', true), other: v('s_other') }; }
+    if (view.setup === 'types') { c.types = sdCoded(rows, 8, 'room type', (code, name, r) => ({ code, name, rate: needMoney(r.rate, 'a price per night for ' + name) })); if (!c.types.length) throw new Error('Keep at least one room type.'); }
+    if (view.setup === 'rooms') { const seen = new Set(); c.rooms = rows.filter(r => String(r.no).trim()).map(r => { const no = String(r.no).trim(); if (seen.has(no)) throw new Error('Room ' + no + ' is in the list twice.'); seen.add(no); return { no, type: r.type, floor: String(r.floor || '').trim() || no[0], nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast }; }); }
+    if (view.setup === 'taxes') c.taxes = sdCoded(rows, 6, 'tax', (code, name, r) => { const p = parseFloat(String(r.pct).replace(/[^0-9.]/g, '')); if (String(r.pct).trim() && !Number.isFinite(p)) throw new Error('Check the percent for ' + name + '.'); if (p > 50) throw new Error('The percent for ' + name + ' cannot be more than 50.'); return { code, name, pct: p || 0 }; });
+    if (view.setup === 'codes') { c.codes = sdCoded(rows, 8, 'posting code', (code, name, r) => ({ code, name, type: r.type || 'MISC', tax: r.tax || [] })); if (!c.codes.some(k => k.code === 'RM')) throw new Error('Keep the RM (Room Charge) code. The night audit needs it.'); }
+    if (view.setup === 'rates') c.rateRules = rows.filter(r => Object.values(r).some(x => Array.isArray(x) ? false : String(x).trim() && x !== '*')).map(r => { const nm = String(r.name).trim() || 'Rate'; if (!r.from || !r.to) throw new Error('Pick the From and Through dates for "' + nm + '".'); if (r.to < r.from) throw new Error('"' + nm + '" ends before it starts. Check the dates.'); return { name: nm, from: r.from, to: r.to, days: r.days || [], type: r.type || '*', rate: needMoney(r.rate, 'a rate for "' + nm + '"') }; });
+    if (view.setup === 'packages') c.packages = sdCoded(rows, 8, 'package', (code, name, r) => ({ code, name, price: needMoney(r.price, '', true), charge: r.charge || 'MS' }));
+    if (view.setup === 'hks') c.housekeepers = rows.map(r => String(r.name).trim()).filter(Boolean);
+    if (view.setup === 'rewards') c.rewards = { enabled: $('#s_rw_enabled').checked, name: $('#s_rw_name').value, earn: $('#s_rw_earn').value, perNight: $('#s_rw_perNight').value, perDollar: $('#s_rw_perDollar').value, pointValue: $('#s_rw_pointValue').value, minRedeem: $('#s_rw_minRedeem').value,
+      tiers: $('#s_rw_tiers').value.split('\n').filter(l => l.trim()).map(l => { const p = l.split(','); return { name: (p[0] || '').trim(), min: (p[1] || '').trim(), amenity: (p[2] || '').trim(), message: p.slice(3).join(',').trim() }; }) };
+    await op('configSave', { config: c }); SD = null; await refresh(); toast('Saved.');
+  } catch (e) { if (e.status === 401 || (e.status === 403 && /turned off/.test(e.message))) throw e; sdErr(e.message); } });
+}
+/* ---------- Setup tables: add / remove a row, and the Add Room windows ---------- */
+function sdAdd() { sdRead(); if (!SD || !sdBlank(SD.page)) return; SD.rows.push({ ...sdBlank(SD.page), tax: [], days: [] }); const keep = $('#codeQ'); render(); const f = $('#sdForm'); const last = f && [...f.querySelectorAll('tr[data-i]')].pop(); if (last) { const i = last.querySelector('input:not([type=checkbox])'); if (i) i.focus(); last.scrollIntoView({ block: 'nearest' }); } }
+function sdDel(i) {
+  sdRead(); const r = SD.rows[i]; if (!r) return;
+  if (SD.page === 'types') { const n = S.config.rooms.filter(x => x.type === String(r.code).trim().toUpperCase()).length; if (n) return sdErr('Room type ' + r.code + ' still has ' + n + (n === 1 ? ' room' : ' rooms') + '. Change those rooms to another type (or remove them) in Rooms first.'); }
+  if (SD.page === 'codes' && r.code === 'RM') return sdErr('Keep the RM (Room Charge) code. The night audit needs it.');
+  SD.rows.splice(i, 1); render(); sdErr('');
+}
+const floorOpts = sel => '<option value="">Same as first digit of the room number</option>' + Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}" ${String(sel) === String(i + 1) ? 'selected' : ''}>${i + 1}</option>`).join('');
+const typeOpts = () => S.config.types.map(t => `<option value="${esc(t.code)}">${esc(t.code)} - ${esc(t.name)}</option>`).join('');
+const rmFlags = () => `<label class="chk"><input type="checkbox" id="rm_nosmoke">No Smoking</label><label class="chk"><input type="checkbox" id="rm_accessible">Accessible</label><label class="chk"><input type="checkbox" id="rm_rentLast">Rent Last</label>`;
+function rmAddOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Room</div><div class="grid"><label class="c12">Room number<input id="rm_no" maxlength="8"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmAddGo">Add</button></div></div></div>`; $('#rm_no').focus(); }
+function rmManyOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Many Rooms</div><div class="grid"><label class="c6">From number<input id="rm_from" inputmode="numeric" maxlength="6"></label><label class="c6">To number<input id="rm_to" inputmode="numeric" maxlength="6"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><p class="hint" id="rm_prev" style="margin:8px 0 0"></p><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmManyGo">Add Rooms</button></div></div></div>`; $('#rm_from').focus(); rmPreview(); }
+function rmManyList() {   // the room numbers from..to that are not in the table yet
+  const a = $('#rm_from').value.trim(), b = $('#rm_to').value.trim(); if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return { bad: 'Type the first and last room number (digits only).' };
+  const from = +a, to = +b; if (to < from) return { bad: 'The last number must not be below the first.' }; if (to - from >= 300) return { bad: 'At most 300 rooms at once.' };
+  const have = new Set(SD.rows.map(r => String(r.no))), add = [], skip = []; for (let n = from; n <= to; n++) (have.has(String(n)) ? skip : add).push(String(n)); return { add, skip };
+}
+function rmPreview() { const p = $('#rm_prev'); if (!p) return; const L = rmManyList(); p.textContent = L.bad ? '' : L.add.length + (L.add.length === 1 ? ' room' : ' rooms') + ' will be added' + (L.skip.length ? '; ' + L.skip.length + ' already exist and will be skipped.' : '.'); }
+const rmNew = (no, floor) => ({ no, type: $('#rm_type').value, floor: floor || String(no)[0], nosmoke: $('#rm_nosmoke').checked, accessible: $('#rm_accessible').checked, rentLast: $('#rm_rentLast').checked });
+function rmAddGo() {
+  const no = $('#rm_no').value.trim(), er = m => { $('#rm_err').textContent = m; };
+  if (!no) return er('Type the room number.'); if (SD.rows.some(r => String(r.no) === no)) return er('Room ' + no + ' is already in the list.');
+  SD.rows.push(rmNew(no, $('#rm_floor').value)); SD.rows.sort(roomSort); $('#modal').innerHTML = ''; render(); toast('Room ' + no + ' added. Click Save to keep it.');
+}
+function rmManyGo() {
+  const L = rmManyList(); if (L.bad) return ($('#rm_err').textContent = L.bad); if (!L.add.length) return ($('#rm_err').textContent = 'All of those rooms already exist.');
+  for (const no of L.add) SD.rows.push(rmNew(no, $('#rm_floor').value)); SD.rows.sort(roomSort); $('#modal').innerHTML = ''; render(); toast(L.add.length + ' rooms added. Click Save to keep them.');
 }
 /* ---------- Room Blocking: several rooms at once, and the list of what is out of order now ---------- */
 let BK = null;   // what is typed in the window: from room, to room, floor filter, dates, reason
@@ -1133,7 +1266,7 @@ function vMembers() {
 document.addEventListener('click', async e => {
   const mb = e.target.closest('.menu>button'); if (mb) { mb.focus(); return; }
   if (e.target.closest('.drop')) setTimeout(() => { const h = $('header'); if (h) h.classList.add('nohover'); }, 0);
-  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); if (view.name !== nav.dataset.nav) { view.listDate = ''; view.listSort = null; } view.name = nav.dataset.nav; view.q = ''; if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
+  const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); if (view.name !== nav.dataset.nav) { view.listDate = ''; view.listSort = null; } view.name = nav.dataset.nav; view.q = ''; if (view.name === 'setup') { view.setup = ''; SD = null; } if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
   if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
   if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
@@ -1142,19 +1275,19 @@ document.addEventListener('click', async e => {
   if (a === 'myPw') return pwBox();
   if (a === 'copyLink') { const t = $('#linkTxt'); t.select(); try { await navigator.clipboard.writeText(t.value); toast('Link copied.'); } catch (x) { document.execCommand('copy'); toast('Link copied.'); } return; }
   if (a === 'mHotelNew') return mHotelBox();
-  if (a === 'mTestHotel') return run(async () => { const n = M.hotels.filter(h => h.test).length; const r = await api('/master/hotelSave', { test: true, name: 'Test Hotel' + (n ? ' ' + (n + 1) : ''), note: 'Practice hotel for testing' }); await api('/master/open', { id: r.id }); M = null; S = null; view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: 'property' }; await refresh(); toast('Test hotel ready. Click "All hotels" to go back.'); });
+  if (a === 'mTestHotel') return run(async () => { const n = M.hotels.filter(h => h.test).length; const r = await api('/master/hotelSave', { test: true, name: 'Test Hotel' + (n ? ' ' + (n + 1) : ''), note: 'Practice hotel for testing' }); await api('/master/open', { id: r.id }); M = null; S = null; view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: '' }; await refresh(); toast('Test hotel ready. Click "All hotels" to go back.'); });
   if (a === 'mHotelEdit') return mHotelBox(M.hotels.find(h => h.id === el.dataset.id));
   if (a === 'mHotelSave') { try { const id = el.dataset.id, email = id ? '' : $('#mh_ownerEmail').value.trim(); const r = await api('/master/hotelSave', id ? { id, name: $('#mh_name').value, paidThrough: $('#mh_paid').value, note: $('#mh_note').value } : { name: $('#mh_name').value, ownerName: $('#mh_ownerName').value, ownerEmail: email, template: $('#mh_template').value, tz: $('#mh_tz').value, paidThrough: $('#mh_paid').value, note: $('#mh_note').value }); $('#modal').innerHTML = ''; await masterLoad(); if (r.link) linkBox('Hotel added. Send the owner their link', r, email); else toast('Saved.'); } catch (x) { $('#mh_err').textContent = x.message; } return; }
   if (a === 'mStatus') return run(async () => { const h = M.hotels.find(x => x.id === el.dataset.id), off = el.dataset.to === 'off'; if (off && !confirm('Turn OFF ' + h.name + '?\n\nEveryone there is signed out right now and nobody at that hotel can sign in until you turn it back on. Their data is kept.')) return; await api('/master/status', { id: h.id, status: el.dataset.to }); await masterLoad(); toast(h.name + (off ? ' is OFF.' : ' is ON.'), off); });
   if (a === 'mInvite') return run(async () => { const h = M.hotels.find(x => x.id === el.dataset.id); if (!confirm('Make a new "choose your password" link for ' + h.ownerEmail + '?')) return; linkBox('Owner link for ' + h.name, await api('/master/ownerInvite', { id: h.id }), h.ownerEmail); });
-  if (a === 'mOpen') return run(async () => { await api('/master/open', { id: el.dataset.id }); M = null; S = null; view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: 'property' }; await refresh(); });
+  if (a === 'mOpen') return run(async () => { await api('/master/open', { id: el.dataset.id }); M = null; S = null; view = { name: 'home', tapeStart: '', q: '', floor: '', rep: '', from: '', to: '', setup: '' }; await refresh(); });
   if (a === 'mClose') return run(async () => { await api('/master/close', {}); S = null; $('#modal').innerHTML = ''; await refresh(); });
   if (a === 'mMail') return mMailBox();
   if (a === 'mMailSave' || a === 'mMailTest') { try { await api('/master/mail', { user: $('#mm_user').value, pass: $('#mm_pass').value, fromName: $('#mm_fromName').value, host: $('#mm_host').value, port: $('#mm_port').value }); if (a === 'mMailTest') { $('#mm_err').textContent = 'Sending…'; const r = await api('/master/mailTest', {}); $('#mm_err').textContent = ''; toast('Test e-mail sent to ' + r.to + '.'); } else toast('Saved.'); const keep = a === 'mMailTest'; await masterLoad(); if (keep) mMailBox(); else $('#modal').innerHTML = ''; } catch (x) { $('#mm_err').textContent = x.message; } return; }
   if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.menu')) document.activeElement.blur();
   if (a === 'findOpen') { view.name = 'find'; view.findQ = ''; view.found = []; render(); const f = $('#find2'); if (f) f.focus(); return; }
   if (a === 'findGo') return doFind($('#find2').value);
-  if (a === 'setupGo') { view.name = 'setup'; view.setup = el.dataset.tab; return render(); }
+  if (a === 'setupGo') { view.name = 'setup'; view.setup = el.dataset.tab; SD = null; return render(); }
   if (a === 'repGo') { view.name = 'reports'; view.rep = el.dataset.rep; view.repLabel = ''; view.repStage = 'result'; view.opt = {}; view.from = view.to = B(); return render(); }
   if (a === 'newRes') return openNew('new', el.dataset.room, el.dataset.date);
   if (a === 'walkIn') return openNew('walkin');
@@ -1219,7 +1352,14 @@ document.addEventListener('click', async e => {
   if (a === 'repAll') { const off = !repCats().every(c => (view.repCol || {})[c[0]]); view.repCol = {}; if (off) repCats().forEach(c => view.repCol[c[0]] = true); return render(); }
   if (a === 'printRep') return printHtml($('#repOut').innerHTML);
   if (a === 'nightAudit') return nightAudit();
-  if (a === 'setupTab') { view.setup = el.dataset.tab; return render(); }
+  if (a === 'setupTab') { view.setup = el.dataset.tab; SD = null; return render(); }
+  if (a === 'setupHome') { view.setup = ''; SD = null; return render(); }
+  if (a === 'sdAdd') return sdAdd();
+  if (a === 'sdDel') return sdDel(+el.dataset.i);
+  if (a === 'rmAdd') return rmAddOpen();
+  if (a === 'rmMany') return rmManyOpen();
+  if (a === 'rmAddGo') return rmAddGo();
+  if (a === 'rmManyGo') return rmManyGo();
   if (a === 'setupSave') return setupSave();
   if (a === 'pwSave') return run(async () => { await api('/account/password', { old: $('#pw_old').value, new: $('#pw_new').value }); $('#modal').innerHTML = ''; toast('Password changed.'); });
   if (a === 'userPick') { const u = JSON.parse(el.dataset.u); $('#u_email').value = u.email; $('#u_name').value = u.name; if ([...$('#u_role').options].some(o => o.value === u.role)) $('#u_role').value = u.role; $('#u_disabled').checked = u.disabled; return; }
@@ -1265,7 +1405,7 @@ document.addEventListener('click', async e => {
   if (a === 'impGo') return impGo();
 });
 document.addEventListener('change', e => {
-  const t = e.target;
+  const t = e.target; if (t.id === 'rm_floor') t.dataset.t = '1';
   if (t.dataset.hk) return run(async () => { await op('hkSet', { room: t.dataset.room, [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }); S.roomstate[t.dataset.room] = { ...(S.roomstate[t.dataset.room] || {}), [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }; });
   if (t.id === 'tapeDate' && t.value) { view.tapeStart = t.value; return render(); }
   if (t.id === 'tapeFloor' || t.id === 'hkFloor') { view.floor = t.value; return render(); }
@@ -1276,7 +1416,7 @@ document.addEventListener('change', e => {
   if (t.closest && t.closest('.rform')) { readOpts(); if (t.id === 'repFrom') fillShiftUsers(); return; }
   resFieldChanged(t.id);
 });
-document.addEventListener('input', e => { if (e.target.id === 'rw_q') rwSearchDraw(e.target.value); if (e.target.id === 'p_pts') rwPostVal(); if (ED && ['r_last', 'r_first', 'r_guestId', 'r_phone'].includes(e.target.id)) rwRowUpdate(); if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
+document.addEventListener('input', e => { if (e.target.id === 's_cancelHours') { const ta = $('#s_cancelText'), h = e.target.value.trim(); if (ta && /^\d+$/.test(h) && ta.value.trim() === ta.dataset.def) { ta.value = defaultCancel(h); ta.dataset.def = ta.value; } } if (e.target.id === 'codeQ') { const q = e.target.value.toLowerCase(); document.querySelectorAll('#sdForm tr[data-i]').forEach(tr => { const t = [...tr.querySelectorAll('[data-f=code],[data-f=name]')].map(x => x.value).join(' ').toLowerCase(); tr.hidden = !!q && !t.includes(q); }); } if (e.target.id === 'rm_no' && $('#rm_floor') && !$('#rm_floor').dataset.t) { const d = e.target.value.trim()[0]; $('#rm_floor').value = d && +d >= 1 ? d : ''; } if (e.target.id === 'rm_from' || e.target.id === 'rm_to') rmPreview(); if (e.target.id === 'rw_q') rwSearchDraw(e.target.value); if (e.target.id === 'p_pts') rwPostVal(); if (ED && ['r_last', 'r_first', 'r_guestId', 'r_phone'].includes(e.target.id)) rwRowUpdate(); if (e.target.id === 'g_cutoff' && $('#g_cm_fixed')) $('#g_cm_fixed').checked = true; if (e.target.id === 'g_cutoffDays' && $('#g_cm_roll')) $('#g_cm_roll').checked = true; if (e.target.id === 'imp_txt' && $('#imp_out')) $('#imp_out').innerHTML = ''; if (e.target.id === 'scanTxt' && !scanState.manual) { clearTimeout(scanState.t); scanState.t = setTimeout(scanRead, 400); } if (['r_last', 'r_first', 'r_guestId'].includes(e.target.id)) dnrBanUpdate(); if (e.target.closest && e.target.closest('.rform')) readOpts(); if (e.target.id === 'q') { view.q = e.target.value; render(); } if (e.target.id === 'repSearch') { view.repQ = e.target.value; repFilter(); } });
 document.addEventListener('focusout', e => { if (ED && ['r_last', 'r_first', 'r_phone', 'r_guestId'].includes(e.target.id)) histLoad(); if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });

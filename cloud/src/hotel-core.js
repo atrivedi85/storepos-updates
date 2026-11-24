@@ -15,6 +15,17 @@ const cents = v => { const n = Math.round(Number(v)); if (!Number.isFinite(n)) t
 function err(code, msg) { const e = new Error(msg); e.code = code; return e; }
 const PAY_TYPES = ['CASH', 'CRED', 'AREC', 'GFTCRD'];
 const ACTIVE = ['reserved', 'inhouse'];
+const CODE_TYPES = ['ROOM', 'MISC', 'CASH', 'CRED', 'AREC', 'GFTCRD', 'ADMIN'];
+const t12 = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return String(t || ''); const h = +m[1]; return ((h % 12) || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM'); };
+const usd = v => '$' + (v / 100).toFixed(2);
+const cityLine = c => [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+export const defaultCancelText = h => 'Please cancel at least ' + h + ' hours before your arrival to avoid a charge for the first night.';
+/* The hotel's policies as plain sentences (only the ones that are filled in). */
+export function policyLines(c) {
+  const p = c.policies; if (!p) return [];
+  const L = [(p.cancelText || defaultCancelText(p.cancelHours))]; if (p.deposit > 0) L.push('A deposit of ' + usd(p.deposit) + ' is taken when you book.'); if (p.hold > 0) L.push('A card hold of ' + usd(p.hold) + ' per stay is placed for incidentals.');
+  L.push(p.pets === 'yes' ? 'Pets are allowed' + (p.petFee > 0 ? ' for a fee of ' + usd(p.petFee) + ' per night.' : '.') : 'Pets are not allowed.'); if (p.smokingFee > 0) L.push('A smoking fee of ' + usd(p.smokingFee) + ' applies to a room that was smoked in.'); if (p.other) L.push(p.other); return L;
+}
 
 /* The starter setup: rooms, room types, taxes and posting codes. Everything can be changed in Setup. */
 function starterConfig(template) {
@@ -23,7 +34,7 @@ function starterConfig(template) {
     ['SNK', 'King Suite', 10500], ['SNK1', 'King Suite (1st floor)', 10500], ['SNQQ', 'Two Queens Suite', 10500]].map(([code, name, rate]) => ({ code, name, rate }));
   const R = 'SNK1 101,NK 102,NQQ 103,SNQQ 104,NQQ 105,SNQQ 106,NK 107,HNK 109,NQQ 111,NK 128,NK1 129,HNK 130,NK 131,NQQ 132,NQQ 133,NK 134,HNQ 135,SNK 136,NQQ 137,SNK 138,SNK1 139,NK 140,' +
     'SNK1 201,NK 202,NK 203,SNK 204,NK 205,SNQQ 206,NQQ 207,NQQ 208,NQQ 209,NQ 210,NK 211,NQQ 212,NK 213,NK 214,NK 218,NQQ 219,NQQ 220,NQQ 221,NQQ 222,NK 223,NQQ 224,NK1 225,NQQ 226,NQQ 227,NK 228,NQQ 229,NK 230,NK 231,SNK 232,NK 233,SNK 234,SNK1 235,NK 236';
-  let rooms = R.split(',').map(x => { const [type, no] = x.split(' '); return { no, type, floor: no[0] }; });
+  let rooms = R.split(',').map(x => { const [type, no] = x.split(' '); return { no, type, floor: no[0], nosmoke: false, accessible: /^H/.test(type), rentLast: false }; });
   let taxes = [{ code: 'T1', name: 'State Tax', pct: 6.24 }, { code: 'T2', name: 'City / County Tax', pct: 3 }, { code: 'T3', name: 'Occupancy Tax', pct: 1 }];
   // A new hotel starts blank: three sample room types, no rooms, and taxes at 0% for the owner to fill in.
   if (blank) { types = [['K', 'King', 9000], ['QQ', 'Two Queens', 9500], ['STE', 'Suite', 12000]].map(([code, name, rate]) => ({ code, name, rate })); rooms = []; taxes = taxes.map(t => ({ ...t, pct: 0 })); }
@@ -368,6 +379,11 @@ export class HotelCore {
   }
   /* ---------- room assignment optimizer ---------- */
   // Proposes a room for every reserved, unassigned arrival on `date`: Ready before Clean before Dirty, then the room used least (fewest past stays), then the one empty longest. Nothing out of order, nothing overlapping.
+  cleanPolicies(x) {
+    x = x && typeof x === 'object' ? x : {}; const money = (v, what) => { if (v == null || v === '') return 0; const n = Math.round(Number(v)); if (!Number.isFinite(n) || n < 0) throw err(400, 'Check the ' + what + '. It must be an amount of zero or more.'); return n; };
+    const h = x.cancelHours == null || x.cancelHours === '' ? 24 : Math.round(Number(x.cancelHours)); if (!Number.isFinite(h) || h < 0 || h > 720) throw err(400, 'Guests can cancel free up to a number of hours from 0 to 720.');
+    return { cancelHours: h, cancelText: clip(x.cancelText, 1500), deposit: money(x.deposit, 'deposit'), hold: money(x.hold, 'card hold'), pets: x.pets === 'yes' ? 'yes' : 'no', petFee: money(x.petFee, 'pet fee'), smokingFee: money(x.smokingFee, 'smoking fee'), other: clip(x.other, 1500) };
+  }
   optimizePlan(c, date) {
     const act = this.activeRes(), blks = this.blocks(), all = this.rows('SELECT data FROM res').map(x => JSON.parse(x.data)), rs = this.roomState();
     const used = {}, lastOut = {}; for (const r of all) if (r.room && (r.status === 'out' || r.status === 'inhouse')) { used[r.room] = (used[r.room] || 0) + 1; if (r.depart > (lastOut[r.room] || '')) lastOut[r.room] = r.depart; }
@@ -375,7 +391,7 @@ export class HotelCore {
     const todo = act.filter(r => r.status === 'reserved' && !r.room && r.arrive === date).sort((a, b) => a.id - b.id);
     for (const r of todo) {
       const cands = c.rooms.filter(rm => rm.type === r.type && !taken.some(t => t.room === rm.no && t.arrive < r.depart && r.arrive < t.depart) && !blks.some(b => b.room === rm.no && b.start < r.depart && r.arrive <= b.end))
-        .sort((a, b) => (RANK[(rs[a.no] || {}).cond || 'R'] - RANK[(rs[b.no] || {}).cond || 'R']) || ((used[a.no] || 0) - (used[b.no] || 0)) || (lastOut[a.no] || '').localeCompare(lastOut[b.no] || '') || (a.no < b.no ? -1 : a.no > b.no ? 1 : 0));
+          .sort((a, b) => ((a.rentLast ? 1 : 0) - (b.rentLast ? 1 : 0)) || (RANK[(rs[a.no] || {}).cond || 'R'] - RANK[(rs[b.no] || {}).cond || 'R']) || ((used[a.no] || 0) - (used[b.no] || 0)) || (lastOut[a.no] || '').localeCompare(lastOut[b.no] || '') || (a.no < b.no ? -1 : a.no > b.no ? 1 : 0));
       const name = (r.last + (r.first ? ', ' + r.first : '')), pick = cands[0];
       if (!pick) { plan.push({ id: r.id, name, type: r.type, room: null, reason: 'No ' + r.type + ' room is free for ' + r.arrive + ' to ' + r.depart + '.' }); continue; }
       const cd = ({ R: 'Ready', C: 'Clean', D: 'Dirty' })[(rs[pick.no] || {}).cond || 'R'], n = used[pick.no] || 0;
@@ -587,11 +603,11 @@ export class HotelCore {
       case 'shiftClose': { const sh = this.openShift(me); if (!sh) throw err(400, 'You have no open shift.'); const counted = cents(a.counted || 0), t = this.shiftTotals(c, sh), data = { openCash: sh.openCash, bdate: sh.bdate, counted, ...t, overShort: counted - t.expected }; this.sql.exec('UPDATE shifts SET close_at=?, data=? WHERE id=?', now(), JSON.stringify(data), sh.id); this.log(me.username, 'closed shift, over/short ' + data.overShort); return ok({ summary: { user: sh.user, openAt: sh.openAt, closeAt: now(), ...data } }); }
       case 'emailConf': case 'emailFolio': {   // the website sends the e-mail (hotel.js); here we only write it
         const r = this.getRes(a.id); const to = clip(a.to || r.email, 100).toLowerCase(); if (!/^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[a-z]{2,}$/.test(to)) throw err(400, 'Type the guest\'s e-mail address in the reservation first.');
-        const m = v => (v / 100).toFixed(2), tname = (c.types.find(t => t.code === r.type) || {}).name || r.type, foot = '\n' + c.name + (c.address ? '\n' + c.address : '') + (c.phone ? '\n' + c.phone : '') + '\n';
+        const m = v => (v / 100).toFixed(2), tname = (c.types.find(t => t.code === r.type) || {}).name || r.type, foot = '\n' + c.name + (c.address ? '\n' + c.address : '') + (cityLine(c) ? '\n' + cityLine(c) : '') + (c.phone ? '\n' + c.phone : '') + '\n';
         let subject, text;
         if (b.op === 'emailConf') { const cx = r.status === 'cancelled'; subject = (cx ? 'Cancellation' : 'Reservation confirmation') + ' ' + (cx ? r.cxlNo : r.conf) + ' · ' + c.name;
           text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\n' + (cx ? 'Your reservation at ' + c.name + ' has been cancelled.\n\nCancellation number: ' + r.cxlNo + '\nOriginal confirmation number: ' + r.conf + '\nDates: ' + r.arrive + ' to ' + r.depart + '\n'
-            : 'Thank you for choosing ' + c.name + '. Your reservation is confirmed.\n\nConfirmation number: ' + r.conf + '\nArrival: ' + r.arrive + ' (check-in from ' + c.checkinTime + ')\nDeparture: ' + r.depart + ' (check-out by ' + c.checkoutTime + ')\nRoom type: ' + tname + '\nGuests: ' + r.adults + ' adults, ' + (r.children || 0) + ' children\nRate: ' + (r.suppressRate ? 'on file' : m(this.nightRate(r, r.arrive)) + ' plus tax, per night' + (r.rates && new Set(Object.values(r.rates)).size > 1 ? ' (the rate changes by night)' : '')) + '\nGuarantee: ' + (r.guarantee || '') + '\n\nWe look forward to your stay.\n') + foot; }
+            : 'Thank you for choosing ' + c.name + '. Your reservation is confirmed.\n\nConfirmation number: ' + r.conf + '\nArrival: ' + r.arrive + ' (check-in from ' + t12(c.checkinTime) + ')\nDeparture: ' + r.depart + ' (check-out by ' + t12(c.checkoutTime) + ')\nRoom type: ' + tname + '\nGuests: ' + r.adults + ' adults, ' + (r.children || 0) + ' children\nRate: ' + (r.suppressRate ? 'on file' : m(this.nightRate(r, r.arrive)) + ' plus tax, per night' + (r.rates && new Set(Object.values(r.rates)).size > 1 ? ' (the rate changes by night)' : '')) + '\nGuarantee: ' + (r.guarantee || '') + (policyLines(c).length ? '\n\nHotel Policies:\n' + policyLines(c).join('\n') : '') + '\n\nWe look forward to your stay.\n') + foot; }
         else { const lines = this.rows('SELECT * FROM lines WHERE res=? ORDER BY id', r.id), pad = (x, n) => String(x).padEnd(n).slice(0, n); subject = 'Your folio · ' + c.name + ' · ' + r.conf;
           text = 'Dear ' + (r.first ? r.first + ' ' : '') + r.last + ',\n\nHere is your folio for room ' + (r.room || '') + ', ' + r.arrive + ' to ' + r.depart + ' (confirmation ' + r.conf + ').\n\n' + lines.map(l => pad(l.bdate, 12) + pad(l.descr, 28) + m(l.amount).padStart(10)).join('\n') + '\n' + pad('', 12) + pad('Balance', 28) + m(this.balance(r.id)).padStart(10) + '\n\nThank you for staying with us.\n' + foot; }
         r.history.push({ at: now(), by: me.username, what: (b.op === 'emailConf' ? 'E-mailed confirmation to ' : 'E-mailed folio to ') + to }); r.history = r.history.slice(-60); this.putRes(r);
@@ -642,13 +658,15 @@ export class HotelCore {
       case 'nightAudit': { mgr(); if (a.date !== c.bdate) throw err(409, 'The business date changed. Reload and try again.'); return ok({ audit: this.nightAudit(me, c) }); }
       case 'configSave': {
         mgr(); const n = a.config || {};
-        for (const [k, len] of [['name', 80], ['address', 200], ['phone', 40], ['checkoutTime', 10], ['checkinTime', 10], ['regText', 1500]]) if (k in n) c[k] = clip(n[k], len);
+        for (const [k, len] of [['name', 80], ['address', 200], ['phone', 40], ['checkoutTime', 10], ['checkinTime', 10], ['regText', 1500], ['gm', 60], ['city', 60], ['state', 30], ['zip', 15], ['resPhone', 40], ['fax', 40], ['taxId', 30]]) if (k in n) c[k] = clip(n[k], len);
         if (Array.isArray(n.types)) { c.types = n.types.map(t => ({ code: clip(t.code, 8).toUpperCase(), name: clip(t.name, 60), rate: cents(t.rate) })).filter(t => t.code); if (!c.types.length) throw err(400, 'Keep at least one room type.'); }
-        if (Array.isArray(n.rooms)) { const seen = new Set(); c.rooms = n.rooms.map(r => ({ no: clip(r.no, 8), type: clip(r.type, 8).toUpperCase(), floor: clip(r.floor, 4) })).filter(r => r.no && !seen.has(r.no) && seen.add(r.no)); for (const r of c.rooms) if (!c.types.some(t => t.code === r.type)) throw err(400, 'Room ' + r.no + ' has an unknown room type (' + r.type + ').'); for (const r of this.activeRes()) if (r.room && !seen.has(r.room)) throw err(409, 'Room ' + r.room + ' has a guest or reservation, so it cannot be removed.'); }
+        if (Array.isArray(n.rooms)) { const seen = new Set(); c.rooms = n.rooms.map(r => { const old = c.rooms.find(x => x.no === clip(r.no, 8)) || {}, fl = k => k in r ? !!r[k] : !!old[k]; return { no: clip(r.no, 8), type: clip(r.type, 8).toUpperCase(), floor: clip(r.floor, 4), nosmoke: fl('nosmoke'), accessible: fl('accessible'), rentLast: fl('rentLast') }; }).filter(r => r.no && !seen.has(r.no) && seen.add(r.no)); for (const r of c.rooms) if (!c.types.some(t => t.code === r.type)) throw err(400, 'Room ' + r.no + ' has an unknown room type (' + r.type + ').'); for (const r of this.activeRes()) if (r.room && !seen.has(r.room)) throw err(409, 'Room ' + r.room + ' has a guest or reservation, so it cannot be removed.'); }
         if (Array.isArray(n.taxes)) c.taxes = n.taxes.map(t => ({ code: clip(t.code, 6).toUpperCase(), name: clip(t.name, 60), pct: Math.max(0, Math.min(50, Number(t.pct) || 0)) })).filter(t => t.code);
-        if (Array.isArray(n.codes)) { c.codes = n.codes.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), type: clip(k.type, 8).toUpperCase(), tax: (k.tax || []).filter(x => c.taxes.some(t => t.code === x)) })).filter(k => k.code); if (!c.codes.some(k => k.code === 'RM')) throw err(400, 'Keep the RM (Room Charge) code. The night audit needs it.'); }
+        if (Array.isArray(n.codes)) { c.codes = n.codes.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), type: clip(k.type, 8).toUpperCase(), tax: (k.tax || []).filter(x => c.taxes.some(t => t.code === x)) })).filter(k => k.code); for (const k of c.codes) if (!CODE_TYPES.includes(k.type)) throw err(400, 'The posting code ' + k.code + ' has an unknown type (' + k.type + ').'); if (!c.codes.some(k => k.code === 'RM')) throw err(400, 'Keep the RM (Room Charge) code. The night audit needs it.'); }
         if (Array.isArray(n.packages)) c.packages = n.packages.map(k => ({ code: clip(k.code, 8).toUpperCase(), name: clip(k.name, 60), price: Math.max(0, cents(k.price || 0)), charge: clip(k.charge, 8).toUpperCase() || 'MS' })).filter(k => k.code).slice(0, 50);
         if (Array.isArray(n.rateRules)) { c.rateRules = n.rateRules.map(k => ({ name: clip(k.name, 40), from: k.from, to: k.to, days: (k.days || []).map(Number).filter(x => x >= 0 && x <= 6), type: clip(k.type, 8).toUpperCase() || '*', rate: cents(k.rate) })).slice(0, 300); for (const k of c.rateRules) { if (!isDate(k.from) || !isDate(k.to) || k.to < k.from) throw err(400, 'Check the dates on the rate line "' + k.name + '".'); if (k.type !== '*' && !c.types.some(t => t.code === k.type)) throw err(400, 'The rate line "' + k.name + '" has an unknown room type (' + k.type + ').'); if (!(k.rate >= 0)) throw err(400, 'Check the rate on the line "' + k.name + '".'); } }
+        if ('policies' in n) c.policies = this.cleanPolicies(n.policies);
+        for (const r of c.rooms) if (!c.types.some(t => t.code === r.type)) throw err(400, 'Room type ' + r.type + ' is still used by room ' + r.no + '. Move or remove those rooms first.');
         if ('requireShift' in n) c.requireShift = !!n.requireShift;
         if ('quickLinks' in n) { if (n.quickLinks == null || (Array.isArray(n.quickLinks) && !n.quickLinks.length)) delete c.quickLinks; else { if (!Array.isArray(n.quickLinks)) throw err(400, 'The quick links must be a list.'); const keys = [...new Set(n.quickLinks.map(x => clip(x, 30)).filter(x => /^[a-z0-9_]+$/i.test(x)))]; if (keys.length > 14) throw err(400, 'At most 14 quick links.'); c.quickLinks = keys; } }
         if (Array.isArray(n.housekeepers)) c.housekeepers = n.housekeepers.map(x => clip(x, 40)).filter(Boolean).slice(0, 40);

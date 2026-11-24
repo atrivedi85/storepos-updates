@@ -367,3 +367,14 @@ input[type=radio]{width:20px;height:20px;min-height:0;padding:0;vertical-align:m
 .rwstat{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 6px}.rwstat div{flex:1 1 110px;background:#f3f6fb;border:1px solid #d3deef;border-radius:6px;padding:8px 10px;text-align:center}
 .rwstat b{display:block;font-size:22px;font-weight:600}.rwstat span{color:#666;font-size:13px}
 .rwadj{margin-top:10px;align-items:end}.rwval{grid-column:1/-1;margin:0}
+
+/* Setup home and the Setup tables (Nov 2026) */
+.setcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;align-items:start}
+.setcol h2{margin:0 0 8px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.setcol a{display:block;padding:8px 2px;font-size:16px;color:var(--blue,#1f4fa0);text-decoration:none}.setcol a:hover{text-decoration:underline}
+.sdt input:not([type=checkbox]),.sdt select{min-width:70px;max-width:100%}.sdt td.ctr{text-align:center}.sdt td.num{text-align:right}
+.sdt input[type=checkbox]{width:20px;height:20px}
+.sdt td.days{white-space:nowrap}.sdt .dchk{display:inline-flex;flex-direction:column;align-items:center;font-size:11.5px;margin-right:3px;gap:1px}
+.sdfoot{align-items:center;margin-top:12px}.sdfoot .err{margin:0;min-height:0}
+.rmflags{display:flex;gap:16px;flex-wrap:wrap}.rmflags .chk{display:flex;flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:15px}
+.sdt tr[hidden]{display:none}

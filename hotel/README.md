@@ -31,6 +31,15 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
 - **Night Audit** (manager): posts room + tax to every in-house room, marks arrivals that never came as no shows, extends guests who
   were due out but not checked out, sets occupied rooms Dirty, saves the day's statistics and moves the business date forward.
 - **Setup** (manager): property, room types and rates, rooms, taxes, posting codes, housekeepers, logins, out-of-order rooms.
+  - **Setup home** ("Hotel Configuration", Nov 2026) is a page of links in four columns: Hotel Settings (Property, Policies, Room Types and Rates, Rooms, Rates by Date, Packages, Rewards),
+    Money (Taxes, Posting Codes), Housekeeping (Housekeepers, Out of Order Rooms), People (Logins). Each sub-page has "‹ Back to Setup". Tab keys are unchanged
+    (`data-act="setupGo" data-tab=...` still deep-links). No more comma-separated textareas: types, rooms, taxes, posting codes, rates by date, packages and housekeepers are tables
+    (`SD = {page, rows}` in `app.js`; `sdRead()` copies the typed values, Add/Remove redraw without losing edits, **Save** sends the whole list with `configSave`). The server's error shows beside Save (`#setupErr`).
+    An empty Code is made from the name ("Two Queens" gives TQ). A room type that still has rooms cannot be removed (client and server). Posting code types the server accepts: ROOM, MISC, CASH, CRED, AREC, GFTCRD, ADMIN.
+  - **Rooms** carry `nosmoke`, `accessible`, `rentLast` (all default false). Rent Last rooms sort to the end of room pickers and of the optimizer's choices; accessible rooms show a wheelchair mark in pickers. "Add Many Rooms" skips numbers that already exist.
+  - **Property** adds `gm`, `city`, `state`, `zip`, `resPhone`, `fax`, `taxId`; check-in / check-out are half-hour drop-downs (still stored as `"15:00"`, shown as 3:00 PM on prints and e-mails). The letterhead and e-mail footer include city, state and ZIP.
+  - **Policies** (`config.policies = {cancelHours, cancelText, deposit, hold, pets, petFee, smokingFee, other}`, cents for money; `regText` is edited here too). Printed as "Hotel Policies" on the registration card,
+    the confirmation and the e-mailed confirmation. Nothing is charged automatically. An empty `cancelText` means the standard sentence built from `cancelHours`.
 
 ## Selling it to many hotels: master account, logins, kill switch
 
