@@ -66,6 +66,12 @@ export default {
     if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
     if (path === '/dl/info') return posInfo();
     if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
+    // My account page (trivedipos.com/account): same asset trick as /download (Cloudflare redirects "account.html" to "account")
+    if (path === '/account' || path === '/account/') {
+      const r = await env.ASSETS.fetch(new Request(new URL('/account', req.url), { method: 'GET' }));
+      if (r.status >= 300 && r.status < 400) { const r2 = await env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/account.html', req.url), { method: 'GET' })); return new Response(r2.body, { status: 200, headers: r2.headers }); }
+      return r;
+    }
     // Ledger Desk (trivedipos.com/books): its sign-in pages and its server
     if (path === '/books/login' || path === '/books/invite') {
       // Serve the sign-in page at the address the person opened (an invite keeps its ?code=…). Cloudflare's assets
@@ -91,6 +97,7 @@ export default {
       h.set('x-hd-who', encodeURIComponent(JSON.stringify(who)));
       return env.HOTEL.get(env.HOTEL.idFromName('h:' + who.hotel.id)).fetch(new Request(req, { headers: h }));
     }
+    if (path.startsWith('/api/pos/internal')) return J({ error: 'Not found' }, 404);   // only the relay and Ledger Desk talk to each other here
     if (path.startsWith('/api/')) return env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(req);
     // Safety net: PdfStudio normally answers /pdfstudio itself (its own route). If Cloudflare ever sends it here instead, pass it on.
     if (p[0] === 'pdfstudio' && env.PDFSTUDIO) {
@@ -98,7 +105,19 @@ export default {
       catch (e) { return new Response('PdfStudio is restarting. Please refresh in a few seconds.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '3', 'Cache-Control': 'no-store' } }); }
     }
     if (p[0] !== 'v1') return J({ app: 'storepos-sync', v: 1 });
-    if ((p[1] === 'store' || p[1] === 'pair') && ID.test(p[2] || '')) return env.HUB.get(env.HUB.idFromName(p[1] + ':' + p[2])).fetch(req);
+    if (p[1] === 'store' && ID.test(p[2] || '') && p[3] === 'ws') {
+      // A web browser signed in with a Trivedi account must have a valid session AND be a current member of this store.
+      // Whatever the browser sends in x-acct-* is thrown away; only what Ledger Desk says is passed on to the relay.
+      const h = new Headers(req.headers); for (const k of [...h.keys()]) if (k.toLowerCase().startsWith('x-acct-')) h.delete(k);
+      if (new URL(req.url).searchParams.get('mode') === 'acct') {
+        let a = null;
+        try { const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/pos/authz?store=' + p[2], req.url), { headers: { cookie: req.headers.get('cookie') || '' } })); a = r.ok ? await r.json() : null; } catch (e) { a = null; }
+        if (!a || !a.ok) return J({ error: 'Sign in with your Trivedi account again, or ask the store owner to add you.' }, 403);
+        h.set('x-acct-user', a.user); h.set('x-acct-role', a.role); h.set('x-acct-sid', a.sid);
+      }
+      return env.HUB.get(env.HUB.idFromName('store:' + p[2])).fetch(new Request(req, { headers: h }));
+    }
+    if (p[1] === 'pair' && ID.test(p[2] || '')) return env.HUB.get(env.HUB.idFromName('pair:' + p[2])).fetch(req);
     return J({ error: 'Not found' }, 404);
   }
 };
@@ -130,6 +149,11 @@ export class Hub extends DurableObject {
       if (req.method === 'DELETE') { this.sql.exec('DELETE FROM meta'); return J({ ok: true }); }
       return J({ error: 'Not allowed' }, 405);
     }
+    if (p[1] === 'store' && p[3] === 'internal') {   // from Ledger Desk only (the website's front door never forwards this path)
+      if (p[4] === 'kick') { for (const w of this.ctx.getWebSockets('u:' + (u.searchParams.get('user') || '-'))) { try { w.close(4003, 'Your access to this store was changed. Sign in again.'); } catch (e) { /* gone */ } } return J({ ok: true }); }
+      if (p[4] === 'verify') { const a = u.searchParams.get('auth') || ''; return J({ ok: /^[a-f0-9]{64}$/.test(a) && !!this.meta('auth') && this.meta('auth') === await sha(a) }); }
+      return J({ error: 'Not found' }, 404);
+    }
     if (p[1] === 'store' && p[3] === 'ws') {
       if (req.headers.get('Upgrade') !== 'websocket') return J({ error: 'WebSocket expected' }, 426);
       const role = u.searchParams.get('role'), auth = u.searchParams.get('auth') || '', cid = u.searchParams.get('cid') || '';
@@ -138,13 +162,16 @@ export class Hub extends DurableObject {
       if (!known) { if (role !== 'host') return J({ error: 'This store has not turned on Cloud Sync at the store PC yet.' }, 404); this.setMeta('auth', h); }
       else if (known !== h) return J({ error: 'Not allowed' }, 403);
       const [client, server] = Object.values(new WebSocketPair());
+      const acctUser = req.headers.get('x-acct-user') || '';
+      if (u.searchParams.get('mode') === 'acct' && (role !== 'client' || !acctUser)) return J({ error: 'Not allowed' }, 403);
       if (role === 'host') {
         for (const w of this.ctx.getWebSockets('host')) { try { w.close(4000, 'Another store PC connected'); } catch (e) { /* gone */ } }
         this.ctx.acceptWebSocket(server, ['host']);
       } else {
         if (!/^[A-Za-z0-9_-]{6,64}$/.test(cid)) return J({ error: 'Bad device id' }, 400);
         for (const w of this.ctx.getWebSockets('c:' + cid)) { try { w.close(4000, 'Replaced'); } catch (e) { /* gone */ } }
-        this.ctx.acceptWebSocket(server, ['client', 'c:' + cid]);
+        this.ctx.acceptWebSocket(server, acctUser ? ['client', 'c:' + cid, 'u:' + acctUser] : ['client', 'c:' + cid]);
+        if (acctUser) server.serializeAttachment({ s: p[2], u: acctUser, r: req.headers.get('x-acct-role') || '', sid: req.headers.get('x-acct-sid') || '', chk: Date.now() });
       }
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -167,9 +194,19 @@ export class Hub extends DurableObject {
       return;
     }
     const cid = (tags.find(t => t.startsWith('c:')) || '').slice(2);
+    const att = ws.deserializeAttachment();
+    if (att && att.u) {   // signed-in browser: check now and then that the account and membership are still good, and tell the store PC who this is
+      if (Date.now() - att.chk > 60000) {
+        let ok = null; try { const r = await this.env.LEDGER.get(this.env.LEDGER.idFromName('main')).fetch(new Request('https://ledger/api/pos/internal/check?store=' + att.s + '&user=' + encodeURIComponent(att.u) + '&sid=' + att.sid)); ok = await r.json(); } catch (e) { ok = { ok: true }; }   // if Ledger Desk can't be reached, don't cut people off by mistake
+        if (!ok.ok) { try { ws.close(4003, 'Your access to this store was removed. Sign in again.'); } catch (e) { /* gone */ } return; }
+        if (ok.role) att.r = ok.role; att.chk = Date.now(); ws.serializeAttachment(att);
+      }
+    }
     if (m.t === 'ping') { ws.send(JSON.stringify({ t: 'pong', host: this.hostOn() })); return; }
     if (m.t !== 'req') return;
-    m.from = cid; delete m.qid;
+    m.from = cid; delete m.qid; delete m.acct;
+    if (att && att.u) m.acct = { u: att.u, r: att.r };
+
     const last = !m.parts || m.part === m.parts - 1;
     const host = this.ctx.getWebSockets('host')[0];
     if (host) { try { host.send(JSON.stringify(m)); return; } catch (e) { /* fall through */ } }

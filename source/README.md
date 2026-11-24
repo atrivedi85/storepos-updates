@@ -27,3 +27,10 @@ Transactions → **🗑 Delete** tab (only for the Owner role, only on the Windo
 removal in the change log, so linked registers, tablets and the web copy remove them too. Stock is never touched. A summary
 (who, when, how many, total) is kept in kv `dellog`. Backups made before the delete still contain the transactions.
 
+## Trivedi account link (Windows store PC and web back office)
+
+- `acct.js` (new, shipped with updates): signs the owner in to trivedipos.com, registers the store under the account and keeps only a **device token** (never the password). The store key is locked with the owner's public key before it is sent.
+- Store PC: Settings → Tablets → **Trivedi account** → "Link to my Trivedi account" (user name + password, then the two-step code if asked). Shows "Linked to …" with **Unlink**. The cloud-code pairing stays as "Connect a tablet or PC with a code". Every 3 minutes the PC hands waiting members their locked key, reports its devices and forgets devices of people who were removed (`acctTick` in `main.js`).
+- A browser or device signed in through an account gets a device entry marked `acct`; it only works while the relay says the same person is asking. Role "Reports only" cannot send changes.
+- Web back office (`web-shim.js`): the sign-in gate uses the shared Trivedi sign-in, lists "My stores", unlocks the store key in the browser (kept in memory only, never in browser storage) and connects. "Connect with a code instead" still works. Settings → **Members (accounts)** (owners only) invites people, changes roles and removes them. Roles: Owner = full, Manager = Manager preset, Cashier = Cashier preset, Reports only = reports and transaction look-up. The account signs in to the register without a PIN.
+- `build_update.py` and `windows.yml` now include `acct.js`.

@@ -29,7 +29,8 @@ after every change, so the NAS always has the complete, current set.
 
 - https://trivedipos.com — home page
 - https://trivedipos.com/download — Store POS for Windows (needs an owner code = license key)
-- https://trivedipos.com/pos — Store POS back office (connect with the Cloud code from the store PC)
+- https://trivedipos.com/pos — Store POS back office (sign in with your Trivedi account; a Cloud code from the store PC still works)
+- https://trivedipos.com/account — My account: password, two-step sign-in, signed-in devices, my stores
 - https://trivedipos.com/books — Ledger Desk (invite only)
 - https://trivedipos.com/hotel — Hotel Desk (logins made by the hotel's manager)
 - Updates for registers: `https://raw.githubusercontent.com/atrivedi85/storepos-updates/main/latest.json`
@@ -52,3 +53,8 @@ after every change, so the NAS always has the complete, current set.
 
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASS`.
 Private keys live only on the NAS in the `(PRIVATE - do not share)` folders.
+
+## One Trivedi account (how accounts work)
+
+There is one kind of login on trivedipos.com: the Ledger Desk login. It also opens PdfStudio and the Store POS back office, and the same account button (top-right) is on every page.
+A store belongs to an account (the owner links it once from the store PC: Settings → Tablets → Link to my Trivedi account). The owner adds people by email from the back office (Settings → Members) with a role: Owner, Manager, Cashier or Reports only. Removing someone cuts them off at once. The server never holds a store key in plain: each person has their own locked copy that only their password can open. Details: `cloud/README.md` and `source/README.md`.

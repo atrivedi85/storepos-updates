@@ -15,10 +15,10 @@ small{display:block;margin-top:14px;color:var(--mut)}
 [hidden]{display:none!important}
 </style></head><body><main>
 <h1>Sign in to PdfStudio</h1>
-<p id="sub">Use your Ledger Desk username and password.</p>
+<p id="sub">Use your email or user name and your Trivedi password.</p>
 <form id="f">
   <div id="pwStep">
-    <input id="u" autocomplete="username" placeholder="Username" autocapitalize="off" spellcheck="false" autofocus>
+    <input id="u" autocomplete="username" placeholder="Email or user name" autocapitalize="off" spellcheck="false" autofocus>
     <input id="p" type="password" autocomplete="current-password" placeholder="Password">
   </div>
   <div id="codeStep" hidden>
@@ -50,7 +50,8 @@ $('f').onsubmit=async(e)=>{
     if(ticket){r=await post('login/2fa',{ticket,code:$('c').value});}
     else{
       if(!crypto||!crypto.subtle){err.textContent='This browser cannot sign in securely. Use Chrome or Edge over https.';go.disabled=false;return;}
-      r=await post('login',{username:$('u').value,auth:await authFor($('u').value,$('p').value)});
+      let un=$('u').value.trim();if(un.includes('@')){const q=await post('login/resolve',{id:un});if(q.ok&&q.j.username)un=q.j.username;}
+      r=await post('login',{username:un,auth:await authFor(un,$('p').value)});
     }
     if(r.ok&&r.j.need2fa){
       ticket=r.j.ticket;$('pwStep').hidden=true;$('codeStep').hidden=false;$('c').focus();

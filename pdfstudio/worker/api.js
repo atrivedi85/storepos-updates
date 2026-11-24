@@ -175,6 +175,12 @@ export async function handleApi(request, env, url) {
   if (route.startsWith('esign/')) return handleEsign(request, env, url, route, () => authenticate(request, env, url));
 
   // ---- public ----
+  // "Email or user name": turns an email into the Ledger Desk user name the sign-in value is made with
+  if (route === 'login/resolve' && method === 'POST') {
+    const b = await readJson(request);
+    const r = await ledgerCall(env, '/api/login/resolve', { body: { id: String(b.id || '').slice(0, 120) } });
+    return r.status === 200 ? json({ username: String(r.data.username || '') }) : fail(r.status || 502, r.data.error || 'Could not reach Ledger Desk.');
+  }
   if (route === 'login' && method === 'POST') {
     // The browser/app sends { username, auth }: the same derived value Ledger Desk uses, never the password itself.
     const b = await readJson(request);

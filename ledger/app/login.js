@@ -3,13 +3,17 @@
   const $ = id => document.getElementById(id), V = window.LDVault;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let mode = 'login';
+  // After signing in, go back to the page that sent the person here (only places on this website)
+  const NEXT = (() => { const n = new URLSearchParams(location.search).get('next') || ''; return /^\/(?!\/)[A-Za-z0-9_\-./?=&%]*$/.test(n) && !/^\/(books\/(login|invite))/.test(n) ? n : '/books/'; })();
   const code = location.pathname === '/books/invite' ? new URLSearchParams(location.search).get('code') || '' : '';
   const post = (url, body) => fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-LD': '1' }, body: JSON.stringify(body) })
     .then(async r => { let d = {}; try { d = await r.json(); } catch (e) {} if (!r.ok) throw new Error(d.error || 'Could not reach the server'); return d; });
+  // "Email or user name": the sign-in value is made with the user name, so an email is first turned into it
+  const resolveName = async id => { const t = String(id || '').trim().toLowerCase(); if (t.indexOf('@') < 0) return t; try { return (await post('/api/login/resolve', { id: t })).username || t; } catch (e) { return t; } };
   function newPassword(btn, sub) {
     $('pw2Row').hidden = false; $('tip').hidden = true; $('lockNote').hidden = false; $('go').textContent = btn; $('pw').autocomplete = 'new-password'; $('sub').textContent = sub;
     $('pw').parentElement.firstChild.textContent = 'Password (at least 10 characters)';
-    $('user').placeholder = 'letters or numbers, e.g. raj';
+    $('user').placeholder = 'letters or numbers, e.g. raj'; $('user').parentElement.firstChild.textContent = 'User name';
   }
   if (!window.crypto || !crypto.subtle || !window.CompressionStream) {
     $('f').innerHTML = '<p class="err">This browser is too old for Ledger Desk\'s locked books. Use a current Microsoft Edge or Google Chrome, and open the https:// address (not http://).</p>';
@@ -54,7 +58,7 @@
     };
     { const m = V.recoveryMail(username, rec); $('rcGmail').href = m.gmail; $('rcOutlook').href = m.outlook; $('rcMail').href = m.mailto; }
     $('rcOk').onchange = () => { $('rcGo').disabled = !$('rcOk').checked; };
-    $('rcGo').onclick = () => { location.href = '/books/'; };
+    $('rcGo').onclick = () => { location.href = NEXT; };
   }
 
   // ----- after a password reset: unlock with the recovery code -----
@@ -78,7 +82,7 @@
       let dek; try { dek = await V.unlockWithRecovery(vault, $('rCode').value); } catch (x) { return err('That recovery code isn\'t right. Check it and try again.'); }
       try {
         await post('/api/password', { old: tempAuth, auth: await V.authFor(username, pw), vaultPw: await V.passwordWrap(dek, pw) });
-        await V.keepKey(username, dek); location.href = '/books/';
+        await V.keepKey(username, dek); location.href = NEXT;
       } catch (x) { err(x.message); }
     };
     $('lost').onclick = async () => {
@@ -101,7 +105,7 @@
     $('f').innerHTML = `<div class="brand"><div class="mark" aria-hidden="true"><span></span><span></span><span></span></div><div><div class="brand-name">Ledger Desk</div><div class="brand-co" style="color:var(--muted)">Forgot your password</div></div></div>
       <h1 style="font-size:19px">Reset with your recovery code</h1>
       <p class="muted small" style="margin:6px 0 0">Type the recovery code you saved when you made your account, then choose a new password. Your books stay exactly as they are.</p>
-      <label class="field">User name<input type="text" id="fUser" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(typed)}"></label>
+      <label class="field">Email or user name<input type="text" id="fUser" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(typed)}"></label>
       <label class="field">Recovery code<input type="text" id="rCode" autocomplete="off" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" style="font-family:var(--f-num)"></label>
       <label class="field">New password (at least 10 characters)<input type="password" id="rPw" autocomplete="new-password"></label>
       <label class="field">New password again<input type="password" id="rPw2" autocomplete="new-password"></label>
@@ -111,7 +115,7 @@
     const err = m => { $('err').textContent = m; $('go').disabled = false; $('go').textContent = 'Save new password'; };
     $('f').onsubmit = async e => {
       e.preventDefault(); $('err').textContent = '';
-      const username = $('fUser').value.trim().toLowerCase(), pw = $('rPw').value;
+      const username = await resolveName($('fUser').value), pw = $('rPw').value;
       if (pw !== $('rPw2').value) return err('The two passwords are not the same.');
       const bad = V.passwordProblem(pw); if (bad) return err(bad);
       $('go').disabled = true; $('go').textContent = 'Checking…';
@@ -120,7 +124,7 @@
         const r = await post('/api/recover/check', { username, recAuth });
         const dek = await V.unlockWithRecovery({ rec: r.rec }, $('rCode').value);
         await post('/api/recover', { username, recAuth, auth: await V.authFor(username, pw), vaultPw: await V.passwordWrap(dek, pw) });
-        await V.keepKey(username, dek); location.href = '/books/';
+        await V.keepKey(username, dek); location.href = NEXT;
       } catch (x) { err(x.message === 'wrong' ? 'That recovery code isn\'t right.' : x.message); }
     };
     ($('fUser').value ? $('rCode') : $('fUser')).focus();
@@ -133,7 +137,7 @@
     if (r.needRecovery) { showRecover(username, auth, r.vault); return; }
     let dek; try { dek = await V.unlockWithPassword(r.vault, pw); } catch (x) { throw new Error('Your books could not be unlocked with this password.'); }
     await V.keepKey(username, dek);
-    location.href = '/books/';
+    location.href = NEXT;
   }
   function show2fa(r, username, pw, auth) {
     mode = '2fa';
@@ -175,7 +179,7 @@
     $('err').textContent = ''; $('go').disabled = true;
     const label = $('go').textContent;
     try {
-      const username = $('user').value.trim().toLowerCase(), pw = $('pw').value;
+      const username = mode === 'login' ? await resolveName($('user').value) : $('user').value.trim().toLowerCase(), pw = $('pw').value;
       if (mode !== 'login') {
         if (pw !== $('pw2').value) throw new Error('The two passwords are not the same.');
         const bad = V.passwordProblem(pw); if (bad) throw new Error(bad);

@@ -862,10 +862,25 @@ const LAN = { server: null, code: '', codeUntil: 0, error: '', port: 0 };
 const maxSeq = () => (db.prepare('SELECT MAX(seq) m FROM changes').get().m || 0);
 function lanIps() { const out = []; for (const [n, list] of Object.entries(os.networkInterfaces())) for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push({ name: n, ip: a.address }); return out; }
 function storeName() { try { return (JSON.parse(Q.kv.get.get('settings').data) || {}).storeName || 'Store POS'; } catch (e) { return 'Store POS'; } }
-function tabletFor(req) { const t = String(req.headers['x-token'] || ''); return t && (cfg.tablets || []).find(x => x.token === t); }
+function tabletFor(req) {
+  const tok = String(req.headers['x-token'] || ''); const t = tok && (cfg.tablets || []).find(x => x.token === tok);
+  if (!t) return null;
+  if (!ACCT.deviceAllowed(t, req.acct)) return null;   // made by a Trivedi account: only works while the relay vouches for that same person
+  if (t.acct && req.acct) t.acct.role = req.acct.r;
+  return t;
+}
 function lanHandle(req, body) {
   const url = req.url.split('?')[0];
   if (url === '/hello') return { app: 'storepos', store: storeName(), version: require('./package.json').version };
+  if (url === '/pair' && req.acct && cfg.cloud && cfg.cloud.acct && ACCT.ROLES.includes(req.acct.r)) {   // a web browser signed in with a Trivedi account that belongs to this store: no code needed
+    cfg.tablets = cfg.tablets || [];
+    const id = 'a:' + req.acct.u + ':' + String(body.deviceId || crypto.randomUUID()).slice(0, 40);   // never reuses another device's entry
+    let t = cfg.tablets.find(x => x.id === id);
+    if (!t) { const reg = Math.max(1, ...cfg.tablets.map(x => x.reg || 1)) + 1; t = { id, reg, paired: Date.now() }; cfg.tablets.push(t); }
+    t.name = String(body.name || 'Web browser').slice(0, 40); t.token = crypto.randomBytes(24).toString('hex'); t.lastSeen = Date.now(); t.acct = { user: req.acct.u, role: req.acct.r };
+    saveCfg(); send('lan', lanState());
+    return { token: t.token, reg: t.reg, store: storeName(), epoch: Number(cfg.syncEpoch) || 0, role: req.acct.r };
+  }
   if (url === '/pair') {
     if (!LAN.code || Date.now() > LAN.codeUntil || String(body.code || '') !== LAN.code) return { status: 403, error: 'That pairing code is wrong or expired. On the PC: Settings → Tablets → Pair a tablet.' };
     cfg.tablets = cfg.tablets || [];
@@ -876,7 +891,7 @@ function lanHandle(req, body) {
     return { token: t.token, reg: t.reg, store: storeName(), epoch: Number(cfg.syncEpoch) || 0 };
   }
   const t = tabletFor(req);
-  if (!t) return { status: 401, error: 'This tablet is not paired with the PC any more. Link it again.' };
+  if (!t) return { status: 401, error: 'This device is not allowed in any more. Link it again (or sign in again with your Trivedi account).' };
   t.lastSeen = Date.now(); t.ip = req.socket.remoteAddress;
   if (url === '/api') {
     const ok = ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'];
@@ -886,7 +901,7 @@ function lanHandle(req, body) {
   if (url === '/sync') {
     const epoch = Number(cfg.syncEpoch) || 0;
     if (body.epoch !== undefined && body.epoch !== null && Number(body.epoch) !== epoch && !body.snap) return { resync: true, epoch };
-    if (Array.isArray(body.ops) && body.ops.length) applyTabletOps(body.ops, t.id);
+    if (Array.isArray(body.ops) && body.ops.length) { if (t.acct && !ACCT.canWrite(t.acct.role)) return { status: 403, error: 'Your account can look at reports but not change anything.' }; applyTabletOps(body.ops, t.id); }
     if (body.snap) {   // first copy of the store's data, sent in pages
       const s = body.snap, res = { epoch, startSeq: s.startSeq || maxSeq(), items: [], next: null };
       if (s.stage === 'products') {
@@ -930,7 +945,7 @@ function startLan() {
   LAN.server = srv;
 }
 function stopLan() { if (LAN.server) { try { LAN.server.close(); } catch (e) { /* ignore */ } LAN.server = null; } }
-function lanState() { return { on: !!cfg.lanServer, running: !!(LAN.server && LAN.server.listening), port: Number(cfg.lanPort) || 8765, ips: lanIps(), error: LAN.error, code: Date.now() < LAN.codeUntil ? LAN.code : '', codeUntil: LAN.codeUntil, tablets: (cfg.tablets || []).map(t => ({ id: t.id, name: t.name, reg: t.reg, lastSeen: t.lastSeen, ip: t.ip })), linked: !!(cfg.link && cfg.link.token), cloud: { on: !!(cfg.cloud && cfg.cloud.on), state: CL.state, error: CL.error, lastOk: CL.lastOk, code: Date.now() < CL.codeUntil ? CL.code : '', configured: !cloudUrl().includes('REPLACE_ME') } }; }
+function lanState() { return { on: !!cfg.lanServer, running: !!(LAN.server && LAN.server.listening), port: Number(cfg.lanPort) || 8765, ips: lanIps(), error: LAN.error, code: Date.now() < LAN.codeUntil ? LAN.code : '', codeUntil: LAN.codeUntil, tablets: (cfg.tablets || []).map(t => ({ id: t.id, name: t.name, reg: t.reg, lastSeen: t.lastSeen, ip: t.ip, who: t.acct ? t.acct.user : '', role: t.acct ? t.acct.role : '' })), linked: !!(cfg.link && cfg.link.token), cloud: { on: !!(cfg.cloud && cfg.cloud.on), acct: { linked: !!(cfg.cloud && cfg.cloud.acct), user: cfg.cloud && cfg.cloud.acct ? cfg.cloud.acct.user : '', name: cfg.cloud && cfg.cloud.acct ? cfg.cloud.acct.name : '', need2fa: !!AC.pending, error: AC.error }, state: CL.state, error: CL.error, lastOk: CL.lastOk, code: Date.now() < CL.codeUntil ? CL.code : '', configured: !cloudUrl().includes('REPLACE_ME') } }; }
 ipcMain.handle('lanState', () => lanState());
 function allowFirewall() {   // one-time Windows Firewall rule so tablets can reach this PC (asks for admin once)
   if (process.platform !== 'win32' || cfg.firewallRule === (Number(cfg.lanPort) || 8765)) return;
@@ -946,6 +961,7 @@ ipcMain.handle('lanRemove', (e, id) => { cfg.tablets = (cfg.tablets || []).filte
 /* ---------- Cloud Sync: registers share data over the internet through the Store POS relay ----------
    Everything is sealed (AES-256-GCM) with the store's own key before it leaves this PC; the relay only
    passes sealed messages along and holds changes for the store PC while it is off. */
+const ACCT = require('./acct.js');
 const CLOUD_URL = 'https://trivedipos.com';
 const cloudUrl = () => String(cfg.cloudUrl || cfg.cloudUrlAuto || CLOUD_URL).replace(/\/+$/, '');
 const wsUrl = u => u.replace(/^http/, 'ws');
@@ -1002,7 +1018,7 @@ async function cloudRequest(m) {
   let out;
   try {
     const r = openBuf(cfg.cloud.key, enc);
-    const fake = { url: String(r.path || ''), headers: { 'x-token': String(r.token || '') }, socket: { remoteAddress: 'internet' } };
+    const fake = { url: String(r.path || ''), headers: { 'x-token': String(r.token || '') }, socket: { remoteAddress: 'internet' }, acct: m.acct && typeof m.acct.u === 'string' ? { u: m.acct.u, r: m.acct.r } : undefined };   // m.acct is added by the relay after it checked the account; the browser can't set it
     out = await Promise.resolve(lanHandle(fake, r.body || {}));
   } catch (e) { out = { status: 500, error: e.message }; }
   if (!CL.ws) return;
@@ -1019,6 +1035,58 @@ async function cloudPairCode() {
   if (!r.ok) throw new Error('Cloud Sync server said ' + r.status);
   CL.code = code.slice(0, 4) + '-' + code.slice(4); CL.codeUntil = LAN.codeUntil;
 }
+/* --- Trivedi account link: sign in once, keep only a device token (never the password) --- */
+const AC = { pending: null, error: '', timer: null };
+function acctKeys() {
+  cfg.cloud = cfg.cloud || {};
+  if (!cfg.cloud.storeId) { cfg.cloud.storeId = B64U(crypto.randomBytes(16)); cfg.cloud.key = crypto.randomBytes(32).toString('base64'); }
+  cfg.cloud.on = true; saveCfg();
+}
+async function acctFinish(session, password) {
+  const out = await ACCT.linkStore(cloudUrl(), session, password, { storeId: cfg.cloud.storeId, key: cfg.cloud.key, name: storeName() });
+  cfg.cloud.acct = { user: out.user, name: out.name, device: out.deviceToken, at: Date.now() }; saveCfg();
+  AC.pending = null; AC.error = ''; setTimeout(acctTick, 500); send('lan', lanState());
+  return { ok: true, user: out.user, name: out.name };
+}
+ipcMain.handle('acctSignIn', async (e, o) => {
+  try {
+    if (linkCfg()) return { ok: false, error: 'This PC is linked to another store PC. Unlink it first.' };
+    const username = String((o && o.username) || '').trim(), password = String((o && o.password) || '');
+    if (!username || !password) return { ok: false, error: 'Type your user name and password.' };
+    acctKeys(); if (CL.state !== 'online') cloudStart();
+    for (let i = 0; i < 40 && CL.state !== 'online'; i++) await new Promise(r => setTimeout(r, 300));
+    if (CL.state !== 'online') return { ok: false, error: 'Cloud Sync is not connected yet. Check the internet and try again in a minute.' };
+    const r = await ACCT.signIn(cloudUrl(), username, password);
+    if (r.need2fa) { AC.pending = { username, password, ticket: r.ticket, at: Date.now() }; return { ok: false, need2fa: r.need2fa, to: r.to, canEmail: r.canEmail }; }
+    return await acctFinish(r.session, password);
+  } catch (err) { AC.pending = null; return { ok: false, error: err.message }; }
+});
+ipcMain.handle('acctSignIn2fa', async (e, code) => {
+  try {
+    const p = AC.pending; if (!p || Date.now() - p.at > 10 * 60000) { AC.pending = null; return { ok: false, error: 'That took too long. Sign in again.' }; }
+    const r = await ACCT.signIn2fa(cloudUrl(), p.username, p.ticket, code);
+    return await acctFinish(r.session, p.password);
+  } catch (err) { if (/Sign in again|Too many/.test(err.message)) AC.pending = null; return { ok: false, error: err.message, need2fa: AC.pending ? 'app' : undefined }; }
+});
+ipcMain.handle('acctUnlink', async () => {
+  const a = cfg.cloud && cfg.cloud.acct; if (!a) return lanState();
+  try { await ACCT.deviceUnlink(cloudUrl(), a.device); } catch (e) { /* the server forgets it anyway when someone unlinks there */ }
+  delete cfg.cloud.acct; cfg.tablets = (cfg.tablets || []).filter(t => !t.acct); AC.pending = null; saveCfg(); send('lan', lanState()); return lanState();
+});
+// every few minutes while online: give waiting members their locked copy of the key, report devices, forget removed people's devices
+async function acctTick() {
+  const a = cfg.cloud && cfg.cloud.acct; if (!a || !cloudOn()) return;
+  try {
+    await ACCT.approvePending(cloudUrl(), a.device, cfg.cloud.key);
+    const hb = await ACCT.deviceHeartbeat(cloudUrl(), a.device, { name: storeName(), devices: (cfg.tablets || []).map(t => ({ name: t.name, reg: t.reg, lastSeen: t.lastSeen, who: t.acct ? t.acct.user : '' })) });
+    const keep = new Set(hb.members || []); const before = (cfg.tablets || []).length;
+    cfg.tablets = (cfg.tablets || []).filter(t => !t.acct || keep.has(t.acct.user)); if (cfg.tablets.length !== before) { saveCfg(); send('lan', lanState()); }
+    AC.error = '';
+  } catch (e) {
+    if (e.status === 401) { delete cfg.cloud.acct; saveCfg(); AC.error = 'This store was unlinked from the account on the website.'; send('lan', lanState()); }
+  }
+}
+setInterval(acctTick, 3 * 60000); setTimeout(acctTick, 25000);
 ipcMain.handle('cloudSet', (e, on) => {
   if (on && linkCfg()) return lanState();
   cfg.cloud = cfg.cloud || {};

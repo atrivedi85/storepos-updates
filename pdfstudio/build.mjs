@@ -37,7 +37,10 @@ await esbuild.build({
   bundle: true, platform: 'browser', target: 'chrome130', format: 'esm', sourcemap: false, minify: true,
   loader: { '.svg': 'text' },
 });
-fs.copyFileSync('src/renderer/index.html', `${web}/index.html`);
+// Web version only: put the shared Trivedi account button at the top-right (the desktop app has no website to ask)
+fs.writeFileSync(`${web}/index.html`, fs.readFileSync('src/renderer/index.html', 'utf8')
+  .replace('</header>', '<div id="acctSlot" style="margin-left:auto;display:flex;align-items:center"></div>\n  </header>')
+  .replace('</body>', '<script src="/account-bar.js" defer></script>\n</body>'));
 fs.copyFileSync('src/renderer/styles.css', `${web}/styles.css`);
 fs.copyFileSync(`${pj}/build/pdf.worker.min.mjs`, `${web}/pdf.worker.min.mjs`);
 for (const d of ['cmaps', 'standard_fonts', 'wasm', 'iccs']) {

@@ -48,6 +48,7 @@
     let me, co, cur, text = null, version = null, dek, isNew = false;
     try { me = await api('/api/me'); }
     catch (e) { if (e.message !== 'signed out') fail('Could not reach Ledger Desk. Check your internet connection, then reload this page.'); return; }
+    if (me.posOnly && !me.admin) { main.innerHTML = '<div class="empty" style="max-width:460px;margin:12vh auto;text-align:center"><h2 style="margin:0 0 8px">Ledger Desk is not turned on for you</h2><p>Your account is for the store back office. Ask the owner to turn on Ledger Desk.</p><p><a class="btn primary" href="/pos/" style="display:inline-block;padding:10px 18px;text-decoration:none">Open the store back office</a></p></div>'; return; }
     if (me.needRecovery) { V.forgetKeys(); try { await post('/api/logout', {}); } catch (e) {} location.href = '/books/login'; return; }
     dek = await V.keptKey(me.username);
     if (!dek) dek = await askToUnlock(me);

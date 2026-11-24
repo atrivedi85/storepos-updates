@@ -132,8 +132,8 @@
       ${US.err ? '<div class="notice">' + esc(US.err) + '</div>' : ''}
       <div class="panel" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Name</th><th>User name</th><th class="num">Companies</th><th>Last sign-in</th><th></th></tr></thead><tbody>
       ${(US.list || []).map(u => `<tr data-user="${esc(u.username)}"><td>${esc(u.name)}${u.admin ? ' <span class="chip cc">owner</span>' : ''}${u.disabled ? ' <span class="chip">turned off</span>' : ''}${u.mustChange ? ' <span class="chip">password was reset</span>' : ''}</td>
-        <td class="num" style="text-align:left">${esc(u.username)}</td><td class="num">${u.companies}</td><td class="small">${esc(fmtWhen(u.lastLogin))}</td>
-        <td style="text-align:right;white-space:nowrap">${u.tfa ? '<button class="btn sm" data-act="u2faReset" title="For someone who lost their phone or email access">Reset two-step</button> ' : ''}<button class="btn sm" data-act="uReset">Reset password</button>${u.admin ? '' : ` <button class="btn sm${u.disabled ? '' : ' danger'}" data-act="uToggle">${u.disabled ? 'Turn on' : 'Turn off'}</button>`}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Loading…</td></tr>'}
+        <td class="num" style="text-align:left">${esc(u.username)}${u.email ? '<div class="small muted">' + esc(u.email) + '</div>' : ''}</td><td class="num">${u.companies}</td><td class="small">${esc(fmtWhen(u.lastLogin))}</td>
+        <td style="text-align:right;white-space:nowrap">${u.admin ? '' : `<label class="small" style="margin-right:8px" title="Off = this person can only use the Store POS back office"><input type="checkbox" class="check" data-act="uLedger" ${u.posOnly ? '' : 'checked'}> Can use Ledger Desk</label>`}${u.tfa ? '<button class="btn sm" data-act="u2faReset" title="For someone who lost their phone or email access">Reset two-step</button> ' : ''}<button class="btn sm" data-act="uReset">Reset password</button>${u.admin ? '' : ` <button class="btn sm${u.disabled ? '' : ' danger'}" data-act="uToggle">${u.disabled ? 'Turn on' : 'Turn off'}</button>`}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Loading…</td></tr>'}
       </tbody></table></div></div>
 
       <div class="panel" style="margin-top:16px;padding:0"><div style="padding:16px 16px 4px"><h2 style="margin:0">Invites</h2><p class="small muted" style="margin:4px 0 0">Each invite link works once, for one person, and stops working when it expires or you cancel it.</p></div>
@@ -275,6 +275,12 @@
     const username = b.closest('tr').dataset.user, u = US.list.find(x => x.username === username);
     if (!u.disabled && !(await L.confirmBox('Turn off ' + u.name + '\'s login?', 'They won\'t be able to sign in. Their books are kept, and you can turn the login back on any time.', 'Turn off', true))) return;
     try { await SV.post('/api/admin/disable', { username, disabled: !u.disabled }); toast(u.disabled ? 'Login turned on' : 'Login turned off'); loadUsers(); } catch (e) { toast(e.message); }
+  };
+
+  acts.uLedger = async el => {   // owner only: lets a store-back-office-only person use Ledger Desk too (or takes it away again)
+    const username = el.closest('tr').dataset.user, can = el.checked;
+    try { await SV.post('/api/admin/pos-only', { username, value: !can }); toast(can ? 'Ledger Desk turned on for ' + username : 'Ledger Desk turned off for ' + username); } catch (e) { el.checked = !can; toast(e.message); }
+    loadUsers();
   };
 
   // ----- Company & Backup: bring companies over from the desktop app -----

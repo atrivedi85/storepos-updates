@@ -118,6 +118,7 @@ const api: { [K in keyof Api]: (...a: Parameters<Api[K]>) => any } = {
   authStatus,
   login: async (username, password) => {
     try {
+      if (username.includes('@')) { try { const q = await (await post('login/resolve', { id: username })).json(); if (q.username) username = q.username; } catch { /* sign-in below reports the problem */ } }
       const r = await post('login', { username, auth: await authFor(username, password) });
       return await loginResult(r);
     } catch { return { signedIn: false, error: 'Cannot reach the PdfStudio server.' }; }
