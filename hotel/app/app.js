@@ -57,6 +57,20 @@ function availOfType(type, from, to, exceptId, forGroup) {
 const statusBadge = r => ({ reserved: '<span class="badge b">Reserved</span>', inhouse: r.depart <= B() ? '<span class="badge a">Due out</span>' : '<span class="badge g">In House</span>', out: '<span class="badge s">Checked out</span>', cancelled: '<span class="badge r">Cancelled</span>', noshow: '<span class="badge r">No show</span>' }[r.status] || '');
 const condBtns = no => `<span class="cond">${['R', 'C', 'D'].map(k => `<button class="${k} ${cond(no) === k ? 'on' : ''}" data-act="cond" data-room="${esc(no)}" data-cond="${k}" title="${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[k]}">${k}</button>`).join('')}</span>`;
 
+const CONDW = { R: { w: '✓ Ready', tip: 'Ready – clean and checked, can be rented', menu: 'Ready', more: 'clean and checked, can be rented' }, C: { w: 'Inspect', tip: 'Cleaned – a supervisor should check it', menu: 'Cleaned', more: 'needs a check' }, D: { w: '🧹 Dirty', tip: 'Dirty – needs cleaning', menu: 'Dirty', more: 'needs cleaning' } };
+/* Tape chart: one small word chip per room (not a coloured bar); clicking it opens a menu of three big choices that run the same data-act="cond" action. */
+const condChip = no => { const k = cond(no), c = CONDW[k] || CONDW.R; return `<button type="button" class="cchip ${k}" data-act="condMenu" data-room="${esc(no)}" aria-haspopup="menu" aria-expanded="false" title="${esc(c.tip)}" aria-label="Room ${esc(no)} housekeeping: ${esc(c.tip)}. Click to change.">${c.w}</button>`; };
+const condChipStatic = k => `<span class="cchip ${k}">${CONDW[k].w}</span>`;
+function condMenuClose(focus) { const m = $('#condmenu'); if (!m) return; const room = m.dataset.room; m.remove(); const b = [...document.querySelectorAll('.cchip[aria-expanded=true]')]; b.forEach(x => x.setAttribute('aria-expanded', 'false')); if (focus) { const f = b.find(x => x.dataset.room === room) || b[0]; if (f) f.focus(); } }
+function condMenuOpen(btn) {
+  condMenuClose(); const no = btn.dataset.room, cur = cond(no); btn.setAttribute('aria-expanded', 'true');
+  const m = document.createElement('div'); m.id = 'condmenu'; m.className = 'condmenu'; m.setAttribute('role', 'menu'); m.dataset.room = no; m.setAttribute('aria-label', 'Housekeeping for room ' + no);
+  m.innerHTML = `<div class="cmh">Room ${esc(no)} is now:</div>` + ['R', 'C', 'D'].map(k => `<button type="button" role="menuitemradio" aria-checked="${cur === k}" class="cmi ${k} ${cur === k ? 'on' : ''}" data-act="cond" data-room="${esc(no)}" data-cond="${k}"><b>${CONDW[k].w}</b><span>${CONDW[k].menu} – ${CONDW[k].more}</span><em>${cur === k ? '✓' : ''}</em></button>`).join('');
+  document.body.appendChild(m); const r = btn.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - mw - 8)) + 'px'; m.style.top = (r.bottom + mh + 8 > innerHeight && r.top - mh - 4 > 8 ? r.top - mh - 4 : r.bottom + 4) + 'px';
+  (m.querySelector('.cmi.on') || m.querySelector('.cmi')).focus();
+}
+
 /* ---------- sign in, forgot password, choose a password from an e-mailed link ---------- */
 const urlToken = () => { const t = new URLSearchParams(location.search).get('t'); return t && /^[a-f0-9]{64}$/.test(t) ? t : ''; };
 async function showLogin(msg, mode) {
@@ -220,15 +234,20 @@ function vTape() {
       else if (blk) { let n = 0; while (i + n < days.length && days[i + n] <= blk.end) n++; tds += `<td colspan="${n}"><span class="tbar ooo" title="${esc(blk.reason)}">Out of order${blk.reason ? ': ' + esc(blk.reason) : ''}</span></td>`; i += n; }
       else { tds += `<td class="${d >= B() ? 'free' : ''}" ${d >= B() ? `data-act="newRes" data-room="${esc(rm.no)}" data-date="${d}"` : ''}></td>`; i++; }
     }
-    return `<tr><td class="rm"><a href="#" data-act="newRes" data-room="${esc(rm.no)}" data-date="${B()}">${esc(rm.no)}</a>${wrench(rm.no)}</td><td class="ty">${esc(rm.type)}</td><td class="cd">${condBtns(rm.no)}</td>${tds}</tr>`;
+    return `<tr><td class="rm"><a href="#" data-act="newRes" data-room="${esc(rm.no)}" data-date="${B()}">${esc(rm.no)}</a>${wrench(rm.no)}</td><td class="ty">${esc(rm.type)}</td><td class="cd">${condChip(rm.no)}</td>${tds}</tr>`;
   }).join('');
   const un = active().filter(r => !r.room && r.arrive < end).sort((a, b) => a.arrive.localeCompare(b.arrive));
   const byDay = {}; for (const r of un) (byDay[r.arrive] = byDay[r.arrive] || []).push(r);
   return `<h1 class="pgt">Tape Chart</h1><div class="bar"><span class="hint">Start Date:</span><input type="date" id="tapeDate" value="${view.tapeStart}"><button class="btn sm blue" data-act="tapeToday">TODAY</button><button class="btn sm" data-act="tapeMove" data-n="-7">◀ Week</button><button class="btn sm" data-act="tapeMove" data-n="7">Week ▶</button>
     <select id="tapeFloor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select><span class="flex"></span><button class="btn sm red" data-act="blockNew">Room Blocking…</button></div>
-  <div class="tapewrap"><div class="wrap" style="max-height:calc(100vh - 200px);flex:1"><table class="tape"><tr><th class="c1">Room #</th><th class="c2">Type</th><th class="c3">Condition</th>${days.map(d => { const dt = new Date(d + 'T00:00:00Z'); const we = [5, 6].includes(dt.getUTCDay()); return `<th class="${we ? 'we' : ''} ${d === B() ? 'td' : ''}">${dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' })}.<br>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</th>`; }).join('')}</tr>${rows}</table></div>
-  <aside class="tside"><h3>Overview</h3><div class="lg"><i style="background:var(--green)"></i>In House</div><div class="lg"><i style="background:var(--blue)"></i>Reserved</div><div class="lg"><i style="background:var(--amber)"></i>Due Out</div><div class="lg"><i style="background:#9aa6b8"></i>Checked Out</div><div class="lg"><i style="background:var(--red)"></i>Out of Order</div><p class="hint">R ready · C clean · D dirty.<br>Click an empty day to book that room.</p>
-    <h3>Optimize Room Assignments?</h3><div class="optbox"><label for="optDate" class="hint">Start Date:</label><input type="date" id="optDate" value="${esc(view.optDate || B())}"><button class="btn blue" data-act="optRun">RUN</button></div>
+  <div class="tapewrap"><div class="wrap" style="max-height:calc(100vh - 200px);flex:1"><table class="tape"><tr><th class="c1">Room #</th><th class="c2">Type</th><th class="c3">Housekeeping</th>${days.map(d => { const dt = new Date(d + 'T00:00:00Z'); const we = [5, 6].includes(dt.getUTCDay()); return `<th class="${we ? 'we' : ''} ${d === B() ? 'td' : ''}">${dt.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' })}.<br>${dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</th>`; }).join('')}</tr>${rows}</table></div>
+  <aside class="tside"><h3>Overview</h3>
+    <div class="lgt">Guest bars (on the dates)</div>
+    <div class="lg"><span class="tbar sw inhouse">Smith</span>Guest is staying (in house)</div><div class="lg"><span class="tbar sw reserved">Jones</span>Booked, not arrived yet</div><div class="lg"><span class="tbar sw due">Lee</span>Leaving today</div><div class="lg"><span class="tbar sw out">Patel</span>Already checked out</div><div class="lg"><span class="tbar sw ooo">Out of order</span>Room out of order</div>
+    <div class="lgt">Room cleaning (next to the room number)</div>
+    <div class="lg">${condChipStatic('R')}<span>Clean and checked, can be rented</span></div><div class="lg">${condChipStatic('C')}<span>Cleaned – a supervisor should check it</span></div><div class="lg">${condChipStatic('D')}<span>Needs cleaning</span></div>
+    <p class="hint">Tip: click an empty day to book that room.</p>
+    <h3>Auto-assign rooms</h3><div class="optbox"><label for="optDate" class="hint">Start Date:</label><input type="date" id="optDate" value="${esc(view.optDate || B())}"><button class="btn blue" data-act="optRun">RUN</button></div><p class="hint opthint">Gives a room to every reservation that doesn't have one yet, starting from this date.</p>
     <h3>Unassigned Reservations</h3>${un.length ? Object.keys(byDay).sort().map(d => `<div class="uday">Arrival Date: ${new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' })}</div>` + byDay[d].map(r => `<a href="#" class="un" data-act="openRes" data-id="${r.id}"><span>${esc(gname(r))}</span><span>${esc(r.type)}</span><span>${nights(r.arrive, r.depart)}</span></a>`).join('')).join('') : '<p class="hint">None.</p>'}</aside></div>`;
 }
 
@@ -1433,11 +1452,13 @@ function vMembers() {
 
 /* ---------- clicks and typing ---------- */
 document.addEventListener('click', async e => {
+  if ($('#condmenu') && !e.target.closest('#condmenu') && !e.target.closest('[data-act=condMenu]')) condMenuClose();
   const mb = e.target.closest('.menu>button'); if (mb) { mb.focus(); return; }
   if (e.target.closest('.drop')) setTimeout(() => { const h = $('header'); if (h) h.classList.add('nohover'); }, 0);
   const nav = e.target.closest('[data-nav]'); if (nav) { if (nav.tagName === 'A') e.preventDefault(); if (view.name !== nav.dataset.nav) { view.listDate = ''; view.listSort = null; } view.name = nav.dataset.nav; view.q = ''; if (view.name === 'setup') { view.setup = ''; SD = null; } if (view.name === 'reports') { view.repStage = 'list'; view.rep = ''; view.repQ = ''; } render(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act; if (el.tagName === 'A') e.preventDefault();
-  if (a === 'cond') return run(async () => { e.stopPropagation(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
+  if (a === 'condMenu') { const was = el.getAttribute('aria-expanded') === 'true'; e.stopPropagation(); return was ? condMenuClose() : condMenuOpen(el); }
+  if (a === 'cond') return run(async () => { e.stopPropagation(); condMenuClose(); await op('roomCond', { rooms: [el.dataset.room], cond: el.dataset.cond }); await refresh(); });
   if (a === 'logout') return run(async () => { await api('/auth/logout', {}); S = null; M = null; showLogin(); });
   if (a === 'forgot') return showLogin('', 'forgot');
   if (a === 'loginBack') return showLogin('', 'signin');
@@ -1606,7 +1627,13 @@ document.addEventListener('input', e => { if (e.target.id === 'im_text') return 
 document.addEventListener('focusout', e => { if (ED && ['r_last', 'r_first', 'r_phone', 'r_guestId'].includes(e.target.id)) histLoad(); if (e.target.id === 'scanTxt' && !scanState.manual) setTimeout(() => { const t = $('#scanTxt'); if (t && !scanState.manual) t.focus(); }, 0); });   // the scanner types into this box, so keep it focused
 document.addEventListener('mousemove', () => { const h = $('header'); if (h && h.classList.contains('nohover')) h.classList.remove('nohover'); });
 const doFind = q => run(async () => { view.findQ = String(q || '').trim(); view.found = view.findQ ? (await api('/find?q=' + encodeURIComponent(view.findQ))).list : []; view.name = 'find'; render(); });
+window.addEventListener('scroll', () => condMenuClose(), true); window.addEventListener('resize', () => condMenuClose());
 document.addEventListener('keydown', e => {
+  if ($('#condmenu')) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return condMenuClose(true); }
+    if (e.key === 'Tab') return condMenuClose();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const it = [...document.querySelectorAll('#condmenu .cmi')], n = it.indexOf(document.activeElement); return it[(n + (e.key === 'ArrowDown' ? 1 : -1) + it.length) % it.length].focus(); }
+  }
   if (e.key === 'Enter' && (e.target.id === 'find' || e.target.id === 'find2')) return doFind(e.target.value);
   if (e.key === 'Enter' && e.target.id === 'gs_q') return run(guestFind);
   if (e.key === 'Enter' && e.target.id === 'listDate' && e.target.value) { view.listDate = e.target.value; return render(); }

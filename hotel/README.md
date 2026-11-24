@@ -26,7 +26,7 @@ and every rule there starts with `main.ios` or `#modal`, so the dark top bar, it
 ## What it does
 
 - **Home**: occupancy, ADR, RevPAR, arrivals/departures left, rooms available tonight by type.
-- **Tape Chart**: rooms down, 14 days across. Click an empty day to book that room, a bar to open the guest. R/C/D sets Ready/Clean/Dirty.
+- **Tape Chart**: rooms down, 14 days across. Click an empty day to book that room, a bar to open the guest. The **Housekeeping** column is one white word chip per room (✓ Ready / Inspect / 🧹 Dirty, never a filled bar); click it for a menu of three big choices (same `data-act="cond"` action; Esc, outside click or Tab closes it). The Overview key on the right explains the guest bars and the chips; "Auto-assign rooms" is the old Optimize button. The Housekeeping screen keeps its own Ready/Clean/Dirty buttons (`condBtns`).
 - **Arrivals, In House, Departures**, and the Find box (last name, phone or confirmation number).
 - **Reservation window**: stay, guest, payment and notes; Check In, Check Out, Undo, Cancel, Reinstate, No Show, registration card,
   confirmation letter, View Changes. **Walk-In** books and checks in at once.
