@@ -7,6 +7,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Buffer } from 'node:buffer';
 import * as nodeCrypto from 'node:crypto';
 import { connect } from 'cloudflare:sockets';
+import { posInit, posPublic, posUser, posAcceptInvite, posKick } from './pos.js';
 
 const VERSION = '3.0.0-web';
 // The very first login (the owner) needs this one-time code, so nobody else can claim the owner login on the public website.
@@ -159,6 +160,7 @@ export class Ledger extends DurableObject {
       CREATE TABLE IF NOT EXISTS usettings(username TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS conflicts(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, file TEXT, at INTEGER);
       CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, line TEXT);`);
+    posInit(this.sql);
     this.tickets = {}; this.setup2fa = {}; this.fails = {}; this.globalFails = []; this.ipFails = {};
     this.ai = { pending: new Map() };
   }
@@ -184,7 +186,13 @@ export class Ledger extends DurableObject {
   checkPw(u, pw) { if (!u || !u.hash) { scrypt64(pw, '00'.repeat(16)); return false; } return eqHex(scrypt64(pw, u.salt), u.hash); }
   checkRec(u, rec) { if (!u || !u.recHash) { scrypt64(rec, '00'.repeat(16)); return false; } return eqHex(scrypt64(rec, u.recSalt), u.recHash); }
   /* --- sessions --- */
-  newSession(username) { const token = rnd(32).toString('hex'); this.sql.exec('INSERT INTO sessions(h,user,exp) VALUES(?,?,?)', sha(token), username, now() + SESSION_DAYS * 864e5); return token; }
+  newSession(username, req) {
+    const token = rnd(32).toString('hex'), ua = req ? String(req.headers.get('user-agent') || '') : '';
+    const dev = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : ua ? 'Other' : 'Store PC';
+    const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+    this.sql.exec('INSERT INTO sessions(h,user,exp,created,ua,ip) VALUES(?,?,?,?,?,?)', sha(token), username, now() + SESSION_DAYS * 864e5, now(), (br ? br + ' on ' : '') + dev, req ? (req.headers.get('cf-connecting-ip') || '') : '');
+    return token;
+  }
   sessionUser(req) {
     const m = /(?:^|;\s*)ld_s=([a-f0-9]{64})/.exec(req.headers.get('cookie') || ''); if (!m) return null;
     const k = sha(m[1]), s = this.one('SELECT user, exp FROM sessions WHERE h=?', k);
@@ -192,7 +200,7 @@ export class Ledger extends DurableObject {
     const u = this.findUser(s.user); if (!u || u.disabled) return null;
     return { user: u, key: k };
   }
-  dropSessionsOf(username, exceptKey) { this.sql.exec('DELETE FROM sessions WHERE user=? AND h<>?', username, exceptKey || ''); }
+  dropSessionsOf(username, exceptKey) { this.sql.exec('DELETE FROM sessions WHERE user=? AND h<>?', username, exceptKey || ''); this.ctx.waitUntil(posKick(this, username).catch(() => {})); }
   /* --- guessing limits --- */
   lockedFor(u) {
     const f = this.fails[u]; this.globalFails = this.globalFails.filter(t => t > now() - 15 * 60e3);
@@ -298,6 +306,10 @@ export class Ledger extends DurableObject {
     }
     if (req.method === 'POST' && req.headers.get('x-ld') !== '1') return json(403, { error: 'Blocked' });
 
+    // Trivedi accounts for Store POS: the relay's own check and the store PC's device token (see pos.js)
+    const H = { json, jbody, now, sha, rnd, clip, normUser, validEmail, sendMail };
+    { const r = await posPublic(this, req, url, H); if (r) return r; }
+
     // ----- sign-in (no session needed) -----
     if (p === '/api/setup-needed') return json(200, { needed: !this.one('SELECT 1 x FROM users LIMIT 1') });
     if (p === '/api/invite/check' && req.method === 'POST') {
@@ -318,14 +330,16 @@ export class Ledger extends DurableObject {
       const bad = pwProblem(b.auth); if (bad) return json(400, { error: bad });
       if (!validVault(b.vault) || pwProblem(b.recAuth)) return json(400, { error: 'Bad key data. Reload the page and try again.' });
       const u = { username, name: clip(b.name, 80) || inv.name || username, admin: false, created: new Date().toISOString(), lastLogin: new Date().toISOString(), invitedBy: inv.by, vault: { pw: cleanWrap(b.vault.pw), rec: cleanWrap(b.vault.rec) } };
+      if (inv.pos) { u.posOnly = true; if (validEmail(inv.sentTo)) u.email = inv.sentTo.trim(); }   // made by a store owner for the Store POS back office: no Ledger Desk companies unless the site owner allows it
       this.setPw(u, b.auth); this.setRec(u, b.recAuth); this.saveUser(u);
+      posAcceptInvite(this, inv, username, now());
       inv.usedBy = username; inv.usedAt = new Date().toISOString(); this.saveInvite(inv);
       if (inv.share && Array.isArray(inv.share.files)) for (const f of inv.share.files) {
         const c = validFile(f) && this.company(f); if (!c || c.owner !== inv.by) continue;
         if (!c.keys.members[username]) { c.keys.members[username] = { key: null, role: inv.share.role === 'view' ? 'view' : 'edit', pending: true, added: new Date().toISOString(), by: inv.by }; this.writeKeys(f, c.keys); }
       }
       this.log('account created from invite:', username);
-      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username), SESSION_DAYS * 86400) });
+      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username, req), SESSION_DAYS * 86400) });
     }
     if (p === '/api/setup' && req.method === 'POST') {
       if (this.one('SELECT 1 x FROM users LIMIT 1')) return json(403, { error: 'Already set up' });
@@ -337,7 +351,7 @@ export class Ledger extends DurableObject {
       if (!validVault(b.vault) || pwProblem(b.recAuth)) return json(400, { error: 'Bad key data. Reload the page and try again.' });
       const u = { username, name: clip(b.name, 80) || username, admin: true, created: new Date().toISOString(), lastLogin: new Date().toISOString(), vault: { pw: cleanWrap(b.vault.pw), rec: cleanWrap(b.vault.rec) } };
       this.setPw(u, b.auth); this.setRec(u, b.recAuth); this.saveUser(u); this.log('first admin created:', username);
-      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username), SESSION_DAYS * 86400) });
+      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username, req), SESSION_DAYS * 86400) });
     }
     if ((p === '/api/recover/check' || p === '/api/recover') && req.method === 'POST') {
       const b = await jbody(); const username = normUser(b.username);
@@ -351,7 +365,7 @@ export class Ledger extends DurableObject {
       this.setPw(u, b.auth); u.vault = { pw: cleanWrap(b.vaultPw), rec: u.vault.rec };
       delete u.mustChange; delete u.needRecovery; u.lastLogin = new Date().toISOString(); this.saveUser(u); this.dropSessionsOf(u.username);
       this.log(username, 'reset their password with the recovery code');
-      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username), SESSION_DAYS * 86400) });
+      return json(200, { ok: true }, { 'Set-Cookie': cookie(this.newSession(username, req), SESSION_DAYS * 86400) });
     }
     if (p === '/api/login' && req.method === 'POST') {
       const b = await jbody(); const username = normUser(b.username);
@@ -368,7 +382,7 @@ export class Ledger extends DurableObject {
         return json(200, { need2fa: method, ticket: id, to: method === 'email' ? maskEmail(u.email) : '', canEmail: !!u.email });
       }
       u.lastLogin = new Date().toISOString(); this.saveUser(u); this.log('signed in:', username);
-      return json(200, { ok: true, vault: u.vault, needRecovery: !!u.needRecovery }, { 'Set-Cookie': cookie(this.newSession(username), SESSION_DAYS * 86400) });
+      return json(200, { ok: true, vault: u.vault, needRecovery: !!u.needRecovery }, { 'Set-Cookie': cookie(this.newSession(username, req), SESSION_DAYS * 86400) });
     }
     if (p.startsWith('/api/login/2fa') && req.method === 'POST') {
       const b = await jbody(); const ipl = this.ipLocked(ip); if (ipl) return json(429, { error: ipl });
@@ -391,7 +405,7 @@ export class Ledger extends DurableObject {
         delete this.tickets[t.id];
         if (t.method === 'setup') { u.email = t.to; u.tfa = { method: 'email', trusted: [] }; }
         u.tfa = u.tfa || { method: 'email', trusted: [] }; u.tfa.trusted = (u.tfa.trusted || []).filter(x => x.exp > now());
-        const heads = [cookie(this.newSession(u.username), SESSION_DAYS * 86400)];
+        const heads = [cookie(this.newSession(u.username, req), SESSION_DAYS * 86400)];
         if (b.trust) { const tok = rnd(32).toString('hex'); u.tfa.trusted.push({ h: sha(tok), exp: now() + 30 * 864e5, at: new Date().toISOString() }); u.tfa.trusted = u.tfa.trusted.slice(-10); heads.push(trustedCookie(tok, 30 * 86400)); }
         u.lastLogin = new Date().toISOString(); this.saveUser(u); this.log('signed in (two-step):', u.username);
         return json(200, { ok: true, vault: u.vault, needRecovery: !!u.needRecovery }, { 'Set-Cookie': heads });
@@ -403,8 +417,8 @@ export class Ledger extends DurableObject {
     if (!s) return json(401, { error: 'Please sign in again.' });
     const me = s.user;
 
-    if (p === '/api/logout' && req.method === 'POST') { this.sql.exec('DELETE FROM sessions WHERE h=?', s.key); return json(200, { ok: true }, { 'Set-Cookie': cookie('', 0) }); }
-    if (p === '/api/me') return json(200, { ...publicUser(me), version: VERSION, vault: me.vault, needRecovery: !!me.needRecovery, pub: me.pub || null, priv: me.priv || null, web: true });
+    if (p === '/api/logout' && req.method === 'POST') { this.sql.exec('DELETE FROM sessions WHERE h=?', s.key); this.ctx.waitUntil(posKick(this, me.username).catch(() => {})); return json(200, { ok: true }, { 'Set-Cookie': cookie('', 0) }); }
+    if (p === '/api/me') return json(200, { ...publicUser(me), version: VERSION, vault: me.vault, needRecovery: !!me.needRecovery, pub: me.pub || null, priv: me.priv || null, web: true, email: me.email || '', posOnly: !!me.posOnly });
     if (p === '/api/password' && req.method === 'POST') {
       const b = await jbody();
       if (!this.checkPw(me, b.old)) return json(400, { error: 'Your current password is not right.' });
@@ -435,11 +449,13 @@ export class Ledger extends DurableObject {
       return json(200, { ok: true });
     }
     if (me.needRecovery && p !== '/api/ai/status') return json(403, { error: 'Unlock your books with your recovery code first.' });
+    { const r = await posUser(this, req, url, me, s, H); if (r) return r; }
 
     // ----- books (only locked files go in or out) -----
     if (p === '/api/companies') { const list = this.listCompanies(me); return json(200, { list, current: this.currentFile(me, list) }); }
     if (p === '/api/companies/current' && req.method === 'POST') { const b = await jbody(); this.access(me, b.file); this.setUsettings(me, { current: b.file }); return json(200, { ok: true }); }
     if (p === '/api/companies/create' && req.method === 'POST') {
+      if (me.posOnly) return json(403, { error: 'This login was made for the Store POS back office. Ask the owner to turn on Ledger Desk for you.' });
       const text = await body(80e6), file = q('file'), key = req.headers.get('x-ld-key');
       if (!validFile(file)) throw httpErr(400, 'Bad company file name');
       if (!validEnvelope(text)) throw httpErr(400, 'Only locked company files can be stored.');
@@ -627,6 +643,7 @@ export class Ledger extends DurableObject {
         for (const w of this.ctx.getWebSockets('ai')) { try { w.close(4001, 'New AI PC key made'); } catch (e) { /* gone */ } }
         this.log(me.username, 'made a new AI PC key'); return json(200, { key });
       }
+      if (p === '/api/admin/pos-only' && req.method === 'POST') { const b = await jbody(); const u = this.findUser(b.username); if (!u) return json(404, { error: 'No such login' }); if (b.value) u.posOnly = true; else delete u.posOnly; this.saveUser(u); return json(200, { ok: true }); }
       if (p === '/api/admin/log') return json(200, { lines: this.rows('SELECT at, line FROM log ORDER BY id DESC LIMIT 300') });
       const b = req.method === 'POST' ? await jbody() : {};
       const u = this.findUser(b.username); if (!u) return json(404, { error: 'No such login' });

@@ -60,7 +60,7 @@
     if (CW.ready) return CW.ready;
     CW.ready = relayAuth(L.key).then(function (auth) {
       return new Promise(function (resolve, reject) {
-        var ws = new WebSocket(BASE.replace(/^http/, 'ws') + '/v1/store/' + L.storeId + '/ws?role=client&cid=' + L.cid + '&auth=' + auth);
+        var ws = new WebSocket(BASE.replace(/^http/, 'ws') + '/v1/store/' + L.storeId + '/ws?role=client&cid=' + L.cid + '&auth=' + auth + (L.acct ? '&mode=acct' : ''));
         var to = setTimeout(function () { try { ws.close(); } catch (e) { } }, 15000);
         ws.onopen = function () { clearTimeout(to); CW.ws = ws; CW.ready = null; clearInterval(CW.ping); CW.ping = setInterval(function () { try { ws.send('{"t":"ping"}'); } catch (e) { } }, 45000); ws.send('{"t":"ping"}'); resolve(ws); };
         ws.onmessage = function (ev) {
@@ -74,7 +74,7 @@
           delete CW.pending[m.id]; clearTimeout(w.to); st.hostOn = true;
           unseal(L.key, enc).then(function (r) { if (r && r.status) { var er = new Error(r.error || 'Store PC error'); er.status = r.status; w.reject(er); } else w.resolve(r); }, function () { w.reject(new Error('Could not open the answer — connect this browser again.')); });
         };
-        ws.onclose = function (ev) { clearTimeout(to); clearInterval(CW.ping); if (CW.ws === ws) CW.ws = null; if (CW.ready) { CW.ready = null; reject(new Error(ev.reason || 'Can’t reach Cloud Sync (check the internet)')); } Object.keys(CW.pending).forEach(function (id) { var w = CW.pending[id]; clearTimeout(w.to); w.reject(new Error('Connection to Cloud Sync dropped')); delete CW.pending[id]; }); };
+        ws.onclose = function (ev) { clearTimeout(to); clearInterval(CW.ping); if (ev.code === 4003) setTimeout(function () { location.reload(); }, 800); if (CW.ws === ws) CW.ws = null; if (CW.ready) { CW.ready = null; reject(new Error(ev.reason || 'Can’t reach Cloud Sync (check the internet)')); } Object.keys(CW.pending).forEach(function (id) { var w = CW.pending[id]; clearTimeout(w.to); w.reject(new Error('Connection to Cloud Sync dropped')); delete CW.pending[id]; }); };
       });
     });
     CW.ready.catch(function () { CW.ready = null; });
@@ -120,7 +120,7 @@
       }
       await applyItems(res.items, false); n += (res.items || []).length; snap = res.next;
     }
-    L.since = startSeq; L.ready = true; st.progress = ''; await metaSet('link', L);
+    L.since = startSeq; L.ready = true; st.progress = ''; await saveLink(L);
   }
   var kickT = null; function kick() { if (!LINK) return; clearTimeout(kickT); kickT = setTimeout(syncOnce, 400); }
   async function syncOnce() {
@@ -132,15 +132,20 @@
       var ops = rows.map(function (r) { return { store: r.store, key: r.key, op: r.op, data: r.data, delta: r.delta }; });
       var res = await req('/sync', { since: LINK.since || 0, epoch: LINK.epoch, ops: ops }, 60000, ops.length > 0);
       if (res.__queued) { await dropOut(rows); again = OUT.length > 0; }
-      else if (res.resync) { LINK.ready = false; await metaSet('link', LINK); again = true; }
+      else if (res.resync) { LINK.ready = false; await saveLink(LINK); again = true; }
       else {
         await dropOut(rows);
-        var ch = await applyItems(res.items, true); LINK.since = res.seq; await metaSet('link', LINK);
+        var ch = await applyItems(res.items, true); LINK.since = res.seq; await saveLink(LINK);
         if (ch.products.length || ch.orders || Object.keys(ch.kv).length) emit(ch);
         again = !!res.more || OUT.length > 0;
       }
       st.online = true; st.lastOk = Date.now(); st.lastErr = res.__queued ? 'The store PC is off — your changes are saved in Cloud Sync and reach it when it is back on.' : '';
-    } catch (e) { st.online = false; st.lastErr = e.message; st.progress = ''; if (e.status === 401) st.lastErr = 'The store PC removed this browser. Connect it again.'; }
+    } catch (e) {
+      st.online = false; st.lastErr = e.message; st.progress = '';
+      if (e.status === 401 && LINK && LINK.acct) {   // the store PC forgot this browser's token: an account link just asks again
+        try { var rp = await req('/pair', { deviceId: LINK.cid, name: LINK.name }, 20000); if (rp && rp.token) { LINK.token = rp.token; if (rp.role) LINK.acct.role = rp.role; await saveLink(LINK); st.lastErr = ''; again = true; } } catch (e2) { st.lastErr = e2.message; }
+      } else if (e.status === 401) st.lastErr = 'The store PC removed this browser. Connect it again.';
+    }
     finally { st.busy = false; emitLink(); }
     if (again) setTimeout(syncOnce, 150);
   }
@@ -224,10 +229,11 @@
   function showProgress(t) { var p = document.getElementById('wbProg'); if (p) p.textContent = t || ''; }
   function connectScreen(err) {
     return new Promise(function (done) {
+      if (gate) { gate.remove(); gate = null; }
       gate = document.createElement('div'); gate.id = 'webGate';
       gate.innerHTML = '<style>#webGate{position:fixed;inset:0;z-index:99999;background:#0f1b2d;display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;padding:16px}#webGate .bx{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4)}#webGate h1{margin:0 0 4px;font-size:24px;color:#0f1b2d}#webGate p{color:#4b5568;font-size:14px;line-height:1.45;margin:8px 0}#webGate label{display:block;font-size:13px;font-weight:600;color:#334;margin:14px 0 4px}#webGate input{width:100%;box-sizing:border-box;font-size:20px;padding:12px;border:1px solid #c8d0dc;border-radius:10px}#webGate #wbCode{letter-spacing:4px;text-transform:uppercase;text-align:center;font-weight:700}#webGate button{margin-top:18px;width:100%;font-size:18px;font-weight:700;padding:14px;border:0;border-radius:10px;background:#1f9d55;color:#fff;cursor:pointer}#webGate button:disabled{opacity:.6}#webGate .err{color:#c62828;font-weight:600}#webGate .ok{color:#1f6fd1;font-weight:600}</style>' +
         '<div class="bx"><h1>Store POS — Back office</h1><p>Manage items, prices, stock, employees and reports from any browser. Changes go straight to your store.</p>' +
-        '<p><b>On the store PC:</b> Settings → Tablets → turn on <b>Sync over the internet</b> → <b>Pair a tablet or PC</b>. Type the <b>Cloud code</b> it shows.</p>' +
+        '<p><b>On the store PC:</b> Settings → Tablets → turn on <b>Sync over the internet</b> → <b>Pair a tablet or PC</b>. Type the <b>Cloud code</b> it shows.</p><p style="font-size:13px">Rather use your account? <a href="/pos/" style="color:#1f6fd1;font-weight:600">Sign in with Trivedi</a>.</p>' +
         '<label>Cloud code</label><input id="wbCode" placeholder="ABCD-EFGH" autocomplete="off" maxlength="9">' +
         '<label>Name for this browser</label><input id="wbName" value="Owner – web" autocomplete="off">' +
         '<button id="wbGo">Connect to my store</button><p id="wbProg" class="ok"></p><p id="wbErr" class="err">' + (err || '') + '</p>' +
@@ -257,18 +263,132 @@
     await snapshot(L); LINK = L; st.online = true; st.lastOk = Date.now(); st.lastErr = '';
   }
 
+  /* ---------- Trivedi account sign-in (same account as Ledger Desk and PdfStudio) ---------- */
+  // The page asks trivedipos.com who is signed in (same cookie as /books), opens this person's own key pair with their
+  // password (made in the browser, never sent), lists the stores they belong to, and unlocks the chosen store's key in
+  // the browser. The server only ever holds the key locked for this person.
+  var ACC = { V: null, me: null, priv: null };
+  function loadVault() {
+    return new Promise(function (res, rej) {
+      if (window.LDVault) return res(window.LDVault);
+      var s = document.createElement('script'); s.src = '/books/vault.js'; s.onload = function () { res(window.LDVault); }; s.onerror = function () { rej(new Error('Could not load the sign-in code. Check the internet and reload.')); };
+      document.head.appendChild(s);
+    });
+  }
+  async function acctApi(method, path, body) {
+    var r = await fetch(path, { method: method, credentials: 'same-origin', headers: Object.assign({ 'x-ld': '1' }, body !== undefined ? { 'Content-Type': 'application/json' } : {}), body: body !== undefined ? JSON.stringify(body) : undefined });
+    var d = {}; try { d = await r.json(); } catch (e) { }
+    if (!r.ok) { var er = new Error(d.error || 'The server said ' + r.status); er.status = r.status; throw er; }
+    return d;
+  }
+  var GATE_CSS = '#webGate{position:fixed;inset:0;z-index:99999;background:#0f1b2d;display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;padding:16px;overflow:auto}#webGate .bx{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4)}#webGate h1{margin:0 0 4px;font-size:24px;color:#0f1b2d}#webGate p{color:#4b5568;font-size:14px;line-height:1.45;margin:8px 0}#webGate label{display:block;font-size:13px;font-weight:600;color:#334;margin:14px 0 4px}#webGate input{width:100%;box-sizing:border-box;font-size:20px;padding:12px;border:1px solid #c8d0dc;border-radius:10px}#webGate #wbCode{letter-spacing:4px;text-transform:uppercase;text-align:center;font-weight:700}#webGate button,#webGate a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box;margin-top:18px;width:100%;font-size:18px;font-weight:700;padding:14px;border:0;border-radius:10px;background:#1f9d55;color:#fff;cursor:pointer}#webGate button:disabled{opacity:.6;cursor:default}#webGate button.alt{background:#eef2f8;color:#14213d;font-size:15px;padding:11px}#webGate .err{color:#c62828;font-weight:600}#webGate .ok{color:#1f6fd1;font-weight:600}#webGate .lnk{background:none;border:0;color:#1f6fd1;font-size:14px;font-weight:600;width:auto;padding:4px 0;margin:10px 0 0;text-decoration:underline}#webGate .st{display:flex;align-items:center;gap:10px;border:1px solid #d6deea;border-radius:12px;padding:12px 14px;margin-top:10px}#webGate .st b{display:block;font-size:16px;color:#14213d}#webGate .st small{color:#5b6880}#webGate .st button{width:auto;margin:0 0 0 auto;font-size:15px;padding:9px 16px}';
+  function gatePanel(html) {
+    if (!gate) { gate = document.createElement('div'); gate.id = 'webGate'; gate.innerHTML = '<style>' + GATE_CSS + '</style><div class="bx"></div>'; document.body.appendChild(gate); }
+    gate.querySelector('.bx').innerHTML = html; return gate.querySelector('.bx');
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var ROLE_NAME = { owner: 'Owner', manager: 'Manager', cashier: 'Cashier', reports: 'Reports only' };
+  function whenClicked(box, sel) { return new Promise(function (res) { box.querySelector(sel).onclick = res; }); }
+  async function acctGate(wantStore) {
+    gatePanel('<h1>Store POS — Back office</h1><p class="ok">Checking your sign-in…</p>');
+    var me = null;
+    try { me = await acctApi('GET', '/api/me'); if (me.needRecovery) me = null; } catch (e) { if (e.status !== 401) throw e; }
+    if (!me) {   // not signed in: the shared Trivedi sign-in (same page as Ledger Desk), then back here
+      var next = '/pos/' + (wantStore ? '?store=' + encodeURIComponent(wantStore) : '');
+      var box = gatePanel('<h1>Store POS — Back office</h1><p>Manage items, prices, stock, employees and reports from any browser.</p><p><b>Sign in with your Trivedi account</b> — the same one you use for Ledger Desk and PdfStudio.</p><a class="btn" id="wbSign" href="/books/login?next=' + encodeURIComponent(next) + '">Sign in</a><button class="lnk" id="wbCodeLink" type="button">Connect with a code instead</button>');
+      await whenClicked(box, '#wbCodeLink'); return { code: true };
+    }
+    var V = ACC.V = await loadVault(); ACC.me = me;
+    var priv = null, dek = await V.keptKey(me.username), msg = '';
+    async function unlock(d) { if (!me.pub) { var pk = await V.newPersonKeys(d); await acctApi('POST', '/api/me/keys', pk); me.pub = pk.pub; me.priv = pk.priv; } return V.openPrivate(d, me.priv); }
+    if (dek) { try { priv = await unlock(dek); } catch (e) { V.forgetKeys(); dek = null; } }
+    while (!priv) {   // the key stays in this browser tab only; a new tab asks for the password once
+      var b2 = gatePanel('<h1>Welcome back, ' + esc(me.name || me.username) + '</h1><p>Type your Trivedi password to unlock your stores. It never leaves this browser.</p><label>Password</label><input id="wbPw" type="password" autocomplete="current-password"><button id="wbGo">Unlock</button><p class="err">' + esc(msg) + '</p><button class="lnk" id="wbOut" type="button">Not you? Sign out</button>');
+      b2.querySelector('#wbPw').focus();
+      var act = await new Promise(function (res) { b2.querySelector('#wbGo').onclick = function () { res('go'); }; b2.querySelector('#wbPw').onkeydown = function (e) { if (e.key === 'Enter') res('go'); }; b2.querySelector('#wbOut').onclick = function () { res('out'); }; });
+      if (act === 'out') { try { await acctApi('POST', '/api/logout', {}); } catch (e) { } location.reload(); return new Promise(function () { }); }
+      var pw = b2.querySelector('#wbPw').value; b2.querySelector('#wbGo').disabled = true;
+      try { dek = await V.unlockWithPassword(me.vault, pw); await V.keepKey(me.username, dek); priv = await unlock(dek); } catch (e) { msg = e.message === 'wrong' ? 'That password does not unlock your keys.' : e.message; }
+    }
+    ACC.priv = priv;
+    var picked = null;
+    while (!picked) {
+      var list = (await acctApi('GET', '/api/pos/stores')).stores;
+      var auto = wantStore && list.find(function (s) { return s.storeId === wantStore && s.wrappedKey; }); wantStore = null;
+      if (auto) { picked = auto; break; }
+      var rows = list.map(function (s, i) { return '<div class="st"><div><b>' + esc(s.name) + '</b><small>' + esc(ROLE_NAME[s.role] || s.role) + (s.pending ? ' · waiting for approval' : '') + '</small></div>' + (s.wrappedKey ? '<button data-i="' + i + '">Open</button>' : '<button disabled>Waiting</button>') + '</div>'; }).join('');
+      var b3 = gatePanel('<h1>Your stores</h1><p>Signed in as <b>' + esc(me.name || me.username) + '</b>.</p>' + (rows || '<p>No stores yet. On the store PC: <b>Settings → Tablets → Link to my Trivedi account</b>. Or ask the store owner to invite you.</p>') + (list.some(function (s) { return !s.wrappedKey; }) ? '<p class="hint" style="font-size:12px">"Waiting" means the store PC (or an owner) still has to approve your access. It happens by itself within a few minutes when the store PC is on.</p>' : '') + '<button class="alt" id="wbRef">Refresh</button><button class="lnk" id="wbCodeLink" type="button">Connect with a code instead</button>');
+      var ch = await new Promise(function (res) {
+        b3.querySelector('#wbRef').onclick = function () { res({ refresh: true }); };
+        b3.querySelector('#wbCodeLink').onclick = function () { res({ code: true }); };
+        b3.querySelectorAll('button[data-i]').forEach(function (b) { b.onclick = function () { res({ pick: list[+b.dataset.i] }); }; });
+      });
+      if (ch.code) return { code: true };
+      if (ch.pick) picked = ch.pick;
+    }
+    gatePanel('<h1>Opening ' + esc(picked.name) + '…</h1><p id="wbProg" class="ok">Unlocking the store key…</p>');
+    var ck = await V.unlockCompanyKey(priv, picked.wrappedKey);
+    var key = b64e(new Uint8Array(await crypto.subtle.exportKey('raw', ck)));
+    return { me: me, store: picked, key: key };
+  }
+  async function openAcctStore(g, stored) {
+    var cid = (await idbGet('meta', 'cid')) || ('web-' + rid()); await metaSet('cid', cid);
+    var acct = { user: g.me.username, name: g.me.name || g.me.username, role: g.store.role };
+    if (stored && stored.acct && stored.storeId === g.store.storeId && stored.ready && stored.token) {   // same store as last time: keep the local copy and just reconnect
+      LINK = Object.assign({}, stored, { key: g.key, acct: acct, cid: cid });
+      (await idbAll('rec')).forEach(function (r) { if (MEM[r.store]) MEM[r.store].set(r.key, r.data); }); OUT = await idbAll('outbox');
+      setTimeout(syncOnce, 300); return;
+    }
+    var L = { storeId: g.store.storeId, key: g.key, cid: cid, token: '', name: 'Web: ' + acct.name, acct: acct };
+    CW.ws = null; CW.ready = null;
+    var r = await req('/pair', { deviceId: cid, name: L.name }, 20000, false, L);
+    if (r.__queued) throw new Error('The store PC is off or not online right now. Turn it on, then try again.');
+    Object.assign(L, { token: r.token, reg: r.reg, store: r.store, epoch: r.epoch, since: 0, ready: false });
+    OUT = []; await idbTx(['outbox'], function (t) { t.objectStore('outbox').clear(); });
+    await snapshot(L); LINK = L; st.online = true; st.lastOk = Date.now(); st.lastErr = '';
+  }
+  // Give people who were waiting for their locked copy of the key theirs (this browser holds the owner's unlocked key)
+  async function approvePending() {
+    if (!LINK || !LINK.acct || LINK.acct.role !== 'owner' || !ACC.V) return;
+    try {
+      var list = (await acctApi('GET', '/api/pos/pending')).pending.filter(function (p) { return p.storeId === LINK.storeId; });
+      if (!list.length) return;
+      var ck = await crypto.subtle.importKey('raw', b64d(LINK.key), 'AES-GCM', true, ['encrypt', 'decrypt']);
+      for (var i = 0; i < list.length; i++) { try { await acctApi('POST', '/api/pos/members/wrap', { storeId: LINK.storeId, username: list[i].username, wrappedKey: await ACC.V.lockCompanyKeyFor(list[i].pub, ck) }); } catch (e) { } }
+    } catch (e) { }
+  }
+  setInterval(approvePending, 180000);
+  function saveLink(L) { return metaSet('link', L && L.acct ? Object.assign({}, L, { key: '' }) : L); }   // an account link never keeps the store key in browser storage
+
   /* ---------- start ---------- */
   var READY = (async function () {
     await idbOpen();
-    LINK = (await idbGet('meta', 'link')) || null; CFG = (await idbGet('meta', 'cfg')) || {};
-    if (LINK && LINK.ready && LINK.token) {
+    var stored = (await idbGet('meta', 'link')) || null; CFG = (await idbGet('meta', 'cfg')) || {};
+    var want = new URLSearchParams(location.search).get('store');
+    if (stored && !stored.acct && stored.ready && stored.token) {   // linked the old way (with a Cloud code): unchanged
+      LINK = stored;
       (await idbAll('rec')).forEach(function (r) { if (MEM[r.store]) MEM[r.store].set(r.key, r.data); });
       OUT = await idbAll('outbox');
       setTimeout(syncOnce, 800);
-    } else { LINK = null; await connectScreen(); }
+      return;
+    }
+    LINK = null;
+    for (var tries = 0; ; tries++) {   // the Trivedi account is the normal way in; "Connect with a code instead" is the fallback
+      try {
+        var g = await acctGate(want || (stored && stored.acct ? stored.storeId : null));
+        if (g.code) { await connectScreen(); return; }
+        await openAcctStore(g, stored);
+        if (gate) { gate.remove(); gate = null; }
+        setTimeout(approvePending, 1500);
+        return;
+      } catch (e) {
+        if (tries > 20) throw e;
+        var bx = gatePanel('<h1>Could not open the store</h1><p class="err">' + esc(e.message) + '</p><button id="wbAgain">Try again</button>'); want = null; stored = null; await whenClicked(bx, '#wbAgain');
+      }
+    }
   })();
   READY.catch(function (e) { document.body.innerHTML = '<p style="font:16px sans-serif;padding:20px">This browser can’t store data (' + e + '). Turn off private browsing and try again.</p>'; });
-  function linkState() { return { linked: !!(LINK && LINK.token), ready: !!(LINK && LINK.ready), mode: 'cloud', host: 'over the internet', store: LINK && LINK.store, reg: LINK && LINK.reg, online: st.online, hostOn: st.hostOn, lastOk: st.lastOk, lastErr: st.lastErr, progress: st.progress, pending: OUT.length, deviceName: LINK && LINK.name, web: true }; }
+  function linkState() { return { acct: !!(LINK && LINK.acct), linked: !!(LINK && LINK.token), ready: !!(LINK && LINK.ready), mode: 'cloud', host: 'over the internet', store: LINK && LINK.store, reg: LINK && LINK.reg, online: st.online, hostOn: st.hostOn, lastOk: st.lastOk, lastErr: st.lastErr, progress: st.progress, pending: OUT.length, deviceName: LINK && LINK.name, web: true }; }
   async function queue(t, store, op, k, data, delta) { var row = { store: store, key: k, op: op, data: data, delta: delta, ts: Date.now() }; if (store === 'kv') { OUT.filter(function (o) { return o.store === 'kv' && o.key === k; }).forEach(function (o) { t.objectStore('outbox').delete(o.id); }); OUT = OUT.filter(function (o) { return !(o.store === 'kv' && o.key === k); }); } var q = t.objectStore('outbox').add(row); q.onsuccess = function () { row.id = q.result; OUT.push(row); }; }
   function putVals(store, vals, key) {
     return idbTx(['rec', 'outbox'], function (t) {
@@ -327,6 +447,12 @@
     linkState: async function () { return linkState(); },
     linkSyncNow: async function () { await syncOnce(); return linkState(); },
     linkPair: async function () { return { ok: false, error: 'Use “Unlink” and connect again.' }; },
+    acctInfo: async function () { await READY; return LINK && LINK.acct ? { user: LINK.acct.user, name: LINK.acct.name, role: LINK.acct.role, storeId: LINK.storeId, store: LINK.store } : null; },
+    acctMembers: function () { return acctApi('GET', '/api/pos/members?storeId=' + encodeURIComponent(LINK.storeId)); },
+    acctInvite: async function (who, role) { var r = await acctApi('POST', '/api/pos/members/invite', { storeId: LINK.storeId, who: who, role: role }); await approvePending(); return r; },
+    acctRole: function (username, role) { return acctApi('POST', '/api/pos/members/role', { storeId: LINK.storeId, username: username, role: role }); },
+    acctRemove: function (username) { return acctApi('POST', '/api/pos/members/remove', { storeId: LINK.storeId, username: username }); },
+    acctCancelInvite: function (id) { return acctApi('POST', '/api/pos/members/cancel-invite', { storeId: LINK.storeId, inviteId: id }); },
     unlink: async function () {
       LINK = null; try { if (CW.ws) CW.ws.close(); } catch (e) { }
       await idbTx(['rec', 'outbox', 'meta'], function (t) { t.objectStore('rec').clear(); t.objectStore('outbox').clear(); t.objectStore('meta').delete('link'); });

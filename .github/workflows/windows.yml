@@ -18,7 +18,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/app/lib
-          cp source/app/package.json source/app/main.js source/app/preload.js source/app/index.html source/app/android-shim.js source/app/web-shim.js source/app/icon.png source/app/icon.ico build/app/
+          cp source/app/package.json source/app/main.js source/app/preload.js source/app/acct.js source/app/index.html source/app/android-shim.js source/app/web-shim.js source/app/icon.png source/app/icon.ico build/app/
           cp source/app/lib/pdf.js source/app/lib/pdf.worker.js build/app/lib/
       - name: Build StorePOS-Setup.exe
         shell: bash
