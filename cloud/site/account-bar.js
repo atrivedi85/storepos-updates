@@ -3,6 +3,16 @@
    Signed out: a "Sign in" button (shared sign-in, then back to this page).
    Signed in: initials + name, with a menu: My account, My stores, the apps, Sign out (signs out everywhere on the site).
    On pages that have <div id="acctSlot"></div> in their header the button sits there; on other pages it floats top-right. */
+/* Products dropdown in the site header: close it on an outside click, on Esc, or after picking a link. */
+(function () {
+  function closeAll(except) { document.querySelectorAll('details.dd[open]').forEach(function (d) { if (d !== except) d.removeAttribute('open'); }); }
+  document.addEventListener('click', function (e) {
+    var d = e.target.closest && e.target.closest('details.dd');
+    if (e.target.closest && e.target.closest('.ddm a')) { closeAll(); return; }
+    closeAll(d);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(); });
+})();
 (function () {
   'use strict';
   if (window.__tpAcct || !/^https?:$/.test(location.protocol) || location.hostname === 'app.storepos') return;
