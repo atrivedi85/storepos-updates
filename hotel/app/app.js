@@ -36,6 +36,8 @@ const active = () => S.res.filter(r => r.status === 'reserved' || r.status === '
 const cond = no => (S.roomstate[no] || {}).cond || 'R';
 const isOOO = (no, d) => S.blocks.some(b => b.room === no && b.start <= d && d <= b.end);
 const inRoom = no => S.res.find(r => r.status === 'inhouse' && r.room === no);
+const woOpen = no => (S.workorders || []).some(w => w.status === 'open' && w.room === no);   // does this room have an open work order?
+const wrench = no => woOpen(no) ? ' <span class="wo" title="This room has an open work order">🔧</span>' : '';
 function roomFree(no, from, to, exceptId) {
   if (S.blocks.some(b => b.room === no && b.start < to && from <= b.end)) return false;
   return !active().some(r => r.id !== exceptId && r.room === no && r.arrive < to && from < r.depart);
@@ -114,7 +116,7 @@ function mMailBox() {
 const NAV = [['home', 'Home'], ['tape', 'Tape Chart'], ['arrivals', 'Arrivals'], ['inhouse', 'In House'], ['departures', 'Departures'], ['groups', 'Groups'], ['companies', 'Companies'], ['hk', 'Housekeeping'], ['reports', 'Reports'], ['setup', 'Setup']];
 function render() {
   if (!S || drawing) return;
-  const hk = S.me.role === 'hk'; if (hk) view.name = 'hk';
+  const hk = S.me.role === 'hk'; if (hk && view.name !== 'wo') view.name = 'hk';
   const nav = NAV.filter(n => hk ? n[0] === 'hk' : n[0] !== 'setup' || boss());
   if (!boss() && view.name === 'setup') view.name = 'home';
   if (view.name === 'members' && !rwOn()) view.name = 'home';
@@ -135,12 +137,12 @@ function paint(hk, nav) {
     menu('Find', [A('findOpen', 'Reservation'), A('findOpen', 'Guest Profile'), N('companies', 'Company Profile'), N('companies', 'Direct Bill Account'), N('groups', 'Group Master')]) +
     menu('View', [N('inhouse', 'In House'), N('arrivals', 'Arrivals'), N('departures', 'Departures'), N('departures', "Today's Checked Out Guests"), N('stats', 'Quick Statistics'), A('repGo', 'Future Availability', 'data-rep="future"'), N('companies', 'Company Profiles'), A('repGo', 'Night Audit', 'data-rep="stats"')]) +
     menu('Create', [A('newRes', 'Reservation'), A('walkIn', 'Walk-In'), A('coNew', 'Company Profile'), A('coNew', 'Direct Bill Account'), A('grpNew', 'Group Master')]) +
-    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), rwOn() && N('members', 'Rewards Members'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
+    menu('Manage', [A('shift', 'Cashier Shift' + (S.shift ? ' (open)' : '')), A('repGo', 'No Show Reservations', 'data-rep="noshow"'), N('hk', 'Housekeeping Center'), N('wo', 'Work Orders'), A('blockNew', 'Room Blocking'), N('dnr', 'Do Not Rent List'), rwOn() && N('members', 'Rewards Members'), boss() && A('setupGo', 'Packages', 'data-tab="packages"'), boss() && N('setup', 'Hotel Configuration'), boss() && A('setupGo', 'Manage Rates', 'data-tab="rates"'), boss() && A('setupGo', 'Logins', 'data-tab="users"'), N('tape', 'Tape Chart')]) +
     menu('Run', [N('reports', 'Reports'), boss() && A('nightAudit', 'Night Audit')]);
   $('#app').innerHTML = `<header class="${hk ? 'hkbar' : ''}"><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
     <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
     ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span>${hk ? '<button type="button" class="btn sm hklogout" data-act="logout">Logout</button>' : ''}</div></header>
-    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, members: vMembers, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
+    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, wo: vWo, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, members: vMembers, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
@@ -153,7 +155,7 @@ const TILES = {
   nightaudit: ['data-act="nightAudit"', '🌙', 'Night<br>Audit', 'boss'], future: ['data-act="repGo" data-rep="future"', '📅', 'Future<br>Availability'], dnr: ['data-nav="dnr"', '🚫', 'Do Not Rent<br>List'],
   findres: ['data-act="findOpen"', '🔎', 'Find<br>Reservation'], config: ['data-nav="setup"', '⚙', 'Hotel<br>Configuration', 'boss'], rates: ['data-act="setupGo" data-tab="rates"', '💲', 'Manage<br>Rates', 'boss'],
   packages: ['data-act="setupGo" data-tab="packages"', '🎁', 'Packages', 'boss'], logins: ['data-act="setupGo" data-tab="users"', '🔑', 'Logins', 'boss'], cancellations: ['data-act="repGo" data-rep="cancel"', '✖', 'Cancellation<br>List'],
-  arrrep: ['data-act="repGo" data-rep="arrivals"', '📋', 'Arrival List<br>Report']
+  arrrep: ['data-act="repGo" data-rep="arrivals"', '📋', 'Arrival List<br>Report'], workorders: ['data-nav="wo"', '🔧', 'Work<br>Orders']
 };
 const QL_DEFAULT = ['shift', 'arrivals', 'inhouse', 'departures', 'stats', 'tape', 'hk', 'newres', 'walkin', 'find', 'blocking', 'groups', 'companies', 'reports'];
 const qlSaved = () => (S.config.quickLinks && S.config.quickLinks.length ? S.config.quickLinks : QL_DEFAULT).filter(k => TILES[k]);
@@ -205,7 +207,7 @@ function vTape() {
       else if (blk) { let n = 0; while (i + n < days.length && days[i + n] <= blk.end) n++; tds += `<td colspan="${n}"><span class="tbar ooo" title="${esc(blk.reason)}">Out of order${blk.reason ? ': ' + esc(blk.reason) : ''}</span></td>`; i += n; }
       else { tds += `<td class="${d >= B() ? 'free' : ''}" ${d >= B() ? `data-act="newRes" data-room="${esc(rm.no)}" data-date="${d}"` : ''}></td>`; i++; }
     }
-    return `<tr><td class="rm"><a href="#" data-act="newRes" data-room="${esc(rm.no)}" data-date="${B()}">${esc(rm.no)}</a></td><td class="ty">${esc(rm.type)}</td><td class="cd">${condBtns(rm.no)}</td>${tds}</tr>`;
+    return `<tr><td class="rm"><a href="#" data-act="newRes" data-room="${esc(rm.no)}" data-date="${B()}">${esc(rm.no)}</a>${wrench(rm.no)}</td><td class="ty">${esc(rm.type)}</td><td class="cd">${condBtns(rm.no)}</td>${tds}</tr>`;
   }).join('');
   const un = active().filter(r => !r.room && r.arrive < end).sort((a, b) => a.arrive.localeCompare(b.arrive));
   const byDay = {}; for (const r of un) (byDay[r.arrive] = byDay[r.arrive] || []).push(r);
@@ -280,7 +282,19 @@ function vFind() {
 }
 
 /* ---------- Housekeeping ---------- */
-function service(no) { const g = inRoom(no); if (g) return g.depart <= B() ? 'Check Out' : 'Stay Over'; return cond(no) === 'D' ? 'Check Out' : 'None'; }
+/* Cleaning schedules: each room follows one. Day 1 is the first morning after the guest arrived; the pattern repeats after its last day. */
+const SCH_WORD = { F: 'Full', L: 'Light', N: 'None' };
+function schedOf(no) { const rm = S.config.rooms.find(r => r.no === no), l = S.config.cleanSchedules || []; return l.find(s => s.id === (rm && rm.sched)) || l[0] || null; }
+function service(no) {
+  const g = inRoom(no);
+  if (g) {
+    if (g.depart <= B()) return 'Check Out';
+    const s = schedOf(no), n = nights(g.arrive, B()); if (!s || !s.days.length) return 'Stay Over';
+    const k = n < 1 ? 'N' : s.days[(n - 1) % s.days.length];   // arrival day: the room was just made up
+    return 'Stay Over – ' + (k === 'F' ? 'Full' : k === 'L' ? 'Light' : 'No service');
+  }
+  return cond(no) === 'D' ? 'Check Out' : 'None';
+}
 const hkPreText = no => { const g = inRoom(no); return g ? [g.crib && 'Crib', g.rollaway && 'Rollaway'].filter(Boolean).join(' · ') : ''; };
 const hkPre = no => hkPreText(no) ? `<span class="hkpre">${hkPreText(no)}</span>` : '';   // read-only prefix in the Notes cell
 function vHk() {
@@ -288,22 +302,57 @@ function vHk() {
   const rooms = S.config.rooms.filter(r => (!view.floor || r.floor === view.floor) && (!view.hkDirty || cond(r.no) === 'D'));
   const cnt = k => S.config.rooms.filter(r => (!view.floor || r.floor === view.floor) && cond(r.no) === k).length;
   const roomBadge = rm => isOOO(rm.no, B()) ? '<span class="badge r">Out of order</span>' : inRoom(rm.no) ? '<span class="badge g">Occupied</span>' : '<span class="badge s">Vacant</span>';
-  const card = rm => { const st = S.roomstate[rm.no] || {}, n = esc(rm.no); return `<div class="hkcard" data-room="${n}"><div class="hkh"><span class="hkno">${n}</span><span class="hkty">${esc(rm.type)}</span>${roomBadge(rm)}</div>
+  const card = rm => { const st = S.roomstate[rm.no] || {}, n = esc(rm.no); return `<div class="hkcard" data-room="${n}"><div class="hkh"><span class="hkno">${n}${wrench(rm.no)}</span><span class="hkty">${esc(rm.type)}</span>${roomBadge(rm)}</div>
     <div class="hksv">Service: <b>${service(rm.no)}</b></div>
+    <button type="button" class="btn wobtn" data-act="woNew" data-room="${n}">🔧 Work Order</button>
     <div class="hkbtns">${['R', 'C', 'D'].map(k => `<button type="button" class="hkb ${k} ${cond(rm.no) === k ? 'on' : ''}" data-act="cond" data-room="${n}" data-cond="${k}">${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[k]}</button>`).join('')}</div>
     <label class="swk"><input type="checkbox" data-hk="dnd" data-room="${n}" ${st.dnd ? 'checked' : ''}><i></i><span>Do not disturb</span></label>
     <div class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${n}" value="${esc(st.note || '')}" maxlength="200" placeholder="Notes" aria-label="Notes for room ${n}"></div></div>`; };
   return `<h1>Housekeeping</h1><div class="bar hkfilter"><select id="hkFloor" aria-label="Floor"><option value="">All floors</option>${floors.map(f => `<option ${view.floor === f ? 'selected' : ''} value="${esc(f)}">Floor ${esc(f)}</option>`).join('')}</select>
     <label class="swk hkdirty"><input type="checkbox" id="hkDirty" ${view.hkDirty ? 'checked' : ''}><i></i><span>Dirty only</span></label>
     <span class="hkcnt"><span class="badge r">${cnt('D')} dirty</span><span class="badge a">${cnt('C')} clean</span><span class="badge g">${cnt('R')} ready</span></span><span class="flex hkdesk"></span>
-    <span class="hkdesk hint">Rooms</span><input class="hkdesk" id="hkFrom" placeholder="from" style="width:80px"><input class="hkdesk" id="hkTo" placeholder="to" style="width:80px"><button class="btn sm red hkdesk" data-act="hkRange" data-cond="D">Dirty</button><button class="btn sm amber hkdesk" data-act="hkRange" data-cond="C">Clean</button><button class="btn sm green hkdesk" data-act="hkRange" data-cond="R">Ready</button><button class="btn sm hkdesk" data-act="printHk">Print check-off list</button></div>
-  <div class="wrap hkwrap"><table><tr><th>Room</th><th>Type</th><th>Room status</th><th>Condition</th><th>Service</th><th>Assigned to</th><th>Do not disturb</th><th>Notes</th></tr>
-  ${rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${roomBadge(rm)}</td><td>${condBtns(rm.no)}</td><td>${service(rm.no)}</td>
+    <span class="hkdesk hint">Rooms</span><input class="hkdesk" id="hkFrom" placeholder="from" style="width:80px"><input class="hkdesk" id="hkTo" placeholder="to" style="width:80px"><button class="btn sm red hkdesk" data-act="hkRange" data-cond="D">Dirty</button><button class="btn sm amber hkdesk" data-act="hkRange" data-cond="C">Clean</button><button class="btn sm green hkdesk" data-act="hkRange" data-cond="R">Ready</button><button class="btn sm hkdesk" data-act="printHk">Print check-off list</button><button class="btn sm" data-nav="wo">🔧 Work Orders${(S.workorders || []).filter(w => w.status === 'open').length ? ' (' + (S.workorders || []).filter(w => w.status === 'open').length + ')' : ''}</button></div>
+  <div class="wrap hkwrap"><table><tr><th>Room</th><th>Type</th><th>Room status</th><th>Condition</th><th>Service</th><th>Assigned to</th><th>Do not disturb</th><th>Notes</th><th></th></tr>
+  ${rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b>${wrench(rm.no)}</td><td>${esc(rm.type)}</td><td>${roomBadge(rm)}</td><td>${condBtns(rm.no)}</td><td>${service(rm.no)}</td>
     <td><select data-hk="hk" data-room="${esc(rm.no)}" style="min-height:34px;padding:4px 8px"><option value=""></option>${S.config.housekeepers.map(h => `<option ${st.hk === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></td>
-    <td><input type="checkbox" data-hk="dnd" data-room="${esc(rm.no)}" ${st.dnd ? 'checked' : ''}></td><td class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${esc(rm.no)}" value="${esc(st.note || '')}" maxlength="200" style="min-height:34px;padding:4px 8px"></td></tr>`; }).join('')}</table></div>
+    <td><input type="checkbox" data-hk="dnd" data-room="${esc(rm.no)}" ${st.dnd ? 'checked' : ''}></td><td class="hknote">${hkPre(rm.no)}<input data-hk="note" data-room="${esc(rm.no)}" value="${esc(st.note || '')}" maxlength="200" style="min-height:34px;padding:4px 8px"></td><td><button type="button" class="btn sm" data-act="woNew" data-room="${esc(rm.no)}">🔧 Work Order</button></td></tr>`; }).join('')}</table></div>
   <div class="hkcards">${rooms.map(card).join('') || '<div class="empty">No rooms to show.</div>'}</div>
   ${S.config.housekeepers.length ? '' : '<p class="hint hkdesk">To assign rooms, a manager adds the housekeepers\' names in Setup › Housekeepers.</p>'}`;
 }
+
+/* ---------- Work orders ---------- */
+function vWo() {
+  const f = view.woFilter || 'open', hkr = S.me.role === 'hk', l = (S.workorders || []).filter(w => f === 'all' || w.status === f);
+  const row = w => `<tr><td><b>${esc(w.room)}</b></td><td>${esc(w.reason)}${w.blockId && S.blocks.some(b => b.id === w.blockId) ? ' <span class="badge r">Out of order</span>' : ''}</td><td>${esc(w.notes)}</td><td>${stamp(w.createdAt)}<div class="hint">${esc(w.createdBy)}</div></td>
+    <td>${w.status === 'done' ? stamp(w.doneAt) + '<div class="hint">' + esc(w.doneBy) + '</div>' : '<span class="badge a">Open</span>'}</td><td>${w.status === 'open' ? `<button class="btn sm green" data-act="woDone" data-id="${w.id}">Mark done</button>` : ''}</td></tr>`;
+  return `<h1>Work Orders</h1><p style="margin:0 0 12px"><a href="#" class="btn sm" data-nav="hk">‹ Back to Housekeeping</a></p>
+  <div class="bar"><select id="woFilter" aria-label="Show"><option value="open" ${f === 'open' ? 'selected' : ''}>Open</option><option value="done" ${f === 'done' ? 'selected' : ''}>Done</option><option value="all" ${f === 'all' ? 'selected' : ''}>All</option></select><span class="flex"></span><button class="btn blue" data-act="woNew" data-room="">+ New Work Order</button></div>
+  <div class="wrap"><table><tr><th>Room</th><th>Reason</th><th>Notes</th><th>Opened</th><th>Closed</th><th></th></tr>${l.map(row).join('') || '<tr><td colspan="6" class="empty">No work orders here.</td></tr>'}</table></div>
+  <p class="hint">${hkr ? '' : 'Housekeeping can open and close work orders too. '}Closed work orders are kept for the most recent 300. The Maintenance Report in Reports lists them by date.</p>`;
+}
+function woNew(room) {
+  const reasons = (S.config.woReasons || []).filter(x => x.active), hkr = S.me.role === 'hk';
+  $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle thin">New Work Order</div><div class="grid">
+    <label class="c12">Room<select id="wo_room"><option value="">Pick a room</option>${S.config.rooms.map(r => `<option value="${esc(r.no)}" ${r.no === room ? 'selected' : ''}>${esc(r.no)} · ${esc(r.type)}${woOpen(r.no) ? ' 🔧' : ''}</option>`).join('')}</select></label>
+    <label class="c12">Reason<select id="wo_reason">${reasons.map(x => `<option>${esc(x.name)}</option>`).join('')}</select></label>
+    <label class="c12">Notes<textarea id="wo_notes" rows="3" maxlength="300" placeholder="What needs doing?"></textarea></label>
+    ${hkr ? '' : `<label class="chk c12"><input type="checkbox" id="wo_ooo">Also take the room out of order</label><label class="c6">From<input type="date" id="wo_from" value="${B()}"></label><label class="c6">Through<input type="date" id="wo_to" value="${B()}"></label>`}</div>
+    ${reasons.length ? '' : '<p class="hint">No reasons are set up yet. A manager adds them in Setup › Work Order Reasons.</p>'}
+    <div class="err" id="wo_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="woAddGo">Save Work Order</button></div></div></div>`;
+}
+async function woAddGo() {
+  const er = m => { $('#wo_err').textContent = m; }, room = $('#wo_room').value, ooo = $('#wo_ooo') && $('#wo_ooo').checked;
+  if (!room) return er('Pick the room.'); if (!$('#wo_reason').value) return er('Pick a reason.');
+  if (ooo && (!$('#wo_from').value || !$('#wo_to').value || $('#wo_to').value < $('#wo_from').value)) return er('Check the out of order dates.');
+  await run(async () => { try { await op('woAdd', { room, reason: $('#wo_reason').value, notes: $('#wo_notes').value, ...(ooo ? { ooo: { start: $('#wo_from').value, end: $('#wo_to').value } } : {}) }); $('#modal').innerHTML = ''; await refresh(); toast('Work order saved for room ' + room + '.'); } catch (e) { if (e.status === 401) throw e; er(e.message); } });
+}
+function woDone(id) {
+  const w = (S.workorders || []).find(x => x.id === id); if (!w) return;
+  if (S.me.role !== 'hk' && w.blockId && S.blocks.some(b => b.id === w.blockId))
+    $('#modal').innerHTML = `<div class="mback"><div class="mbox sm"><div class="mtitle thin">Work order done</div><p>Room ${esc(w.room)} was taken out of order for this work order. Put it back in order now?</p><div class="mfoot" style="flex-wrap:wrap"><button class="btn" data-act="closeModal">Cancel</button><button class="btn" data-act="woDoneGo" data-id="${id}" data-back="0">Done, leave out of order</button><button class="btn green" data-act="woDoneGo" data-id="${id}" data-back="1">Done, put back in order</button></div></div></div>`;
+  else woDoneGo(id, false);
+}
+const woDoneGo = (id, back) => run(async () => { await op('woDone', { id, putBack: back }); $('#modal').innerHTML = ''; await refresh(); toast('Work order done.'); });
 
 /* ---------- Reservation window ---------- */
 let ED = null;   // the reservation being edited
@@ -332,7 +381,7 @@ function resForm(r, mode) {
     <label class="c2">Adults<input type="number" id="r_adults" min="1" value="${r.adults || 1}" ${locked ? 'disabled' : ''}></label>
     <label class="c2">Children<input type="number" id="r_children" min="0" value="${r.children || 0}" ${locked ? 'disabled' : ''}></label>
     <label>Room type<select id="r_type" ${locked ? 'disabled' : ''}>${types.map(x => `<option value="${esc(x.code)}" ${x.code === r.type ? 'selected' : ''}>${esc(x.code)} · ${esc(x.name)} · ${availOfType(x.code, from, r.depart, r.id, r.groupId)} left · ${money(rateFor(x.code, r.arrive))}</option>`).join('')}</select></label>
-    <label>Room<select id="r_room" ${locked ? 'disabled' : ''}><option value="">${mode === 'walkin' ? 'Pick a room' : 'Not assigned yet'}</option>${freeRooms.filter(x => x.type === r.type || x.no === r.room).map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''} · ${esc(x.type)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select></label>
+    <label>Room<select id="r_room" ${locked ? 'disabled' : ''}><option value="">${mode === 'walkin' ? 'Pick a room' : 'Not assigned yet'}</option>${freeRooms.filter(x => x.type === r.type || x.no === r.room).map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''}${woOpen(x.no) ? ' 🔧' : ''} · ${esc(x.type)} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select></label>
     <label class="c2">Rate / night<input id="r_rate" inputmode="decimal" value="${(nightly[0] / 100).toFixed(2)}" ${locked ? 'disabled' : ''}></label>
     <label class="c2">Estimated total<input value="${money(est)}" disabled></label>
     <label>Group<select id="r_groupId" ${locked ? 'disabled' : ''}><option value="0">No group</option>${grpOpts.map(g => `<option value="${g.id}" ${g.id === +r.groupId ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label>
@@ -437,7 +486,7 @@ function wizForm() {
     const hi = ED.hi, from = r.arrive, rooms = hi ? rlSort(S.config.rooms.filter(x => x.type === hi && (x.no === r.room || roomFree(x.no, from, r.depart, 0)))) : [];
     main = `<div class="wrap"><table class="wzt"><tr><th>Type</th><th>Description</th><th class="num">Available</th><th class="num">Rate</th><th class="num">Estimated Total</th><th></th></tr>${S.config.types.map(t => { const av = Math.max(0, availOfType(t.code, from, r.depart, 0, r.groupId)), q = stayCalc({ ...r, rateManual: false }, t.code); return `<tr class="click ${t.code === hi ? 'hi' : ''}" data-act="wizHi" data-type="${esc(t.code)}"><td><b>${esc(t.code)}</b></td><td>${esc(t.name)}</td><td class="num">${av}</td><td class="num">${money(q.nightly[0] || 0)}${q.varies ? ' <span class="hint">varies</span>' : ''}</td><td class="num">${money(q.est)}</td><td class="num"><button class="btn sm blue" data-act="wizType" data-type="${esc(t.code)}" ${av < 1 ? 'disabled' : ''}>SELECT</button></td></tr>`; }).join('')}</table></div>
       <p class="hint" style="margin:6px 0 0">Estimated Total is the room nights${c.pk ? ' and the package' : ''} plus tax. ${walk ? 'For a walk-in, click a room type, pick the room below, then SELECT.' : 'Click a row to see its rooms below.'}</p>
-      <div class="wzf" style="margin-top:12px"><label for="r_room">Assigned Room:</label><select id="r_room" ${hi ? '' : 'disabled'}><option value="">${hi ? (walk ? 'Pick a room' : 'Not assigned yet') : 'Click a room type above'}</option>${rooms.map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select>
+      <div class="wzf" style="margin-top:12px"><label for="r_room">Assigned Room:</label><select id="r_room" ${hi ? '' : 'disabled'}><option value="">${hi ? (walk ? 'Pick a room' : 'Not assigned yet') : 'Click a room type above'}</option>${rooms.map(x => `<option value="${esc(x.no)}" ${x.no === r.room ? 'selected' : ''}>${esc(x.no)}${x.accessible ? ' ♿' : ''}${woOpen(x.no) ? ' 🔧' : ''} · ${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.no)]}${inRoom(x.no) && inRoom(x.no).id !== r.id ? ' · occupied' : ''}</option>`).join('')}</select>
       <label for="r_rate">Rate / night</label><input id="r_rate" inputmode="decimal" value="${((c.nightly[0] || 0) / 100).toFixed(2)}"></div>
       <p class="hint" style="margin:6px 0 0"><span id="rateHint">${rateHint(r, c)}</span> <a href="#" data-act="rateStd" id="rateLink" ${c.manual ? '' : 'hidden'}>Use the standard rate</a></p><div class="err" id="r_err"></div>${hi ? '<button class="btn blue wzbtn" data-act="wizNext">CONTINUE</button>' : ''}`;
     side = wizSide(2);
@@ -578,13 +627,13 @@ function printFolio() { const r = FO.res; printHtml(letterHead() + `<h2>Guest Fo
 
 /* ---------- Reports ---------- */
 const REPORTS = [['arrivals', 'Arrival List'], ['departures', 'Departure List'], ['inhouse', 'In House List'], ['vacant', 'Vacant Room List'], ['hkcheck', 'Housekeeping Check-off List'], ['ledger', 'Guest Ledger (balances)'], ['future', 'Future Availability (14 days)'],
-  ['activity', 'Reservation Activity Report'], ['stats', 'Hotel Statistics'], ['closeout', 'Final Transaction Closeout'], ['shift', 'Shift Reconciliation'], ['journal', 'Hotel Journal Detail'], ['cancel', 'Cancellation List'], ['noshow', 'No Show Report'], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts'], ['rwmembers', 'Rewards Program Members'], ['rwstats', 'Rewards Program Statistics']];
+  ['activity', 'Reservation Activity Report'], ['stats', 'Hotel Statistics'], ['closeout', 'Final Transaction Closeout'], ['shift', 'Shift Reconciliation'], ['journal', 'Hotel Journal Detail'], ['cancel', 'Cancellation List'], ['noshow', 'No Show Report'], ['araging', 'Accounts Receivable Aging'], ['grouppickup', 'Group Pickup'], ['shifts', 'Cashier Shifts'], ['rwmembers', 'Rewards Program Members'], ['rwstats', 'Rewards Program Statistics'], ['maintenance', 'Maintenance Report']];
 const REPORT_CATS = [
   ['TOP 10 LIST', [['Shift Reconciliation', 'shift'], ['Vacant Room List', 'vacant'], ['Housekeeping Check-off List', 'hkcheck'], ['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['In House List', 'inhouse'], ['Reservation Activity Report', 'activity']]],
   ['Emergency Reports', [['Account Balance Report', 'ledger'], ['Arrival List', 'arrivals'], ['Departure List', 'departures'], ['In House List', 'inhouse'], ['Vacant Room List', 'vacant']]],
   ['Accounting Reports', [['Final Transaction Closeout', 'closeout'], ['Hotel Statistics', 'stats'], ['Guest Ledger', 'ledger'], ['Hotel Journal Detail', 'journal'], ['Shift Reconciliation', 'shift'], ['Cashier Shifts', 'shifts']]],
   ['Front Desk Reports', [['Cancellation List', 'cancel'], ['No Show Report', 'noshow']]],
-  ['Housekeeping Reports', [['Housekeeping Check-off List', 'hkcheck']]],
+  ['Housekeeping Reports', [['Housekeeping Check-off List', 'hkcheck'], ['Maintenance Report', 'maintenance']]],
   ['Reservation Reports', [['Reservation Activity Report', 'activity'], ['10 Day Availability', 'future'], ['No Show Report', 'noshow']]],
   ['Group Reports', [['Group Pickup Summary', 'grouppickup']]],
   ['Accounts Receivable Reports', [['Accounts Receivable Aging Report', 'araging']]]];
@@ -593,6 +642,7 @@ const REPORT_INFO = {
   rwmembers: 'Every rewards member with tier, points, lifetime points, nights, stays and room revenue, best guests first.', rwstats: 'For each tier: members, points outstanding, lifetime points, nights and revenue, and what all the outstanding points are worth.',
   arrivals: 'Guests with a reservation due to arrive who have not checked in yet.', departures: 'In-house guests due to leave today or earlier, with their balances.',
   inhouse: 'Every guest checked in right now, with room, dates, rate and balance.', vacant: 'Rooms that are empty tonight, with their housekeeping condition.',
+  maintenance: 'Work orders for rooms: what is broken or needs doing, who opened it and when. Open ones only, or everything opened in the dates chosen.',
   hkcheck: 'A room-by-room sheet for housekeepers to check off as each room is done.', ledger: 'Every stay that has a balance owing or a credit, with the total.',
   future: 'How many rooms of each type are still available over the next 14 days.', stats: 'Rooms, occupancy, revenue, ADR and RevPAR for the day, month to date and year to date, with last year beside them.',
   closeout: 'Every posting code for the day: opening balance, totals, adjustments, month to date and year to date.', shift: 'Payments taken on a day by posting code, with the lines behind each total, to balance the drawer.',
@@ -611,6 +661,7 @@ const REP_OPTS = {
   vacant: () => [{ k: 'type', t: 'select', l: 'Room Type:', o: optTypes(), d: '' }, { k: 'cond', t: 'select', l: 'Condition:', o: [['', 'Select All'], ['R', 'Ready'], ['C', 'Clean'], ['D', 'Dirty']], d: '' },
     { k: 'ooo', t: 'check', l: 'Include Out of Order Rooms:', d: true }, { k: 'arr', t: 'check', l: "Include Today's Arrival:", d: true }, { k: 'names', t: 'check', l: 'Include Guest Names:', d: true }],
   activity: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['arrive', 'Arrival Date'], ['name', 'Guest Name'], ['created', 'Created']], d: 'arrive' }, { k: 'from', t: 'date', l: '*Start Date:' }, { k: 'to', t: 'date', l: '*End Date:' }, { k: 'type', t: 'select', l: 'Room Type:', o: optTypes(), d: '' }],
+  maintenance: () => [{ k: 'show', t: 'select', l: 'Show:', o: [['open', 'Open work orders only'], ['all', 'All work orders opened in these dates']], d: 'open' }, { k: 'from', t: 'date', l: 'Start Date:' }, { k: 'to', t: 'date', l: 'End Date:' }],
   arrivals: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['name', 'Guest Name'], ['room', 'Room']], d: 'name' }],
   departures: () => [{ k: 'sort', t: 'select', l: 'Sort:', o: [['name', 'Guest Name'], ['room', 'Room']], d: 'room' }] };
 const CSV_FIELD = { k: 'csv', t: 'check', l: 'Generate report as .CSV file:', d: false };
@@ -711,6 +762,11 @@ async function buildReport() {
     h = T(heads, rows.map(x => [esc(x.r.no), esc(x.r.type), { R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(x.r.no)], x.out ? 'Out of Order' : 'Vacant'].concat(names ? [x.a ? esc(gname(x.a)) : ''] : []))) + `<div class="sh-total">Total Vacant Rooms: ${rows.filter(x => !x.out).length}</div>`;
   }
   else if (view.rep === 'hkcheck') h = hkCheckHtml();
+  else if (view.rep === 'maintenance') {
+    const all = opt.show === 'all', R = await api(`/report?name=maintenance&from=${view.from}&to=${view.to}&all=${all ? 1 : 0}`);
+    h = T(['Room', 'Reason', 'Notes', 'Opened', 'Opened by', 'Status', 'Closed'], R.rows.map(w => [esc(w.room), esc(w.reason), esc(w.notes), dshort(w.bdate), esc(w.createdBy), w.status === 'done' ? 'Done' : 'Open', w.doneAt ? stamp(w.doneAt) + ' ' + esc(w.doneBy) : '']))
+      + `<div class="sh-total">${all ? 'Work orders opened ' + dshort(view.from) + ' to ' + dshort(view.to) : 'Open work orders'}: ${R.rows.length}</div>`;
+  }
   else if (view.rep === 'ledger') { const l = S.res.filter(r => (S.bal[r.id] || 0) !== 0).sort(sortRoom); h = T(['Room', 'Guest', 'Status', 'Arrival', 'Departure', '#Balance'], l.map(r => [esc(r.room), esc(gname(r)), r.status, dshort(r.arrive), dshort(r.depart), money(S.bal[r.id])]).concat([tot('Total:', [money(l.reduce((s, r) => s + S.bal[r.id], 0))], 5)])); }
   else if (view.rep === 'future') { const days = []; for (let i = 0; i < 14; i++) days.push(addDays(B(), i)); h = T(['Type'].concat(days.map(d => '#' + dshort(d).replace(/\/\d+$/, ''))), S.config.types.map(t => [`<b>${esc(t.code)}</b>`].concat(days.map(d => availOfType(t.code, d, addDays(d, 1))))).concat([['<b>Hotel</b>'].concat(days.map(d => '<b>' + S.config.types.reduce((s, t) => s + availOfType(t.code, d, addDays(d, 1)), 0) + '</b>'))])); }
   else if (view.rep === 'closeout') {
@@ -768,7 +824,7 @@ async function drawReport() {
   try { const r = await buildReport(); out.innerHTML = r.html; out.dataset.title = r.title; }
   catch (e) { out.innerHTML = sheet(repTitle(), `<div class="err">${esc(e.message)}</div>`); }
 }
-const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b></td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc([hkPreText(rm.no), st.note].filter(Boolean).join(' · '))}</td><td>☐</td></tr>`; }).join('')}</table>`;
+const hkCheckHtml = () => `<table class="rt"><tr><th>Room</th><th>Type</th><th>Status</th><th>Condition</th><th>Service</th><th>Housekeeper</th><th>Notes</th><th>Done</th></tr>${S.config.rooms.map(rm => { const st = S.roomstate[rm.no] || {}; return `<tr><td><b>${esc(rm.no)}</b>${woOpen(rm.no) ? ' 🔧' : ''}</td><td>${esc(rm.type)}</td><td>${inRoom(rm.no) ? 'Occupied' : 'Vacant'}</td><td>${{ R: 'Ready', C: 'Clean', D: 'Dirty' }[cond(rm.no)]}</td><td>${service(rm.no)}${st.dnd ? ' (DND)' : ''}</td><td>${esc(st.hk || '')}</td><td>${esc([hkPreText(rm.no), st.note].filter(Boolean).join(' · '))}</td><td>☐</td></tr>`; }).join('')}</table>`;
 async function nightAudit() {
   const s = S.stats;
   if (!confirm(`Run the night audit for ${dlong(B())}?\n\n• Posts tonight's room charge and tax to ${s.sold} in-house rooms\n• Marks ${s.arrivalsLeft} arrivals that did not check in as no shows\n• Extends ${s.dueOut} guests who were due out but are still checked in\n• Moves the business date to ${dlong(addDays(B(), 1))}\n\nThis cannot be undone.`)) return;
@@ -859,8 +915,8 @@ function parseLicense(t) {   // AAMVA format used by US and Canadian licenses
 }
 
 /* ---------- Setup (managers) ---------- */
-const SETUP_GROUPS = [['Hotel Settings', ['property', 'policies', 'types', 'rooms', 'rates', 'packages', 'rewards']], ['Money', ['taxes', 'codes']], ['Housekeeping', ['hks', 'ooo']], ['People', ['users']]];
-const SETUP_NAMES = { property: 'Property', policies: 'Policies', types: 'Room Types and Rates', rooms: 'Rooms', rates: 'Rates by Date', packages: 'Packages', rewards: 'Rewards', taxes: 'Taxes', codes: 'Posting Codes', hks: 'Housekeepers', ooo: 'Out of Order Rooms', users: 'Logins' };
+const SETUP_GROUPS = [['Hotel Settings', ['property', 'policies', 'types', 'rooms', 'rates', 'packages', 'rewards']], ['Money', ['taxes', 'codes']], ['Housekeeping', ['hks', 'schedules', 'woreasons', 'ooo']], ['People', ['users']]];
+const SETUP_NAMES = { property: 'Property', policies: 'Policies', types: 'Room Types and Rates', rooms: 'Rooms', rates: 'Rates by Date', packages: 'Packages', rewards: 'Rewards', taxes: 'Taxes', codes: 'Posting Codes', hks: 'Housekeepers', schedules: 'Cleaning Schedules', woreasons: 'Work Order Reasons', ooo: 'Out of Order Rooms', users: 'Logins' };
 const CODE_TYPES = [['ROOM', 'ROOM - room charge'], ['MISC', 'MISC - other charge'], ['CASH', 'CASH - cash payment'], ['CRED', 'CRED - card payment'], ['AREC', 'AREC - direct bill'], ['GFTCRD', 'GFTCRD - gift card'], ['ADMIN', 'ADMIN - write-off']];
 const t12 = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); if (!m) return String(t || ''); const h = +m[1]; return ((h % 12) || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM'); };
 const timeOpts = cur => { const l = []; for (let i = 0; i < 48; i++) l.push(String(Math.floor(i / 2)).padStart(2, '0') + ':' + (i % 2 ? '30' : '00')); if (cur && !l.includes(cur)) l.unshift(cur); return l.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(t12(v))}</option>`).join(''); };
@@ -882,15 +938,16 @@ let SD = null;   // the table being edited: { page, rows } (kept when a row is a
 function sdRows(page) {
   const c = S.config;
   if (page === 'types') return c.types.map(t => ({ code: t.code, name: t.name, rate: dollars(t.rate) }));
-  if (page === 'rooms') return c.rooms.map(r => ({ no: r.no, type: r.type, floor: r.floor, nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast })).sort(roomSort);
+  if (page === 'rooms') return c.rooms.map(r => ({ no: r.no, type: r.type, floor: r.floor, nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast, sched: r.sched })).sort(roomSort);
   if (page === 'taxes') return c.taxes.map(t => ({ code: t.code, name: t.name, pct: String(t.pct) }));
   if (page === 'codes') return c.codes.map(k => ({ code: k.code, name: k.name, type: k.type, tax: (k.tax || []).slice() }));
   if (page === 'rates') return (c.rateRules || []).map(k => ({ name: k.name, from: k.from, to: k.to, days: (k.days || []).slice(), type: k.type || '*', rate: dollars(k.rate) }));
   if (page === 'packages') return (c.packages || []).map(k => ({ code: k.code, name: k.name, price: dollars(k.price), charge: k.charge || 'MS' }));
+  if (page === 'woreasons') return (c.woReasons || []).map(x => ({ active: x.active !== false, name: x.name }));
   if (page === 'hks') return c.housekeepers.map(n => ({ name: n }));
   return null;
 }
-const sdBlank = page => ({ types: { code: '', name: '', rate: '' }, taxes: { code: '', name: '', pct: '' }, codes: { code: '', name: '', type: 'MISC', tax: [] }, rates: { name: '', from: '', to: '', days: [], type: '*', rate: '' }, packages: { code: '', name: '', price: '', charge: 'MS' }, hks: { name: '' } }[page]);
+const sdBlank = page => ({ types: { code: '', name: '', rate: '' }, taxes: { code: '', name: '', pct: '' }, codes: { code: '', name: '', type: 'MISC', tax: [] }, rates: { name: '', from: '', to: '', days: [], type: '*', rate: '' }, packages: { code: '', name: '', price: '', charge: 'MS' }, hks: { name: '' }, woreasons: { active: true, name: '' } }[page]);
 function sdStart() { SD = sdRows(view.setup) ? { page: view.setup, rows: sdRows(view.setup) } : null; }
 function sdRead() {   // copy what is typed in the table into SD.rows
   const f = $('#sdForm'); if (!SD || !f || f.dataset.page !== SD.page) return;
@@ -910,9 +967,9 @@ function sdTypesPage(c) {
     sdTable(['Code', 'Name', 'Price per night', 'Rooms', ''], SD.rows.map((t, i) => `<td>${sdIn(i, 'code', t.code, 'auto', 'maxlength="8" style="width:90px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', t.name, 'King', 'maxlength="60"')}</td><td>${sdIn(i, 'rate', t.rate, '0.00', 'inputmode="decimal" style="width:110px"')}</td><td class="num">${cnt(t.code)}</td>${sdDelBtn(i)}`), { empty: 'No room types.' }) + sdFoot('+ Add Room Type');
 }
 function sdRoomsPage(c) {
-  const opts = c.types.map(t => [t.code, t.code + ' - ' + t.name]);
+  const opts = c.types.map(t => [t.code, t.code + ' - ' + t.name]), sopts = (c.cleanSchedules || []).map(x => [x.id, x.name]);
   return `<p class="hint">${SD.rows.length} room${SD.rows.length === 1 ? '' : 's'} in the hotel. "Rent Last" rooms are offered after all the others when a room is picked. Changes are kept when you click Save.</p><div class="bar" style="margin-bottom:8px"><button type="button" class="btn blue" data-act="rmAdd">Add Room</button><button type="button" class="btn" data-act="rmMany">Add Many Rooms</button></div>` +
-    sdTable(['Room #', 'Type', 'Floor', 'No Smoking', 'Accessible', 'Rent Last', ''], SD.rows.map((r, i) => `<td><b>${esc(r.no)}</b></td><td>${sdSel('type', r.type, opts.some(o => o[0] === r.type) ? opts : opts.concat([[r.type, r.type]]))}</td><td>${sdIn(i, 'floor', r.floor, '', 'maxlength="4" style="width:60px"')}</td><td class="ctr">${sdChk('nosmoke', r.nosmoke, 'No smoking')}</td><td class="ctr">${sdChk('accessible', r.accessible, 'Accessible')}</td><td class="ctr">${sdChk('rentLast', r.rentLast, 'Rent last')}</td>${sdDelBtn(i)}`), { empty: 'No rooms yet. Click Add Room.' }) + sdFoot('');
+    sdTable(['Room #', 'Type', 'Floor', 'No Smoking', 'Accessible', 'Rent Last', 'Cleaning Schedule', ''], SD.rows.map((r, i) => `<td><b>${esc(r.no)}</b></td><td>${sdSel('type', r.type, opts.some(o => o[0] === r.type) ? opts : opts.concat([[r.type, r.type]]))}</td><td>${sdIn(i, 'floor', r.floor, '', 'maxlength="4" style="width:60px"')}</td><td class="ctr">${sdChk('nosmoke', r.nosmoke, 'No smoking')}</td><td class="ctr">${sdChk('accessible', r.accessible, 'Accessible')}</td><td class="ctr">${sdChk('rentLast', r.rentLast, 'Rent last')}</td><td>${sdSel('sched', r.sched, sopts.some(o => o[0] === r.sched) ? sopts : sopts.concat([[r.sched, r.sched]]))}</td>${sdDelBtn(i)}`), { empty: 'No rooms yet. Click Add Room.' }) + sdFoot('');
 }
 function sdTaxesPage() {
   return `<p class="hint">Taxes added to charges. Choose which taxes each charge gets in Posting Codes.</p>` + sdTable(['Code', 'Name', 'Percent', ''], SD.rows.map((t, i) => `<td>${sdIn(i, 'code', t.code, 'auto', 'maxlength="6" style="width:80px;text-transform:uppercase"')}</td><td>${sdIn(i, 'name', t.name, 'State Tax', 'maxlength="60"')}</td><td>${sdIn(i, 'pct', t.pct, '0.00', 'inputmode="decimal" style="width:90px"')}</td>${sdDelBtn(i)}`), { empty: 'No taxes.' }) + sdFoot('+ Add Tax');
@@ -937,11 +994,52 @@ function sdPackagesPage(c) {
 function sdHksPage() {
   return `<p class="hint">The housekeepers' names, as they appear when you assign rooms.</p>` + sdTable(['Name', ''], SD.rows.map((k, i) => `<td>${sdIn(i, 'name', k.name, 'Name', 'maxlength="40"')}</td>${sdDelBtn(i)}`), { empty: 'No housekeepers yet.' }) + sdFoot('+ Add Housekeeper');
 }
+function sdWoReasonsPage() {
+  return `<p class="hint">The reasons people can pick when they open a work order for a room. Untick Active to hide a reason without losing it. Work orders already opened keep the reason they were given.</p>` +
+    sdTable(['Active', 'Reason', ''], SD.rows.map((k, i) => `<td class="ctr">${sdChk('active', k.active, 'Active')}</td><td>${sdIn(i, 'name', k.name, 'Plumbing', 'maxlength="40"')}</td>${sdDelBtn(i)}`), { empty: 'No reasons yet.' }) + sdFoot('+ Add Reason');
+}
+/* ---------- Cleaning Schedules: list on the left, the chosen schedule on the right ---------- */
+let CS = null;   // { rows: [{id, name, days}], sel } while the page is open
+const csLine = s => s.days.map((d, i) => 'Day ' + (i + 1) + ': ' + SCH_WORD[d]).join(' ');
+function csStart() { CS = { rows: S.config.cleanSchedules.map(x => ({ id: x.id, name: x.name, days: x.days.slice() })), sel: Math.min(view.csSel || 0, S.config.cleanSchedules.length - 1) }; }
+function csRead() { if (!CS || !$('#cs_name')) return; const x = CS.rows[CS.sel]; if (!x) return; x.name = $('#cs_name').value; x.days = x.days.map((d, i) => { const r = document.querySelector(`input[name=cs_d${i}]:checked`); return r ? r.value : d; }); }
+function csPage() {
+  const x = CS.rows[CS.sel], more = x.days.length <= 7;
+  return `<p class="hint">Say how each room is cleaned on each day of a stay. Day 1 is the first morning after the guest arrived. After the last day the pattern starts again. Each room picks its schedule in Setup › Rooms. Check Out rooms are always cleaned in full.</p>
+  <div class="csg"><div class="cslist">${CS.rows.map((r, i) => `<a href="#" class="${i === CS.sel ? 'on' : ''}" data-act="csSel" data-i="${i}"><b>${esc(r.name || '(no name)')}</b><span class="hint">${esc(csLine(r))}</span></a>`).join('')}</div>
+  <div class="card csdet"><label>Name<input id="cs_name" maxlength="40" value="${esc(x.name)}"></label>
+    <div class="csdays">${x.days.map((d, i) => `<div class="csday"><b>Day ${i + 1}</b>${['F', 'L', 'N'].map(k => `<label class="dchk"><input type="radio" name="cs_d${i}" value="${k}" ${d === k ? 'checked' : ''}>${SCH_WORD[k]}</label>`).join('')}</div>`).join('')}</div>
+    <p style="margin:8px 0"><a href="#" data-act="${more ? 'csMore' : 'csLess'}">${more ? 'Show more days' : 'Show fewer days'}</a> <span class="hint">(up to 14 days)</span></p>
+    <div class="mfoot sdfoot" style="justify-content:flex-start"><button type="button" class="btn blue" data-act="csAdd">Add Schedule</button><button type="button" class="btn green" data-act="csSave">Save</button><button type="button" class="btn red" data-act="csDel">Delete</button><span class="err" id="setupErr" role="alert"></span></div></div></div>`;
+}
+function csRoomsUsing(id) { return S.config.rooms.filter(r => r.sched === id).map(r => r.no); }
+async function csSave(rows) {
+  await run(async () => { try {
+    sdErr(''); const names = new Set();
+    for (const r of rows) { const n = String(r.name).trim(); if (!n) throw new Error('Give each cleaning schedule a name.'); if (names.has(n.toLowerCase())) throw new Error('Two schedules are called "' + n + '". Change one name.'); names.add(n.toLowerCase()); }
+    await op('configSave', { config: { cleanSchedules: rows.map(r => ({ ...r, name: r.name.trim() })) } }); view.csSel = CS.sel; CS = null; await refresh(); toast('Saved.');
+  } catch (e) { if (e.status === 401 || (e.status === 403 && /turned off/.test(e.message))) throw e; sdErr(e.message); } });
+}
+function csClick(a, el) {
+  csRead();
+  if (a === 'csSel') { CS.sel = +el.dataset.i; return render(); }
+  if (a === 'csMore') { const x = CS.rows[CS.sel]; x.days = Array.from({ length: 14 }, (_, i) => x.days[i % x.days.length]); return render(); }
+  if (a === 'csLess') { const x = CS.rows[CS.sel]; x.days = x.days.slice(0, 7); return render(); }
+  if (a === 'csAdd') { let n = CS.rows.length + 1; while (CS.rows.some(r => r.name.toLowerCase() === 'schedule ' + n)) n++; CS.rows.push({ id: 'n' + Math.random().toString(36).slice(2, 8), name: 'Schedule ' + n, days: Array(7).fill('F') }); CS.sel = CS.rows.length - 1; return render(); }
+  if (a === 'csSave') return csSave(CS.rows);
+  if (a === 'csDel') {
+    const x = CS.rows[CS.sel]; if (CS.rows.length < 2) return sdErr('You cannot delete the last cleaning schedule. A hotel needs at least one.');
+    const used = csRoomsUsing(x.id); if (used.length) return sdErr('"' + x.name + '" cannot be deleted: ' + (used.length === 1 ? 'room ' : used.length + ' rooms use it: ') + (used.length > 12 ? used.slice(0, 12).join(', ') + ' and ' + (used.length - 12) + ' more' : used.join(', ')) + '. Change ' + (used.length === 1 ? 'that room' : 'those rooms') + ' to another schedule in Setup › Rooms first.');
+    if (!confirm('Delete the cleaning schedule "' + x.name + '"?')) return;
+    CS.rows.splice(CS.sel, 1); CS.sel = Math.max(0, CS.sel - 1); return csSave(CS.rows);
+  }
+}
 function vSetup() {
   const c = S.config; let body = '';
   if (!view.setup) {   // the Setup home: links in columns
     return `<h1>Hotel Configuration</h1><div class="setcols">${SETUP_GROUPS.map(g => `<div class="card setcol"><h2>${g[0]}</h2>${g[1].map(k => `<a href="#" data-act="setupTab" data-tab="${k}">${SETUP_NAMES[k]}</a>`).join('')}</div>`).join('')}</div>`;
   }
+  if (view.setup !== 'schedules') CS = null; else if (!CS) csStart();
   sdRead(); if (!SD || SD.page !== view.setup) sdStart();
   const save = sdFoot('');
   if (view.setup === 'property') body = `<div class="grid card"><label class="c6">Hotel name<input id="s_name" value="${esc(c.name)}" maxlength="80"></label><label class="c6">General Manager<input id="s_gm" value="${esc(c.gm)}" maxlength="60"></label><label class="c12">Address<input id="s_address" value="${esc(c.address)}" maxlength="200"></label><label class="c6">City<input id="s_city" value="${esc(c.city)}" maxlength="60"></label><label class="c3">State<input id="s_state" value="${esc(c.state)}" maxlength="30"></label><label class="c3">ZIP<input id="s_zip" value="${esc(c.zip)}" maxlength="15"></label><label class="c3">Phone<input id="s_phone" value="${esc(c.phone)}" maxlength="40"></label><label class="c3">Reservation phone<input id="s_resPhone" value="${esc(c.resPhone)}" maxlength="40"></label><label class="c3">Fax<input id="s_fax" value="${esc(c.fax)}" maxlength="40"></label><label class="c3">Tax ID<input id="s_taxId" value="${esc(c.taxId)}" maxlength="30"></label><label class="c3">Check-in time<select id="s_checkinTime">${timeOpts(c.checkinTime)}</select></label><label class="c3">Check-out time<select id="s_checkoutTime">${timeOpts(c.checkoutTime)}</select></label><label class="chk c12"><input type="checkbox" id="s_requireShift" ${c.requireShift ? 'checked' : ''}>Front desk must open a cashier shift before taking payments</label></div>${save}`;
@@ -960,6 +1058,8 @@ function vSetup() {
   else if (view.setup === 'rates') body = sdRatesPage(c);
   else if (view.setup === 'packages') body = sdPackagesPage(c);
   else if (view.setup === 'hks') body = sdHksPage();
+  else if (view.setup === 'woreasons') body = sdWoReasonsPage();
+  else if (view.setup === 'schedules') body = csPage();
   else if (view.setup === 'rewards') { const w = S.rewards; body = `<p class="hint">A guest rewards program the hotel runs for its own guests. Members earn points when they check out, and spend them on the folio (Post Payment, Rewards Redemption). The posting code RW is added for you.</p><div class="grid card">
     <label class="chk c12"><input type="checkbox" id="s_rw_enabled" ${w.enabled ? 'checked' : ''}>Run the rewards program at this hotel</label>
     <label class="c6">Program name<input id="s_rw_name" maxlength="40" value="${esc(w.name)}"></label>
@@ -993,11 +1093,12 @@ async function setupSave() {
     if (view.setup === 'policies') { const h = v('s_cancelHours').trim() === '' ? 24 : Math.round(Number(v('s_cancelHours'))); if (!Number.isFinite(h) || h < 0 || h > 720) throw new Error('Guests can cancel free up to a number of hours from 0 to 720.'); const txt = v('s_cancelText').trim();
       c.regText = v('s_regText'); c.policies = { cancelHours: h, cancelText: txt === defaultCancel(h) ? '' : txt, deposit: needMoney(v('s_deposit'), 'the deposit', true), hold: needMoney(v('s_hold'), 'the card hold', true), pets: v('s_pets'), petFee: needMoney(v('s_petFee'), 'the pet fee', true), smokingFee: needMoney(v('s_smokingFee'), 'the smoking fee', true), other: v('s_other') }; }
     if (view.setup === 'types') { c.types = sdCoded(rows, 8, 'room type', (code, name, r) => ({ code, name, rate: needMoney(r.rate, 'a price per night for ' + name) })); if (!c.types.length) throw new Error('Keep at least one room type.'); }
-    if (view.setup === 'rooms') { const seen = new Set(); c.rooms = rows.filter(r => String(r.no).trim()).map(r => { const no = String(r.no).trim(); if (seen.has(no)) throw new Error('Room ' + no + ' is in the list twice.'); seen.add(no); return { no, type: r.type, floor: String(r.floor || '').trim() || no[0], nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast }; }); }
+    if (view.setup === 'rooms') { const seen = new Set(); c.rooms = rows.filter(r => String(r.no).trim()).map(r => { const no = String(r.no).trim(); if (seen.has(no)) throw new Error('Room ' + no + ' is in the list twice.'); seen.add(no); return { no, type: r.type, floor: String(r.floor || '').trim() || no[0], nosmoke: !!r.nosmoke, accessible: !!r.accessible, rentLast: !!r.rentLast, sched: r.sched }; }); }
     if (view.setup === 'taxes') c.taxes = sdCoded(rows, 6, 'tax', (code, name, r) => { const p = parseFloat(String(r.pct).replace(/[^0-9.]/g, '')); if (String(r.pct).trim() && !Number.isFinite(p)) throw new Error('Check the percent for ' + name + '.'); if (p > 50) throw new Error('The percent for ' + name + ' cannot be more than 50.'); return { code, name, pct: p || 0 }; });
     if (view.setup === 'codes') { c.codes = sdCoded(rows, 8, 'posting code', (code, name, r) => ({ code, name, type: r.type || 'MISC', tax: r.tax || [] })); if (!c.codes.some(k => k.code === 'RM')) throw new Error('Keep the RM (Room Charge) code. The night audit needs it.'); }
     if (view.setup === 'rates') c.rateRules = rows.filter(r => Object.values(r).some(x => Array.isArray(x) ? false : String(x).trim() && x !== '*')).map(r => { const nm = String(r.name).trim() || 'Rate'; if (!r.from || !r.to) throw new Error('Pick the From and Through dates for "' + nm + '".'); if (r.to < r.from) throw new Error('"' + nm + '" ends before it starts. Check the dates.'); return { name: nm, from: r.from, to: r.to, days: r.days || [], type: r.type || '*', rate: needMoney(r.rate, 'a rate for "' + nm + '"') }; });
     if (view.setup === 'packages') c.packages = sdCoded(rows, 8, 'package', (code, name, r) => ({ code, name, price: needMoney(r.price, '', true), charge: r.charge || 'MS' }));
+    if (view.setup === 'woreasons') { const seen = new Set(); c.woReasons = rows.map(r => ({ name: String(r.name).trim(), active: !!r.active })).filter(r => r.name).map(r => { if (seen.has(r.name.toLowerCase())) throw new Error('"' + r.name + '" is in the list twice.'); seen.add(r.name.toLowerCase()); return r; }); }
     if (view.setup === 'hks') c.housekeepers = rows.map(r => String(r.name).trim()).filter(Boolean);
     if (view.setup === 'rewards') c.rewards = { enabled: $('#s_rw_enabled').checked, name: $('#s_rw_name').value, earn: $('#s_rw_earn').value, perNight: $('#s_rw_perNight').value, perDollar: $('#s_rw_perDollar').value, pointValue: $('#s_rw_pointValue').value, minRedeem: $('#s_rw_minRedeem').value,
       tiers: $('#s_rw_tiers').value.split('\n').filter(l => l.trim()).map(l => { const p = l.split(','); return { name: (p[0] || '').trim(), min: (p[1] || '').trim(), amenity: (p[2] || '').trim(), message: p.slice(3).join(',').trim() }; }) };
@@ -1014,16 +1115,17 @@ function sdDel(i) {
 }
 const floorOpts = sel => '<option value="">Same as first digit of the room number</option>' + Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}" ${String(sel) === String(i + 1) ? 'selected' : ''}>${i + 1}</option>`).join('');
 const typeOpts = () => S.config.types.map(t => `<option value="${esc(t.code)}">${esc(t.code)} - ${esc(t.name)}</option>`).join('');
+const schedOpts = () => (S.config.cleanSchedules || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
 const rmFlags = () => `<label class="chk"><input type="checkbox" id="rm_nosmoke">No Smoking</label><label class="chk"><input type="checkbox" id="rm_accessible">Accessible</label><label class="chk"><input type="checkbox" id="rm_rentLast">Rent Last</label>`;
-function rmAddOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Room</div><div class="grid"><label class="c12">Room number<input id="rm_no" maxlength="8"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmAddGo">Add</button></div></div></div>`; $('#rm_no').focus(); }
-function rmManyOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Many Rooms</div><div class="grid"><label class="c6">From number<input id="rm_from" inputmode="numeric" maxlength="6"></label><label class="c6">To number<input id="rm_to" inputmode="numeric" maxlength="6"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><p class="hint" id="rm_prev" style="margin:8px 0 0"></p><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmManyGo">Add Rooms</button></div></div></div>`; $('#rm_from').focus(); rmPreview(); }
+function rmAddOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Room</div><div class="grid"><label class="c12">Room number<input id="rm_no" maxlength="8"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><label class="c12">Cleaning Schedule<select id="rm_sched">${schedOpts()}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmAddGo">Add</button></div></div></div>`; $('#rm_no').focus(); }
+function rmManyOpen() { sdRead(); $('#modal').innerHTML = `<div class="mback" id="rmwin"><div class="mbox sm"><div class="mtitle thin">Add Many Rooms</div><div class="grid"><label class="c6">From number<input id="rm_from" inputmode="numeric" maxlength="6"></label><label class="c6">To number<input id="rm_to" inputmode="numeric" maxlength="6"></label><label class="c12">Room type<select id="rm_type">${typeOpts()}</select></label><label class="c12">Floor<select id="rm_floor">${floorOpts('')}</select></label><label class="c12">Cleaning Schedule<select id="rm_sched">${schedOpts()}</select></label><div class="c12 rmflags">${rmFlags()}</div></div><p class="hint" id="rm_prev" style="margin:8px 0 0"></p><div class="err" id="rm_err"></div><div class="mfoot"><button class="btn" data-act="closeModal">Cancel</button><button class="btn green" data-act="rmManyGo">Add Rooms</button></div></div></div>`; $('#rm_from').focus(); rmPreview(); }
 function rmManyList() {   // the room numbers from..to that are not in the table yet
   const a = $('#rm_from').value.trim(), b = $('#rm_to').value.trim(); if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return { bad: 'Type the first and last room number (digits only).' };
   const from = +a, to = +b; if (to < from) return { bad: 'The last number must not be below the first.' }; if (to - from >= 300) return { bad: 'At most 300 rooms at once.' };
   const have = new Set(SD.rows.map(r => String(r.no))), add = [], skip = []; for (let n = from; n <= to; n++) (have.has(String(n)) ? skip : add).push(String(n)); return { add, skip };
 }
 function rmPreview() { const p = $('#rm_prev'); if (!p) return; const L = rmManyList(); p.textContent = L.bad ? '' : L.add.length + (L.add.length === 1 ? ' room' : ' rooms') + ' will be added' + (L.skip.length ? '; ' + L.skip.length + ' already exist and will be skipped.' : '.'); }
-const rmNew = (no, floor) => ({ no, type: $('#rm_type').value, floor: floor || String(no)[0], nosmoke: $('#rm_nosmoke').checked, accessible: $('#rm_accessible').checked, rentLast: $('#rm_rentLast').checked });
+const rmNew = (no, floor) => ({ no, type: $('#rm_type').value, floor: floor || String(no)[0], nosmoke: $('#rm_nosmoke').checked, accessible: $('#rm_accessible').checked, rentLast: $('#rm_rentLast').checked, sched: $('#rm_sched').value });
 function rmAddGo() {
   const no = $('#rm_no').value.trim(), er = m => { $('#rm_err').textContent = m; };
   if (!no) return er('Type the room number.'); if (SD.rows.some(r => String(r.no) === no)) return er('Room ' + no + ' is already in the list.');
@@ -1366,6 +1468,11 @@ document.addEventListener('click', async e => {
   if (a === 'userSave') return run(async () => { const email = $('#u_email').value.trim(); const r = await api('/account/userSave', { email, name: $('#u_name').value, role: $('#u_role').value, disabled: $('#u_disabled').checked }); render(); if (r.link) linkBox('Login made. Send them their link', r, email); else toast('Login saved.'); });
   if (a === 'userInvite') return run(async () => { const email = $('#u_email').value.trim(); if (!email) throw new Error('Click a login in the list first.'); linkBox('New password link', await api('/account/userInvite', { email }), email); });
   if (a === 'blockNew') return blockNew();
+  if (/^cs(Sel|More|Less|Add|Save|Del)$/.test(a)) return csClick(a, el);
+  if (a === 'woNew') return woNew(el.dataset.room);
+  if (a === 'woAddGo') return woAddGo();
+  if (a === 'woDone') return woDone(+el.dataset.id);
+  if (a === 'woDoneGo') return woDoneGo(+el.dataset.id, el.dataset.back === '1');
   if (a === 'blockSave') return blockSave();
   if (a === 'blockRemove') return blockBack([el.dataset.id]);
   if (a === 'blockRemoveAll') return blockBack(el.dataset.ids.split(','));
@@ -1407,6 +1514,7 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', e => {
   const t = e.target; if (t.id === 'rm_floor') t.dataset.t = '1';
   if (t.dataset.hk) return run(async () => { await op('hkSet', { room: t.dataset.room, [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }); S.roomstate[t.dataset.room] = { ...(S.roomstate[t.dataset.room] || {}), [t.dataset.hk]: t.type === 'checkbox' ? t.checked : t.value }; });
+  if (t.id === 'woFilter') { view.woFilter = t.value; return render(); }
   if (t.id === 'tapeDate' && t.value) { view.tapeStart = t.value; return render(); }
   if (t.id === 'tapeFloor' || t.id === 'hkFloor') { view.floor = t.value; return render(); }
   if (t.id === 'hkDirty') { view.hkDirty = t.checked; return render(); }

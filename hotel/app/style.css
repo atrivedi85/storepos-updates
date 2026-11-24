@@ -378,3 +378,14 @@ input[type=radio]{width:20px;height:20px;min-height:0;padding:0;vertical-align:m
 .sdfoot{align-items:center;margin-top:12px}.sdfoot .err{margin:0;min-height:0}
 .rmflags{display:flex;gap:16px;flex-wrap:wrap}.rmflags .chk{display:flex;flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:15px}
 .sdt tr[hidden]{display:none}
+
+/* work orders and cleaning schedules (Nov 2026) */
+.wo{font-size:.85em}
+.wobtn{min-height:48px;font-size:16px}
+.csg{display:grid;grid-template-columns:minmax(220px,1fr) 2fr;gap:14px;align-items:start}
+.cslist a{display:block;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:#fff;color:inherit;text-decoration:none}
+.cslist a.on{border-color:var(--blue);box-shadow:0 0 0 2px rgba(30,100,200,.25)}
+.cslist a .hint{display:block;margin-top:3px;font-size:12px}
+.csdet label{display:block;margin-bottom:10px}
+.csday{display:flex;align-items:center;gap:16px;padding:6px 0;border-bottom:1px solid var(--line)}.csday b{width:56px}
+@media (max-width:700px){.csg{grid-template-columns:1fr}.csday{gap:10px;flex-wrap:wrap}.csday label{min-height:44px;display:flex;align-items:center;margin:0}.csdet .btn,.mfoot .btn{min-height:44px}}

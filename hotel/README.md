@@ -136,6 +136,17 @@ Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()
    Do not disturb switch, notes) with a sticky filter row (floor, "Dirty only"); the housekeeping login's header is one bar (hotel name, date, Logout). Home tiles, lists, tape chart and the wizard fit a
    390px screen (tables scroll inside their own box).
 
+## Cleaning schedules and work orders (added Nov 23, 2026)
+
+- **Cleaning Schedules** (Setup › Housekeeping): `config.cleanSchedules = [{id, name, days: ['F'|'L'|'N', ...]}]` (Full / Light / None; 7 days, "Show more days" gives 14; the pattern repeats).
+  Every hotel starts with "Traditional" (all Full), added on load when missing. Each room has `sched` (a schedule id; missing or unknown = the first schedule). Setup › Rooms and the Add Room / Add Many Rooms windows
+  have a "Cleaning Schedule" column. A schedule that rooms still use, or the last one, cannot be deleted (screen and `configSave` both say which rooms). `service(no)` in `app.js`: an in-house room not due out shows
+  "Stay Over – Full / Light / No service" using nights stayed so far (business date minus arrival): night 1 is the first day of the pattern; the arrival day itself is "No service". Used by the housekeeping board, phone cards, check-off list and report.
+- **Work orders**: `config.woReasons = [{name, active}]` (Setup › Housekeeping › Work Order Reasons; 11 starters). Table `work_orders` (id, room, reason, notes, status open/done, created_at, created_by, created_bdate, done_at, done_by, ooo_block_id).
+  Ops `woAdd` {room, reason, notes, ooo?: {start, end}} and `woDone` {id, putBack} work for every login including housekeeping; only desk/managers may send `ooo` (makes the usual out-of-order block, reason "Work order: ...") or `putBack`.
+  `state().workorders` = all open plus the last 300 done. Screens: "Work Order" button on each housekeeping row/card, Work Orders page (Manage menu, Home tile, button on the housekeeping screen; Open / Done / All, Mark done),
+  a wrench mark next to the room on the tape chart, housekeeping board and room pickers. Report "Maintenance Report" (`/report?name=maintenance&from&to&all`) under Housekeeping Reports.
+
 ## Rewards program (added Nov 16, 2026)
 
 A guest rewards program each hotel runs for its own guests. Off until the owner or a manager turns it on in **Setup › Rewards**. While it is off, none of its
