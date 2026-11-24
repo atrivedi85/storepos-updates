@@ -7,6 +7,7 @@ import {
   CloudConflict, CloudError, CloudOffline, type CloudEvent,
 } from '../shared/cloud';
 import { esignClient } from '../shared/esign';
+import { androidSave, isAndroid } from '../renderer/native';
 
 const SERVER = '/pdfstudio';
 const PDF_TYPES = [{ description: 'PDF documents', accept: { 'application/pdf': ['.pdf'] } }];
@@ -21,6 +22,7 @@ const isAbort = (e: any) => e && (e.name === 'AbortError' || e.name === 'NotAllo
 const w = window as any;
 
 function download(name: string, data: Uint8Array | Blob, type = 'application/pdf') {
+  if (!(data instanceof Blob) && androidSave(name, data)) return;   // Android app: native Save dialog
   const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -175,7 +177,7 @@ const api: { [K in keyof Api]: (...a: Parameters<Api[K]>) => any } = {
     return true;
   },
   openDialog: async (multi = false) => {
-    if (w.showOpenFilePicker) {
+    if (w.showOpenFilePicker && !isAndroid()) {
       try {
         const hs = await w.showOpenFilePicker({ multiple: multi, types: PDF_TYPES });
         return hs.map((h: any) => register({ name: h.name, handle: h }));
@@ -184,7 +186,7 @@ const api: { [K in keyof Api]: (...a: Parameters<Api[K]>) => any } = {
     return (await pickFiles('.pdf,application/pdf', multi)).map((f) => register({ name: f.name, file: f }));
   },
   saveDialog: async (name) => {
-    if (w.showSaveFilePicker) {
+    if (w.showSaveFilePicker && !isAndroid()) {
       try {
         const h = await w.showSaveFilePicker({ suggestedName: name, types: PDF_TYPES });
         return register({ name: h.name, handle: h });

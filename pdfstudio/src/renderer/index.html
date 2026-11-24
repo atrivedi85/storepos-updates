@@ -10,6 +10,7 @@
 <body>
 <div id="app">
   <header id="topbar">
+    <button id="mobBack" class="tb icon-only mobonly" title="Back to Home" aria-label="Back to Home"><i data-icon="chevl"></i></button>
     <button id="appsBtn" class="tb icon-only" title="Switch app" aria-label="Switch app"><i data-icon="apps"></i></button>
     <div class="brand">
       <svg viewBox="0 0 64 64" width="26" height="26"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#19c3b1"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#lg)"/><path d="M19 12h17l11 11v29a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z" fill="#fff" fill-opacity=".95"/><path d="M36 12l11 11H39a3 3 0 0 1-3-3z" fill="#c9bfff"/><path d="M24 46V29h8.5a5.2 5.2 0 0 1 0 10.4H24" fill="none" stroke="#5b3df0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -22,6 +23,7 @@
         <button class="tb" data-action="save" title="Save (Ctrl+S)"><i data-icon="save"></i><span>Save</span></button>
         <button class="tb" data-action="saveAs" title="Save As (Ctrl+Shift+S)"><i data-icon="saveas"></i><span>Save As</span></button>
         <button class="tb" data-action="cloud" title="My files in the cloud"><i data-icon="cloud"></i><span>Cloud</span></button>
+        <button class="tb mobonly" data-action="share" title="Share this PDF"><i data-icon="share"></i><span>Share</span></button>
       </div>
       <div class="group" data-label="History">
         <button class="tb icon-only" data-action="undo" title="Undo (Ctrl+Z)"><i data-icon="undo"></i></button>
@@ -60,6 +62,7 @@
         <button class="tb" id="tbUpdate" data-action="checkUpdate" title="Check for updates"><i data-icon="update"></i><span id="tbUpdateText">Updates</span><b id="updDot" class="hidden"></b></button>
       </div>
     </div>
+    <button id="mobSearch" class="tb icon-only mobhome" title="Search" aria-label="Search"><i data-icon="search"></i></button>
     <button id="acctBtn" class="tb acct hidden" title="Account"></button>
   </header>
   <div id="optionsbar"></div>
@@ -80,6 +83,7 @@
           <div class="welcome-actions">
             <button class="btn primary" data-action="open">Open PDF…</button>
             <button class="btn" data-action="newBlank">New blank PDF</button>
+            <button class="btn webonly" data-action="scan" title="Scan paper with the camera, or turn photos into a PDF">Scan / Photos to PDF…</button>
           </div>
           <p class="hint">…or drag &amp; drop a PDF anywhere in this window</p>
           <h3>Recent files</h3>

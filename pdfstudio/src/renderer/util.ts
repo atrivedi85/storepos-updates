@@ -1,3 +1,4 @@
+import { androidSave } from './native';
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, attrs?: Record<string, string>, html?: string,
 ): HTMLElementTagNameMap[K] {
@@ -36,6 +37,7 @@ export function hexToRgb01(hex: string): [number, number, number] {
 }
 
 export function download(bytes: Uint8Array, name: string) {
+  if (androidSave(name, bytes)) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([bytes as BlobPart]));
   a.download = name; a.click();

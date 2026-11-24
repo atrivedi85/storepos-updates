@@ -13,11 +13,15 @@ import { getSignature, dataUrlToBytes, SigKind } from './sign';
 import { openCloudPanel } from './cloud';
 import { setupEsign, startSend, requestsPanel } from './esign';
 import type { ToolName } from './types';
+import { Mobile } from './mobile';
+import { fromBase64, shareBytes } from './native';
+import { openScanner } from './scan';
 import type { Api } from '../main/preload';
 
 declare global { interface Window { api: Api; app: App } }
 
 const api = window.api;
+const w = window as any;
 
 export class App implements PageHooks {
   tabs: DocTab[] = [];
@@ -29,6 +33,8 @@ export class App implements PageHooks {
   hitIdx = -1;
   searchTimer = 0;
   busy = false;
+  api = api;
+  mobile!: Mobile;
 
   constructor() {
     this.editor = new Editor(this);
@@ -56,11 +62,22 @@ export class App implements PageHooks {
       if (existing) { await this.activate(existing); continue; }
       try {
         const bytes = await api.readFile(p);
-        await this.addTab(await DocTab.create(bytes, p));
+        const tab = await DocTab.create(bytes, p);
+        await this.addTab(tab);
+        void this.mobile?.record(tab, bytes, p.startsWith('cloud://') ? 'cloud' : 'device');
       } catch (e: any) {
         toast(`Could not open ${baseName(p)}: ${e?.message || e}`, true);
       }
     }
+  }
+
+  /** Open a document from bytes (scan, "Open with" from another app, a copy saved on the phone). */
+  async openBytes(bytes: Uint8Array, name: string, source: 'device' | 'cloud' | 'scan' | 'new' = 'device', path: string | null = null) {
+    try {
+      const tab = await DocTab.create(bytes, path, name);
+      await this.addTab(tab);
+      void this.mobile?.record(tab, bytes, source);
+    } catch (e: any) { toast(`Could not open ${name}: ${e?.message || e}`, true); }
   }
 
   async newBlank() {
@@ -82,6 +99,7 @@ export class App implements PageHooks {
     this.editor.select(null);
     for (const [id, v] of this.views) v.root.classList.toggle('active', tab?.id === id);
     $('#welcome').classList.toggle('hidden', !!tab);
+    this.mobile?.onActivate(tab);
     if (tab) {
       const v = this.views.get(tab.id)!;
       if (!v.pages.length) v.build(); else v.refit();
@@ -230,7 +248,7 @@ export class App implements PageHooks {
     document.querySelectorAll<HTMLButtonElement>('.tb.tool').forEach((b) => b.classList.toggle('active', !!t && b.dataset.tool === this.editor.tool));
     document.querySelectorAll<HTMLButtonElement>('#toolbar .tb').forEach((b) => {
       const a = b.dataset.action;
-      if (b.classList.contains('tool') || (a && ['image', 'save', 'saveAs', 'pagesMenu', 'zoomIn', 'zoomOut', 'search'].includes(a))) b.disabled = !t;
+      if (b.classList.contains('tool') || (a && ['image', 'save', 'saveAs', 'share', 'pagesMenu', 'zoomIn', 'zoomOut', 'search'].includes(a))) b.disabled = !t;
     });
     ($('[data-action=undo]') as HTMLButtonElement).disabled = !t || !t.past.length;
     ($('[data-action=redo]') as HTMLButtonElement).disabled = !t || !t.future.length;
@@ -320,6 +338,7 @@ export class App implements PageHooks {
       await api.writeFile(path, bytes);
       tab.path = path; tab.name = baseName(path); tab.dirty = false;
       this.renderTabs(); this.updateUi();
+      void this.mobile?.record(tab, bytes);
       toast(`Saved ${tab.name}`);
       for (const w of warnings) toast(w, true);
       return true;
@@ -330,6 +349,27 @@ export class App implements PageHooks {
   }
   save(as = false) { if (this.active) return this.saveTab(this.active, as); }
 
+  /** Share the open document (Android share sheet, or the browser's share sheet, or a download). */
+  async share() {
+    const t = this.active; if (!t) return;
+    try {
+      this.editor.select(null);
+      const { bytes } = await buildPdf(t);
+      const r = await shareBytes(t.name, bytes);
+      if (r === 'downloaded') toast(`Saved ${t.name} to your downloads`);
+    } catch (e: any) { toast(`Could not share: ${e?.message || e}`, true); }
+  }
+  async sendForSignature() { await startSend(this); }
+  /** Scan / Photos to PDF (desktop web menu item). */
+  scanMenu(b: HTMLElement) {
+    const r = b.getBoundingClientRect();
+    const host = { finish: (bytes: Uint8Array, name: string) => this.openBytes(bytes, name, 'scan') };
+    showMenu([
+      { label: 'Scan with the camera…', icon: 'camera', action: () => { openScanner('scan', host); } },
+      { label: 'Photos to PDF…', icon: 'photos', action: () => { openScanner('photos', host); } },
+    ], r.left, r.bottom + 4);
+  }
+
   // ---- cloud library ----
   async saveToCloud(tab: DocTab) {
     try {
@@ -338,6 +378,7 @@ export class App implements PageHooks {
       const path = await api.cloudCreate(tab.name, bytes);
       tab.path = path; tab.name = baseName(path); tab.dirty = false;
       this.renderTabs(); this.updateUi();
+      void this.mobile?.record(tab, bytes, 'cloud');
       toast(`Saved ${tab.name} to your cloud files`);
       for (const w of warnings) toast(w, true);
     } catch (e: any) {
@@ -617,15 +658,33 @@ export class App implements PageHooks {
 
 const app = new App();
 window.app = app;
+app.mobile = new Mobile(app);
+
+// ---- Android wrapper hooks (harmless in a normal browser) ----
+let ready = false;
+const pendingOpen: { name: string; b64: string }[] = [];
+/** The wrapper calls this when a PDF is opened while the app is running. */
+w.pdfAndroidOpen = (name: string, b64: string) => {
+  if (!b64) return;
+  if (!ready) { pendingOpen.push({ name: name || 'Document.pdf', b64 }); return; }
+  void app.openBytes(fromBase64(b64), name || 'Document.pdf', 'device');
+};
+/** The wrapper calls this on the Android back button. true = handled here; false = let the app close. */
+w.pdfAndroidBack = (): boolean => {
+  try { return app.mobile.back(); } catch (e) { console.warn(e); return false; }
+};
 
 function bind() {
   hydrateIcons();
+  app.mobile.init();
   const actions: Record<string, (b: HTMLElement) => void> = {
     open: () => app.openDialog(),
     newBlank: () => app.newBlank(),
     save: () => app.save(false),
     saveAs: () => app.save(true),
     cloud: () => app.cloudPanel(),
+    share: () => app.share(),
+    scan: (b) => app.scanMenu(b),
     undo: () => app.undo(false),
     redo: () => app.undo(true),
     zoomIn: () => app.zoomBy(1.2),
@@ -763,6 +822,7 @@ function showAccount(st: AuthSt) {
   // Account button, top right
   const btn = $('#acctBtn') as HTMLButtonElement;
   const name = st.username || 'Account';
+  app.mobile.setUser(st.username || null);
   btn.classList.remove('hidden');
   btn.title = `Account: ${name}`;
   btn.innerHTML = `<span class="av"></span><span class="nm"></span>`;
@@ -865,6 +925,7 @@ async function main() {
     if (s.signedIn) { showAccount(s); return; }
     $('#stLic').textContent = '';
     $('#acctBtn').classList.add('hidden');
+    app.mobile.setUser(null);
     promptLogin(s.error || 'You have been signed out. Sign in to continue.');
   });
   app.renderTabs();
@@ -874,6 +935,13 @@ async function main() {
   app.refreshRecent();
   const files = await api.initFiles();
   if (files.length) await app.openPaths(files);
+  // Android: a PDF that was opened from another app ("Open with PdfStudio") before we were ready
+  try {
+    const s = w.PdfAndroid?.takeOpenedFile?.();
+    if (s) { const j = JSON.parse(s); if (j?.b64) await app.openBytes(fromBase64(j.b64), j.name || 'Document.pdf', 'device'); }
+  } catch (e) { console.warn('opened file not read', e); }
+  ready = true;
+  for (const f of pendingOpen.splice(0)) await app.openBytes(fromBase64(f.b64), f.name, 'device');
 }
 main();
 
