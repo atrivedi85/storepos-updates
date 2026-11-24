@@ -18,7 +18,7 @@ let fails = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); 
 const h = await start(); await fetch(h.url + '/api/setup-needed');
 const L = h.inst('ledger|main');
 for (const [u, n, a] of [['raj', 'Raj Trivedi', true], ['bob', 'Bob Cashier', false]]) {
-  const nv = await V.newVault(PW), user = { username: u, name: n, admin: a, created: new Date().toISOString(), vault: nv.vault };
+  const nv = await V.newVault(PW), user = { username: u, name: n, admin: a, created: new Date().toISOString(), vault: nv.vault, ...(u === 'bob' ? { email: 'bob@example.com', posOnly: true } : {}) };
   L.setPw(user, await V.authFor(u, PW)); L.setRec(user, await V.recAuthFor(u, nv.recovery)); L.saveUser(user);
 }
 const store = { storeId: crypto.randomBytes(16).toString('base64url'), key: crypto.randomBytes(32).toString('base64'), name: 'Demo Smoke Shop' };
@@ -113,8 +113,8 @@ await books.waitForURL(/books\/login/, { timeout: 8000 }).then(() => ok(true, '/
 // 7. bob (cashier) is not a member yet approved? PC approves him, he opens the store with the cashier role and no Members tab
 await PC.approvePending(h.url, link.deviceToken, store.key);   // bob had no key pair yet: nothing to do until he signs in once
 const bctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const bp = await bctx.newPage();
-await bp.goto(h.url + '/books/login?next=/pos/'); await bp.fill('#user', 'bob'); await bp.fill('#pw', PW); await bp.click('#go'); await bp.waitForURL(/\/pos\//, { timeout: 20000 });
-await bp.waitForSelector('text=Your stores'); await bp.waitForTimeout(500);
+await bp.goto(h.url + '/books/login?next=/pos/'); await bp.fill('#user', 'Bob@Example.com'); await bp.fill('#pw', PW); await bp.click('#go'); await bp.waitForURL(/\/pos\//, { timeout: 20000 });
+await bp.waitForSelector('text=Your stores', { timeout: 8000 }).catch(async e => { await bp.screenshot({ path: OUT + '/debug-bob.png' }); throw e; }); await bp.waitForTimeout(500);
 ok(await bp.locator('text=Waiting').count() > 0, 'bob sees the store as "Waiting" until the store PC approves');
 await PC.approvePending(h.url, link.deviceToken, store.key);
 await bp.click('#wbRef'); await bp.waitForSelector('button[data-i="0"]'); await bp.click('button[data-i="0"]');
@@ -129,5 +129,15 @@ ok(removed === 200, 'owner removed bob');
 await bp.waitForTimeout(3000);
 ok(await bp.locator('text=Your stores').count() > 0 || await bp.locator('#wbSign').count() > 0, "bob's browser is thrown back to the gate right away (his connection was closed)");
 await bp.screenshot({ path: OUT + '/pos-removed.png' });
+// 8. POS-only people see a friendly page at /books; the owner's Logins screen has the "Can use Ledger Desk" switch
+await bp.goto(h.url + '/books/'); await bp.waitForTimeout(1500);
+ok(await bp.locator('text=Ask the owner to turn on Ledger Desk').count() > 0 && await bp.locator('a[href="/pos/"]').count() > 0, 'a POS-only person opening /books sees the friendly page with a link to /pos');
+await bp.screenshot({ path: OUT + '/books-posonly.png' });
+await owner.getByText('Logins', { exact: true }).first().click(); await owner.waitForSelector('text=Can use Ledger Desk'); await owner.waitForTimeout(800);
+await owner.screenshot({ path: OUT + '/logins-checkbox.png' });
+const cb = owner.locator('tr[data-user="bob"] input[data-act="uLedger"]'); ok(!(await cb.isChecked()), 'Logins shows Bob with "Can use Ledger Desk" off');
+await cb.check(); await owner.waitForTimeout(1200);
+const meBob = await bp.evaluate(async () => (await (await fetch('/api/me')).json()).posOnly); ok(meBob === false, 'ticking the box turns Ledger Desk on for Bob');
+await bp.reload(); await bp.waitForTimeout(2500); ok(await bp.locator('text=Ask the owner to turn on Ledger Desk').count() === 0, 'Bob now gets past the friendly page');
 console.log(fails ? fails + ' FAILED' : 'ALL PASSED');
 await browser.close(); h.close(); pc.close(); process.exit(fails ? 1 : 0);

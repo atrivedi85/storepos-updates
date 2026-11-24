@@ -43,6 +43,7 @@ async function api(base, path, { method = 'POST', body, cookie, device } = {}) {
 /** Step 1. Returns { need2fa, ticket, method, to } when a code is needed, otherwise { session }. */
 async function signIn(base, username, password) {
   username = String(username || '').trim().toLowerCase();
+  if (username.includes('@')) { try { username = (await api(base, '/api/login/resolve', { body: { id: username } })).username || username; } catch (e) { /* the sign-in below says what is wrong */ } }   // an email is turned into the user name the sign-in value is made with
   const r = await api(base, '/api/login', { body: { username, auth: authFor(username, password) } });
   if (r.need2fa) return { need2fa: r.need2fa, ticket: r.ticket, to: r.to || '', canEmail: !!r.canEmail };
   return { session: { cookie: r.__cookie, vault: r.vault, needRecovery: !!r.needRecovery, username } };

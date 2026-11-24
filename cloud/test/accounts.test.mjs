@@ -46,7 +46,7 @@ class Browser {   // a person's browser: cookies + the Ledger Desk key logic fro
 }
 async function makeUser(L, username, name, admin) {   // the owner login can only be made with a private one-time code, so tests write it directly
   const nv = await V.newVault(PW), u = { username, name, admin: !!admin, created: new Date().toISOString(), vault: nv.vault };
-  L.setPw(u, await V.authFor(username, PW)); L.setRec(u, await V.recAuthFor(username, nv.recovery)); L.saveUser(u);
+  L.setPw(u, await V.authFor(username, PW)); L.setRec(u, await V.recAuthFor(username, nv.recovery)); L.saveUser(u); return nv.recovery;
 }
 function connect(base, storeId, role, key, { cid, cookie, mode } = {}) {
   const auth = PC.relayAuth(key);
@@ -237,4 +237,58 @@ test('owner can unlink the store; members lose it; PC token stops working', asyn
   assert.equal((await owner.call('GET', '/api/pos/stores')).data.stores.length, 0);
   await assert.rejects(PC.devicePending(h.url, device), /not linked/);
   host.close();
+});
+
+/* ---------- sign in with email or user name; POS-only switch ---------- */
+const b32 = x => { const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = 0, v = 0; const out = []; for (const c of x) { v = (v << 5) | A.indexOf(c); bits += 5; if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); };
+const totp = secret => { const st = Math.floor(Date.now() / 30000), m = Buffer.alloc(8); m.writeUInt32BE(Math.floor(st / 4294967296), 0); m.writeUInt32BE(st >>> 0, 4); const h = crypto.createHmac('sha1', b32(secret)).update(m).digest(), o = h[h.length - 1] & 15; return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0'); };
+async function loginAs(id, pw = PW, extra) {   // exactly what the sign-in page does: resolve the email first, then derive the sign-in value from the user name
+  const b = new Browser(h.url);
+  const name = id.includes('@') ? (await b.call('POST', '/api/login/resolve', { id })).data.username : id.toLowerCase();
+  const r = await b.call('POST', '/api/login', { username: name, auth: await V.authFor(name, pw) }); b.name = name; b.r = r; return b;
+}
+let erinRec;
+test('sign in with email or user name', async () => {
+  const L = h.inst('ledger|main');
+  erinRec = await makeUser(L, 'erin', 'Erin Staff', false);
+  const e = L.findUser('erin'); e.email = 'Erin@Example.com'; L.saveUser(e);
+  for (const id of ['erin@example.com', 'ERIN@EXAMPLE.COM', 'erin', 'Erin']) { const b = await loginAs(id); assert.equal(b.r.status, 200, id); assert.equal((await b.call('GET', '/api/me')).data.username, 'erin'); }
+  assert.equal((await loginAs('erin@example.com', 'wrong password!')).r.status, 401);
+  assert.equal((await loginAs('nobody@example.com')).r.status, 401);                       // unknown email: same answer as a wrong password
+  assert.equal((await new Browser(h.url).call('POST', '/api/login/resolve', { id: 'nobody@example.com' })).data.username, 'nobody@example.com');
+  // an invited person's email works too (set when the invite was accepted)
+  assert.equal((await loginAs('bob@example.com')).r.status, 200);
+  assert.ok((await PC.signIn(h.url, ' Erin@Example.com ', PW)).session.cookie);               // the store-PC link screen takes an email too
+  // two accounts with the same email (old data): the email is not used, user names still work
+  const d = L.findUser('carol'); d.email = 'erin@example.com'; L.saveUser(d);
+  assert.equal((await new Browser(h.url).call('POST', '/api/login/resolve', { id: 'erin@example.com' })).data.username, 'erin@example.com');
+  assert.equal((await loginAs('carol')).r.status, 200); delete d.email; L.saveUser(d);
+});
+test('two-step sign-in and password reset still work with an email sign-in', async () => {
+  const b = await loginAs('erin@example.com'); await b.signIn('erin');
+  const st = (await b.call('POST', '/api/me/2fa', { action: 'app-start' })).data;
+  assert.equal((await b.call('POST', '/api/me/2fa', { action: 'app-confirm', code: totp(st.secret) })).status, 200);
+  const b2 = await loginAs('erin@example.com'); assert.ok(b2.r.data.need2fa === 'app' && b2.r.data.ticket);
+  assert.equal((await b2.call('POST', '/api/login/2fa', { ticket: b2.r.data.ticket, code: '000000' })).status, 401);
+  const ok = await b2.call('POST', '/api/login/2fa', { ticket: b2.r.data.ticket, code: totp(st.secret) }); assert.equal(ok.status, 200); assert.equal((await b2.call('GET', '/api/me')).status, 200);
+  // forgot password: the form resolves the email, then uses the recovery code
+  const name = (await b2.call('POST', '/api/login/resolve', { id: 'Erin@Example.com' })).data.username; assert.equal(name, 'erin');
+  const recAuth = await V.recAuthFor(name, erinRec), anon = new Browser(h.url);
+  const chk = await anon.call('POST', '/api/recover/check', { username: name, recAuth }); assert.equal(chk.status, 200);
+  const dek = await V.unlockWithRecovery({ rec: chk.data.rec }, erinRec);
+  assert.equal((await anon.call('POST', '/api/recover', { username: name, recAuth, auth: await V.authFor(name, 'a brand new password'), vaultPw: await V.passwordWrap(dek, 'a brand new password') })).status, 200);
+  assert.equal((await loginAs('erin@example.com', 'a brand new password')).r.data.need2fa, 'app');
+  // an email can belong to one account only
+  const taken = await carol.call('POST', '/api/me/2fa', { action: 'email-send', email: 'ERIN@example.com' }); assert.equal(taken.status, 400); assert.match(taken.data.error, /another account/);
+});
+test('invited staff are store-back-office only; the owner can switch Ledger Desk on and off', async () => {
+  const bobIn = await loginAs('bob'); assert.equal((await bobIn.call('GET', '/api/me')).data.posOnly, true);
+  const mk = (b) => b.call('POST', '/api/companies/create?file=c-0123456789abcdef.json', {});
+  assert.equal((await mk(bobIn)).status, 403);
+  const list = (await owner.call('GET', '/api/admin/users')).data.users; const bu = list.find(u => u.username === 'bob'); assert.equal(bu.posOnly, true); assert.equal(bu.email, 'bob@example.com'); assert.equal(list.find(u => u.username === 'carol').posOnly, false);
+  assert.equal((await bobIn.call('POST', '/api/admin/pos-only', { username: 'bob', value: false })).status, 403);     // only the site owner
+  assert.equal((await owner.call('POST', '/api/admin/pos-only', { username: 'bob', value: false })).status, 200);
+  assert.equal((await bobIn.call('GET', '/api/me')).data.posOnly, false); assert.notEqual((await mk(bobIn)).status, 403);
+  assert.equal((await owner.call('POST', '/api/admin/pos-only', { username: 'bob', value: true })).status, 200);
+  assert.equal((await mk(bobIn)).status, 403);
 });

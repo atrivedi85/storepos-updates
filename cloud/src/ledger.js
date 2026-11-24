@@ -24,6 +24,7 @@ const randInt = (lo, hi) => { const r = new Uint32Array(1); crypto.getRandomValu
 const normUser = u => String(u || '').trim().toLowerCase();
 const validUser = u => /^[a-z0-9][a-z0-9._-]{1,31}$/.test(u);
 const validEmail = s => /^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[A-Za-z]{2,}$/.test(String(s || '').trim());
+const emailKey = s => String(s || '').trim().toLowerCase();
 function httpErr(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
 /* ---------- scrypt (same settings as Ledger Desk Server, so existing passwords keep working) ---------- */
@@ -171,6 +172,8 @@ export class Ledger extends DurableObject {
   setCfg(c) { this.sql.exec("INSERT OR REPLACE INTO cfg(k,v) VALUES('config',?)", JSON.stringify(c)); }
   log(...a) { this.sql.exec('INSERT INTO log(at,line) VALUES(?,?)', now(), a.join(' ')); this.sql.exec('DELETE FROM log WHERE id < (SELECT MAX(id) - 5000 FROM log)'); }
   users() { return this.rows('SELECT data FROM users').map(r => JSON.parse(r.data)); }
+  usersWithEmail(e) { const k = emailKey(e); return k ? this.users().filter(u => emailKey(u.email) === k) : []; }
+  emailTaken(e, exceptUser) { return this.usersWithEmail(e).some(u => u.username !== exceptUser); }
   findUser(u) { const r = this.one('SELECT data FROM users WHERE username=?', normUser(u)); return r ? JSON.parse(r.data) : null; }
   saveUser(u) { this.sql.exec('INSERT OR REPLACE INTO users(username,data) VALUES(?,?)', u.username, JSON.stringify(u)); }
   usettings(u) { const r = this.one('SELECT data FROM usettings WHERE username=?', u.username || u); return r ? JSON.parse(r.data) : {}; }
@@ -311,6 +314,14 @@ export class Ledger extends DurableObject {
     { const r = await posPublic(this, req, url, H); if (r) return r; }
 
     // ----- sign-in (no session needed) -----
+    if (p === '/api/login/resolve' && req.method === 'POST') {   // "Email or user name": turns an email into the user name the sign-in value is made with (needs no session)
+      const b = await jbody(); const id = String(b.id || '').trim(); this.resolves = this.resolves || {};
+      const t0 = now(), hits = this.resolves[ip] = (this.resolves[ip] || []).filter(t => t > t0 - 15 * 60e3);
+      if (hits.length >= 60) return json(429, { error: 'Too many tries. Wait a few minutes.' }); hits.push(t0);
+      let username = normUser(id);
+      if (id.includes('@')) { const m = this.usersWithEmail(id); if (m.length === 1) username = m[0].username; }
+      return json(200, { username });
+    }
     if (p === '/api/setup-needed') return json(200, { needed: !this.one('SELECT 1 x FROM users LIMIT 1') });
     if (p === '/api/invite/check' && req.method === 'POST') {
       const b = await jbody(); const locked = this.lockedFor('#invite'); if (locked) return json(429, { error: locked });
@@ -330,7 +341,7 @@ export class Ledger extends DurableObject {
       const bad = pwProblem(b.auth); if (bad) return json(400, { error: bad });
       if (!validVault(b.vault) || pwProblem(b.recAuth)) return json(400, { error: 'Bad key data. Reload the page and try again.' });
       const u = { username, name: clip(b.name, 80) || inv.name || username, admin: false, created: new Date().toISOString(), lastLogin: new Date().toISOString(), invitedBy: inv.by, vault: { pw: cleanWrap(b.vault.pw), rec: cleanWrap(b.vault.rec) } };
-      if (inv.pos) { u.posOnly = true; if (validEmail(inv.sentTo)) u.email = inv.sentTo.trim(); }   // made by a store owner for the Store POS back office: no Ledger Desk companies unless the site owner allows it
+      if (inv.pos) { u.posOnly = true; if (validEmail(inv.sentTo) && !this.emailTaken(inv.sentTo, username)) u.email = inv.sentTo.trim(); }   // made by a store owner for the Store POS back office: no Ledger Desk companies unless the site owner allows it
       this.setPw(u, b.auth); this.setRec(u, b.recAuth); this.saveUser(u);
       posAcceptInvite(this, inv, username, now());
       inv.usedBy = username; inv.usedAt = new Date().toISOString(); this.saveInvite(inv);
@@ -403,6 +414,7 @@ export class Ledger extends DurableObject {
         if (!ok && t.code && t.codeExp > now()) ok = code.length === 6 && sha(code + '|' + t.id) === t.code;
         if (!ok) { t.tries++; this.noteIpFail(ip); if (t.tries >= 5) delete this.tickets[t.id]; return json(401, { error: t.tries >= 5 ? 'Too many wrong codes. Sign in again.' : 'That code isn\'t right.' }); }
         delete this.tickets[t.id];
+        if (t.method === 'setup' && this.emailTaken(t.to, u.username)) return json(400, { error: 'That email address belongs to another account. Use a different one.' });
         if (t.method === 'setup') { u.email = t.to; u.tfa = { method: 'email', trusted: [] }; }
         u.tfa = u.tfa || { method: 'email', trusted: [] }; u.tfa.trusted = (u.tfa.trusted || []).filter(x => x.exp > now());
         const heads = [cookie(this.newSession(u.username, req), SESSION_DAYS * 86400)];
@@ -563,12 +575,14 @@ export class Ledger extends DurableObject {
       if (b.action === 'forget') { if (me.tfa) me.tfa.trusted = []; this.saveUser(me); return json(200, { ok: true }); }
       if (b.action === 'email-send') {
         const to = String(b.email || '').trim(); if (!validEmail(to)) return json(400, { error: 'Type your full email address.' });
+        if (this.emailTaken(to, me.username)) return json(400, { error: 'That email address belongs to another account. Use a different one.' });
         const t = this.setup2fa[me.username + ':email'] = { id: rnd(8).toString('hex') };
         try { await this.sendCode(t, me, to); } catch (e) { return json(e.code || 502, { error: e.message }); }
         return json(200, { ok: true });
       }
       if (b.action === 'email-confirm') {
-        const t = this.setup2fa[me.username + ':email']; if (!t || !t.code || t.codeExp < now() || sha(String(b.code || '').replace(/\D/g, '') + '|' + t.id) !== t.code) return json(400, { error: 'That code isn\'t right.' });
+        const t = this.setup2fa[me.username + ':email']; if (t && this.emailTaken(t.to, me.username)) return json(400, { error: 'That email address belongs to another account. Use a different one.' });
+        if (!t || !t.code || t.codeExp < now() || sha(String(b.code || '').replace(/\D/g, '') + '|' + t.id) !== t.code) return json(400, { error: 'That code isn\'t right.' });
         me.email = t.to; me.tfa = { method: 'email', trusted: (me.tfa && me.tfa.trusted) || [] }; delete this.setup2fa[me.username + ':email']; this.saveUser(me);
         return json(200, { ok: true });
       }
@@ -592,7 +606,7 @@ export class Ledger extends DurableObject {
     if (p.startsWith('/api/admin/')) {
       if (!me.admin) return json(403, { error: 'Only the owner can do this.' });
       const C = this.cfg();
-      if (p === '/api/admin/users') return json(200, { users: this.users().map(u => ({ ...publicUser(u), companies: this.one('SELECT COUNT(*) n FROM companies WHERE owner=?', u.username).n, tfa: u.tfa && u.tfa.method || '' })) });
+      if (p === '/api/admin/users') return json(200, { users: this.users().map(u => ({ ...publicUser(u), companies: this.one('SELECT COUNT(*) n FROM companies WHERE owner=?', u.username).n, posOnly: !!u.posOnly, email: u.email || '', tfa: u.tfa && u.tfa.method || '' })) });
       if (p === '/api/admin/invites') return json(200, { require2fa: !!C.require2fa, mailFrom: C.mail && C.mail.user ? C.mail.user : '', publicUrl: '', tailscaleInvite: '', aiPc: { connected: !!this.aiSocket(), hasKey: !!C.aiKeyHash, status: this.ai.status || null }, invites: this.invites().reverse().map(i => ({ id: i.id, name: i.name, note: i.note, sentTo: i.sentTo || '', shares: i.share ? i.share.files.length : 0, shareRole: i.share ? i.share.role : '', created: i.created, expires: i.expires, status: invStatus(i), usedBy: i.usedBy || '', usedAt: i.usedAt || '' })) });
       if (p === '/api/admin/invite' && req.method === 'POST') {
         const b = await jbody();

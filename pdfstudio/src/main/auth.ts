@@ -95,6 +95,7 @@ const netError = (e: any): LoginResult => ({ signedIn: false, error: /Secure sto
 export async function login(username: string, password: string): Promise<LoginResult> {
   try {
     if (!(globalThis as any).crypto?.subtle) (globalThis as any).crypto = webcrypto;
+    if (username.includes('@')) { try { const q = await call('login/resolve', { method: 'POST', body: { id: username } }); if (q.ok && q.data.username) username = q.data.username; } catch { /* sign-in below reports the problem */ } }
     const auth = await authFor(username, password);
     return await finishLogin(await call('login', { method: 'POST', body: { username, auth } }));
   } catch (e: any) { return netError(e); }
