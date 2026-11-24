@@ -9,6 +9,8 @@ import * as nc from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
 const SESSION_DAYS = 14, RESET_MIN = 60, INVITE_DAYS = 7;
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // no 0 O 1 I L: nothing that looks like something else
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 40);   // typed with or without dashes / spaces, any case
 const now = () => Date.now();
 const sha = s => nc.createHash('sha256').update(s).digest('hex');
 const clip = (s, n) => String(s == null ? '' : s).trim().slice(0, n);
@@ -21,7 +23,7 @@ const ROLE_NAME = { master: 'Master', owner: 'Owner', manager: 'Manager', desk: 
 export class DirectoryCore {
   // opts.scrypt(password, saltHex) → hex ; opts.sendMail(cfg, {to, subject, text, fromName}) → Promise
   constructor(sql, opts) {
-    this.sql = sql; this.opts = opts || {}; this.fails = {}; this.forgot = {};
+    this.sql = sql; this.opts = opts || {}; this.fails = {}; this.forgot = {}; this.rfails = {};
     for (const q of ['CREATE TABLE IF NOT EXISTS d_kv(k TEXT PRIMARY KEY, v TEXT)',
       'CREATE TABLE IF NOT EXISTS d_hotels(id TEXT PRIMARY KEY, data TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS d_users(email TEXT PRIMARY KEY, hotel TEXT, data TEXT NOT NULL)',
@@ -38,11 +40,24 @@ export class DirectoryCore {
   hashPw(pw, salt) { if (this.opts.scrypt) return this.opts.scrypt(String(pw), salt); return nc.scryptSync(String(pw), Buffer.from(salt, 'hex'), 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex'); }
   setPw(u, pw) { if (String(pw || '').length < 8) throw err(400, 'The password needs at least 8 characters.'); if (String(pw).length > 200) throw err(400, 'That password is too long.'); u.salt = nc.randomBytes(16).toString('hex'); u.hash = this.hashPw(pw, u.salt); }
   pwOk(u, pw) { if (!u || !u.hash) { this.hashPw(pw || '', '00'.repeat(16)); return false; } return nc.timingSafeEqual(Buffer.from(this.hashPw(pw || '', u.salt), 'hex'), Buffer.from(u.hash, 'hex')); }
+  // Recovery code: ONE per login, 12 characters like K7Q2-M9XD-4TPA. Only a salted slow hash is kept (u.rc), never the code. A new code replaces the old one.
+  makeCode(u) {
+    let c = ''; while (c.length < 12) { const b = nc.randomBytes(1)[0]; if (b < 248) c += CODE_CHARS[b % 31]; }   // 248 = 31 * 8, so every character is equally likely
+    const salt = nc.randomBytes(16).toString('hex'); u.rc = { salt, hash: this.hashPw(c, salt), made: now() };
+    return c.slice(0, 4) + '-' + c.slice(4, 8) + '-' + c.slice(8);
+  }
+  codeOk(u, code) {
+    const c = normCode(code), ok = !!(u && u.rc && u.rc.hash), salt = ok ? u.rc.salt : '00'.repeat(16), h = this.hashPw(c, salt);
+    return ok && c.length === 12 && nc.timingSafeEqual(Buffer.from(h, 'hex'), Buffer.from(u.rc.hash, 'hex'));
+  }
+  // wrong recovery tries: at most 5 an hour for one e-mail address, and 5 an hour from one IP address when the server tells us the IP
+  recoverBlocked(keys) { const hour = now() - 36e5; return keys.some(k => { const a = this.rfails[k]; if (!a) return false; while (a.length && a[0] < hour) a.shift(); return a.length >= 5; }); }
+  recoverFail(keys) { if (Object.keys(this.rfails).length > 5000) this.rfails = {}; for (const k of keys) (this.rfails[k] = this.rfails[k] || []).push(now()); }
   user(email) { const r = this.one('SELECT data FROM d_users WHERE email=?', normEmail(email)); return r ? JSON.parse(r.data) : null; }
   saveUser(u) { this.sql.exec('INSERT OR REPLACE INTO d_users(email,hotel,data) VALUES(?,?,?)', u.email, u.hotel || '', JSON.stringify(u)); }
   hotel(id) { const r = this.one('SELECT data FROM d_hotels WHERE id=?', String(id || '')); return r ? JSON.parse(r.data) : null; }
   saveHotel(h) { this.sql.exec('INSERT OR REPLACE INTO d_hotels(id,data) VALUES(?,?)', h.id, JSON.stringify(h)); }
-  pubUser(u) { return { email: u.email, name: u.name || u.email, role: u.role, disabled: !!u.disabled, hasPassword: !!u.hash, lastLogin: u.lastLogin || 0 }; }
+  pubUser(u) { return { email: u.email, name: u.name || u.email, role: u.role, disabled: !!u.disabled, hasPassword: !!u.hash, hasRecovery: !!u.rc, lastLogin: u.lastLogin || 0 }; }
   cookie(token, age) { return 'hd_s=' + token + '; Path=/hotel; HttpOnly; Secure; SameSite=Strict; Max-Age=' + age; }
   session(cookie) {
     const m = /(?:^|;\s*)hd_s=([a-f0-9]{64})/.exec(cookie || ''); if (!m) return null;
@@ -63,13 +78,13 @@ export class DirectoryCore {
   whoami(s) {
     const u = s.user;
     if (u.role === 'master') {
-      if (!s.as) return { user: { email: u.email, name: u.name, role: 'master', master: true }, hotel: null };
-      const h = this.hotel(s.as); if (!h) { this.sql.exec("UPDATE d_sessions SET as_hotel='' WHERE h=?", s.key); return { user: { email: u.email, name: u.name, role: 'master', master: true }, hotel: null }; }
-      return { user: { email: u.email, name: u.name, role: 'owner', master: true }, hotel: { id: h.id, name: h.name, status: h.status, template: h.template, tz: h.tz } };
+      if (!s.as) return { user: { email: u.email, name: u.name, role: 'master', master: true, recovery: !!u.rc }, hotel: null };
+      const h = this.hotel(s.as); if (!h) { this.sql.exec("UPDATE d_sessions SET as_hotel='' WHERE h=?", s.key); return { user: { email: u.email, name: u.name, role: 'master', master: true, recovery: !!u.rc }, hotel: null }; }
+      return { user: { email: u.email, name: u.name, role: 'owner', master: true, recovery: !!u.rc }, hotel: { id: h.id, name: h.name, status: h.status, template: h.template, tz: h.tz } };
     }
     const h = this.hotel(u.hotel); if (!h) throw err(403, 'This login is not attached to a hotel any more.');
     if (h.status !== 'active') throw err(403, this.offMessage(h));
-    return { user: { email: u.email, name: u.name, role: u.role, master: false }, hotel: { id: h.id, name: h.name, status: h.status, template: h.template, tz: h.tz } };
+    return { user: { email: u.email, name: u.name, role: u.role, master: false, recovery: !!u.rc }, hotel: { id: h.id, name: h.name, status: h.status, template: h.template, tz: h.tz } };
   }
   newToken(email, kind) {
     const token = nc.randomBytes(32).toString('hex');
@@ -137,15 +152,28 @@ export class DirectoryCore {
       if (!u || u.disabled) throw err(410, 'This link has expired or was already used. Ask for a new one with "Forgot password".');
       if (p === '/auth/token-check') return ok({ email: u.email, name: u.name, kind: t.kind });
       if (u.role !== 'master') { const h = this.hotel(u.hotel); if (!h || h.status !== 'active') throw err(403, this.offMessage(h)); }
-      this.setPw(u, b.password); this.saveUser(u);
+      this.setPw(u, b.password); const recoveryCode = this.makeCode(u); this.saveUser(u);
       this.sql.exec('DELETE FROM d_tokens WHERE email=?', u.email); this.sql.exec('DELETE FROM d_sessions WHERE email=?', u.email); delete this.fails[u.email];
-      this.log(u.email, 'set a new password by link'); return { status: 200, json: { ok: true }, cookie: this.startSession(u) };
+      this.log(u.email, 'set a new password by link'); return { status: 200, json: { ok: true, recoveryCode }, cookie: this.startSession(u) };
+    }
+    if (p === '/auth/recover' && POST) {   // forgot the password AND cannot get e-mail: e-mail address + recovery code + a new password
+      const email = normEmail(b.email), keys = ['e:' + email].concat(req.ip ? ['i:' + req.ip] : []);
+      if (this.recoverBlocked(keys)) throw err(429, 'Too many wrong tries. Wait an hour, or ask your manager for a new password link.');
+      const u = validEmail(email) ? this.user(email) : null, good = this.codeOk(u, b.code);
+      if (!good || u.disabled) { this.recoverFail(keys); throw err(401, 'That e-mail and recovery code don\'t match.'); }
+      if (u.role !== 'master') { const h = this.hotel(u.hotel); if (!h || h.status !== 'active') throw err(403, this.offMessage(h)); }
+      if (b.password !== b.password2 && b.password2 !== undefined) throw err(400, 'The two passwords are not the same.');
+      this.setPw(u, b.password); const recoveryCode = this.makeCode(u); this.saveUser(u);   // the used code is gone: makeCode replaced it
+      this.sql.exec('DELETE FROM d_tokens WHERE email=?', u.email); this.sql.exec('DELETE FROM d_sessions WHERE email=?', u.email); delete this.fails[u.email]; for (const k of keys) delete this.rfails[k];
+      this.log(u.email, 'chose a new password with a recovery code'); return { status: 200, json: { ok: true, recoveryCode }, cookie: this.startSession(u) };
     }
     const s = this.session(req.cookie); if (!s) throw err(401, 'Please sign in.');
     const me = s.user;
     if (p === '/auth/logout' && POST) { this.sql.exec('DELETE FROM d_sessions WHERE h=?', s.key); return { status: 200, json: { ok: true }, cookie: this.cookie('', 0) }; }
     if (p === '/auth/whoami') return { status: 200, json: this.whoami(s) };
     if (p === '/account/password' && POST) { if (!this.pwOk(me, b.old)) throw err(400, 'The current password is wrong.'); this.setPw(me, b.new); this.saveUser(me); this.sql.exec('DELETE FROM d_sessions WHERE email=? AND h<>?', me.email, s.key); return ok(); }
+
+    if (p === '/account/recovery' && POST) { if (!this.pwOk(me, b.password)) throw err(400, 'The current password is wrong.'); const recoveryCode = this.makeCode(me); this.saveUser(me); this.log(me.email, 'made a new recovery code'); return ok({ recoveryCode }); }
 
     /* ----- the hotel's own logins (owner and managers) ----- */
     if (p.startsWith('/account/')) {

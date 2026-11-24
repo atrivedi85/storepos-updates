@@ -587,3 +587,7 @@ main.ios .rsearch{color:var(--ios-gray)}
   main.ios .hkcard .hknote input{min-height:48px}
   main.ios .csday{flex-wrap:nowrap}
 }
+
+/* recovery code screen + banner (Nov 2026) */
+#modal .rccode{font:700 28px/1.2 ui-monospace,Consolas,monospace;letter-spacing:2px;text-align:center;background:var(--ios-fill);border-radius:12px;padding:16px 8px;margin:14px 0;user-select:all;-webkit-user-select:all}
+.rcbanner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:#fff8e1;border:1px solid #f0c36d;border-radius:12px;padding:10px 14px;margin:0 0 12px;color:#1c1c1e}

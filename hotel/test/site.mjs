@@ -6,9 +6,9 @@ export async function makeSite(repo) {
   const sqlOf = db => ({ exec(q, ...p) { const rows = db.prepare(q).all(...p); return { toArray: () => rows }; } });
   const mails = [], dirDb = new DatabaseSync(':memory:'), hotels = new Map();
   const dir = new DirectoryCore(sqlOf(dirDb), { sendMail: async (cfg, m) => { if (/bounce/.test(m.to)) throw new Error('The email server refused RCPT'); mails.push(m); return true; } });
-  async function handle({ method, path: p, query, body, cookie, owner }) {
+  async function handle({ method, path: p, query, body, cookie, owner, ip }) {
     const origin = 'http://localhost:8791';
-    if (/^\/(auth|master|account)\//.test(p)) return dir.handle({ method, path: p, query: query || {}, body, cookie: cookie || '', origin, ledgerAdmin: !!owner });
+    if (/^\/(auth|master|account)\//.test(p)) return dir.handle({ method, path: p, query: query || {}, body, cookie: cookie || '', origin, ip, ledgerAdmin: !!owner });
     const w = await dir.handle({ method: 'GET', path: '/auth/whoami', query: {}, cookie: cookie || '', origin }); if (w.status !== 200) return w;
     if (!w.json.hotel) return { status: 400, json: { error: 'Open a hotel first.' } };
     const id = w.json.hotel.id; if (!hotels.has(id)) { const db = new DatabaseSync(':memory:'); hotels.set(id, { db, core: new HotelCore(sqlOf(db)) }); }

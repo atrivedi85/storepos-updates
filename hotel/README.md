@@ -59,6 +59,13 @@ and every rule there starts with `main.ios` or `#modal`, so the dark top bar, it
 - **Roles**: master → owner → manager (GM) → desk, hk. The owner makes manager, desk and hk logins; a manager makes desk and hk.
 - **Sign-in is by e-mail address.** A new login gets a "choose your password" link (7 days, one use), e-mailed and also shown to copy.
   "Forgot your password?" e-mails a link (60 minutes, one use, at most 3 an hour). One e-mail address = one login, in one hotel.
+- **Recovery codes** (backup for people who cannot get e-mail). Every login, the master account too, can have ONE code like `K7Q2-M9XD-4TPA`
+  (12 letters/digits without 0 O 1 I L). Only a salted scrypt hash is kept (`u.rc`), never the code. It is made and shown once (Copy, Print, "I wrote it down")
+  when someone chooses a password from a link, after a successful recovery, and from My password › "Make a new recovery code" (needs the current password; replaces the old one).
+  Logins without a code see a banner after sign-in until they make one ("Later" hides it until the next sign-in). Sign-in page: "Forgot your password?" › "Use a recovery code"
+  (`/auth/recover`: e-mail, code, new password twice). Codes ignore case, dashes and spaces. Wrong e-mail, wrong code and turned-off login all answer
+  "That e-mail and recovery code don't match."; 5 wrong tries an hour per e-mail (and per IP when `req.ip` is given) lock it; a turned-off hotel answers with the kill-switch message.
+  Success works like the e-mail reset: new password, other sessions signed out, signed in, fresh code shown. Setup › Logins shows "Recovery code: Yes/No". "Send a new password link" stays the other way.
 - **E-mail** goes out through the SMTP account the master types into E-mail settings (Gmail + app password), using Ledger Desk's `sendMail`.
 - Session cookie `hd_s`, Path=/hotel, 14 days. `index.js` strips every `x-hd-*` header from browsers and adds its own.
 

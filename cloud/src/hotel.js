@@ -23,7 +23,7 @@ export class Hotel extends DurableObject {
     const base = { method: req.method, path: u.pathname.replace(/^\/hotel\/api/, ''), query: Object.fromEntries(u.searchParams), body };
     if (req.headers.get('x-hd-kind') === 'dir') {
       this.dir = this.dir || new DirectoryCore(this.ctx.storage.sql, { scrypt: ledgerCrypto.scrypt64, sendMail });
-      const r = await this.dir.handle({ ...base, cookie: req.headers.get('cookie') || '', origin: u.origin, ledgerAdmin: req.headers.get('x-hd-owner') === '1', internal: req.headers.get('x-hd-internal') === '1' });
+      const r = await this.dir.handle({ ...base, cookie: req.headers.get('cookie') || '', origin: u.origin, ledgerAdmin: req.headers.get('x-hd-owner') === '1', internal: req.headers.get('x-hd-internal') === '1', ip: req.headers.get('cf-connecting-ip') || '' });
       return out(r.status, r.json, r.cookie);
     }
     let who = null; try { who = JSON.parse(decodeURIComponent(req.headers.get('x-hd-who') || '')); } catch (e) { /* not signed in */ }
