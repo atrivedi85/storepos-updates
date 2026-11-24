@@ -30,7 +30,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 1100px) { #acctBtn .nm { display: none; } #acctBtn { padding: 4px; } }
 #toolbar { display: flex; flex: 1; align-items: stretch; gap: 4px; min-width: 0; flex-wrap: wrap; }
 .group { display: flex; align-items: center; gap: 2px; padding: 0 6px; border-left: 1px solid var(--line); }
-.group:first-child { border-left: 0; }
+.group:first-child, #sideToggle + .group { border-left: 0; }
 .tb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 46px; padding: 4px 6px; background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; color: var(--text); }
 .tb span { font-size: 10.5px; color: var(--muted); }
 .tb i { display: flex; }
@@ -280,3 +280,60 @@ input.fieldinput:focus, textarea.fieldinput:focus, select.fieldinput:focus { bor
 .page.tool-signfield .objLayer { z-index: 7; }
 .page.tool-signfield .obj.signfield { pointer-events: auto; cursor: move; }
 .sfdel { position: absolute; right: -9px; top: -20px; width: 18px; height: 18px; line-height: 16px; text-align: center; border-radius: 50%; background: var(--danger); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; z-index: 11; }
+
+/* ---- phones and small tablets (desktop layout above 820px is untouched) ---- */
+#sideToggle, #sideBackdrop { display: none; }
+@media (max-width: 820px) {
+  html, body { overscroll-behavior: none; }
+  #app { height: 100dvh; }
+  #topbar { gap: 4px; padding: 4px 6px; flex-wrap: nowrap; }
+  .brand { padding: 0; flex: none; }
+  .brand span { display: none; }
+  .brand svg { width: 30px; height: 30px; }
+  #topbar:has(#acctSlot) #appsBtn, #topbar:has(#acctSlot) #acctBtn { display: none; }   /* web: the site account button (one avatar, has Sign out + apps) */
+  #acctBtn .nm { display: none; }
+  #acctSlot { flex: none; margin-left: 0 !important; }
+  #toolbar { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; align-items: center; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #toolbar::-webkit-scrollbar { display: none; }
+  #toolbar .spacer { display: none; }
+  #toolbar .group { flex: none; padding: 0 4px; }
+  #toolbar .tb { min-width: 48px; min-height: 44px; }
+  #toolbar .tb.icon-only { min-width: 44px; }
+  #toolbar #zoomSelect { min-height: 44px; }
+  #tbUpdate { display: none; }
+  #sideToggle { display: flex; }
+  #toolbar [data-action="pagesMenu"] span { font-size: 0; }
+  #toolbar [data-action="pagesMenu"] span::after { content: "Organize"; font-size: 10.5px; }
+  #optionsbar { padding: 4px 8px; gap: 10px; min-height: 36px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  #optionsbar > * { flex: none; }
+  #optionsbar .opt-hint { display: none; }
+  #tabbar { overflow-x: auto; }
+  /* thumbnails: slide-in drawer instead of a split pane */
+  #main { position: relative; }
+  #sidebar { position: absolute; z-index: 60; top: 0; bottom: 0; left: 0; width: min(280px, 82vw); resize: none; transform: translateX(-102%); transition: transform .2s ease; box-shadow: 6px 0 24px #0009; }
+  body.side-open #sidebar { transform: none; }
+  #sideBackdrop { position: absolute; inset: 0; z-index: 55; background: #0007; }
+  body.side-open #sideBackdrop { display: block; }
+  /* start screen */
+  #welcome { align-items: flex-start; overflow-y: auto; }
+  .welcome-card { width: 100%; max-width: none; padding: 24px 16px 32px; }
+  .welcome-card h1 { font-size: 26px; }
+  .welcome-actions { flex-direction: column; align-items: stretch; }
+  .welcome-actions .btn { width: 100%; min-height: 48px; font-size: 15px; justify-content: center; }
+  .welcome-card .hint { display: none; }
+  /* dialogs fit the screen and scroll inside */
+  .modal-bg { padding: 12px; }
+  .modal { min-width: 0 !important; width: auto; max-width: calc(100vw - 24px) !important; max-height: calc(100dvh - 24px); overflow: auto; padding: 16px; }
+  .modal .row { flex-wrap: wrap; }
+  .modal .row label, .modal .row label.wide { min-width: 0; max-width: none; }
+  .modal .footer { flex-wrap: wrap; }
+  .modal .footer button, .modal .btn { min-height: 40px; }
+  .modal canvas, .modal img { max-width: 100%; }
+  .cloud-panel { min-width: 0 !important; }
+  .cloud-row { flex-wrap: wrap; }
+  .lock-card { padding: 20px 16px; }
+  #status { padding: 3px 8px; gap: 6px; overflow-x: auto; white-space: nowrap; }
+  #stDoc, #stLic, #stVer, #stUpdate { display: none; }
+  #status { justify-content: flex-end; }
+  #searchbar { left: 8px; right: 8px; max-width: none; }
+}

@@ -846,10 +846,10 @@ export class Editor {
     }
 
     switch (this.tool) {
-      case 'select': add('<span class="opt-title">Select</span><span>Click an object to edit it · Double-click text to edit · Fill forms directly</span>'); break;
-      case 'highlight': title('Highlight'); swatches(o.hl, (c) => { o.hl = c; }); add('<span>Select text to highlight it</span>'); break;
-      case 'underline': title('Underline'); swatches(o.ul, (c) => { o.ul = c; }); add('<span>Select text to underline it</span>'); break;
-      case 'strike': title('Strikethrough'); swatches(o.st, (c) => { o.st = c; }); add('<span>Select text to strike it out</span>'); break;
+      case 'select': add('<span class="opt-title">Select</span><span class="opt-hint">Click an object to edit it · Double-click text to edit · Fill forms directly</span>'); break;
+      case 'highlight': title('Highlight'); swatches(o.hl, (c) => { o.hl = c; }); add('<span class="opt-hint">Select text to highlight it</span>'); break;
+      case 'underline': title('Underline'); swatches(o.ul, (c) => { o.ul = c; }); add('<span class="opt-hint">Select text to underline it</span>'); break;
+      case 'strike': title('Strikethrough'); swatches(o.st, (c) => { o.st = c; }); add('<span class="opt-hint">Select text to strike it out</span>'); break;
       case 'draw': title('Freehand'); swatches(o.inkColor, (c) => { o.inkColor = c; }); slider('Width', 1, 24, o.width, (v) => { o.width = v; }); break;
       case 'shape':
         title('Shape');
@@ -858,10 +858,10 @@ export class Editor {
         add('<span>Fill</span>'); swatches(o.fill, (c) => { o.fill = c; }, true);
         slider('Width', 1, 24, o.width, (v) => { o.width = v; });
         break;
-      case 'note': title('Sticky note'); swatches(o.noteColor, (c) => { o.noteColor = c; }); add('<span>Click on the page to add a note</span>'); break;
+      case 'note': title('Sticky note'); swatches(o.noteColor, (c) => { o.noteColor = c; }); add('<span class="opt-hint">Click on the page to add a note</span>'); break;
       case 'textbox': case 'edittext':
         title(this.tool === 'edittext' ? 'Edit text' : 'Text box');
-        add(this.tool === 'edittext' ? '<span>Click existing text to edit it (font &amp; size are matched) · click empty space to add new text</span>' : '<span>Click on the page to type</span>');
+        add(this.tool === 'edittext' ? '<span class="opt-hint">Click existing text to edit it (font &amp; size are matched) · click empty space to add new text</span>' : '<span class="opt-hint">Click on the page to type</span>');
         textControls(() => ({ size: o.fontSize, color: o.fontColor, font: o.font, bold: o.bold, italic: o.italic }), (p) => {
           if (p.size) o.fontSize = p.size; if (p.color) o.fontColor = p.color; if (p.font) o.font = p.font;
           if (p.bold !== undefined) o.bold = p.bold; if (p.italic !== undefined) o.italic = p.italic;
@@ -870,7 +870,7 @@ export class Editor {
       case 'field':
         title('Form field');
         seg([['text', 'Text field'], ['check', 'Checkbox'], ['dropdown', 'Dropdown']], o.fieldKind, (v) => { o.fieldKind = v as FieldObj['kind']; });
-        add('<span>Click or drag on the page to place the field</span>');
+        add('<span class="opt-hint">Click or drag on the page to place the field</span>');
         break;
       case 'erase': {
         title('Erase area');
@@ -893,7 +893,7 @@ export class Editor {
         });
         const eb = el('button', 'btn', {}, 'Edit signers…'); eb.style.padding = '4px 10px'; eb.onclick = () => this.onEsign?.editSigners(); chips.appendChild(eb);
         seg([['signature', 'Signature'], ['initials', 'Initials'], ['date', 'Date signed'], ['text', 'Name / text']], d.kind, (v) => { d.kind = v as SignFieldObj['kind']; });
-        add('<span>Click on the page where this person fills in. Click a box to move, resize or delete it.</span>');
+        add('<span class="opt-hint">Click on the page where this person fills in. Click a box to move, resize or delete it.</span>');
         const fix = add('');
         const ub = el('button', 'btn', {}, 'Undo last box'); ub.style.padding = '4px 10px'; ub.onclick = () => this.undoLastBox();
         const cb2 = el('button', 'btn', {}, 'Clear this signer\u2019s boxes'); cb2.style.padding = '4px 10px'; cb2.onclick = () => this.clearBoxesFor(d.cur);
@@ -904,7 +904,7 @@ export class Editor {
         acts.append(send, cancel);
         break;
       }
-      case 'place': title('Place'); add(`<span>Click on the page to place (drag to size). ${this.pending?.repeat ? 'Click again to place more copies. ' : ''}Esc when done.</span>`); break;
+      case 'place': title('Place'); add(`<span class="opt-hint">Click on the page to place (drag to size). ${this.pending?.repeat ? 'Click again to place more copies. ' : ''}Esc when done.</span>`); break;
     }
   }
 }

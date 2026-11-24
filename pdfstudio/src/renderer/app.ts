@@ -729,6 +729,13 @@ function bind() {
   api.onUpdate(onUpdate);
   ((window as any).__dbg ||= {}).fakeUpdate = onUpdate;
   new ResizeObserver(() => app.view?.refit()).observe($('#stage'));
+  // Phones: the page thumbnails are a slide-in drawer (button in the toolbar, tap the dark area or a page to close)
+  const phone = window.matchMedia('(max-width: 820px)');
+  const setDrawer = (open: boolean) => document.body.classList.toggle('side-open', open && phone.matches);
+  $('#sideToggle').onclick = () => setDrawer(!document.body.classList.contains('side-open'));
+  $('#sideBackdrop').onclick = () => setDrawer(false);
+  $('#thumbs').addEventListener('click', () => { if (phone.matches) setTimeout(() => setDrawer(false), 150); });
+  phone.addEventListener('change', () => setDrawer(false));
   api.onOpenFiles((f) => app.openPaths(f));
   api.onCloudEvent((e) => {
     if (e.pending !== undefined) $('#stCloud').textContent = e.pending ? `Cloud: ${e.pending} waiting to sync` : '';

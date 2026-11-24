@@ -161,7 +161,7 @@ export class DocView {
     const t = this.tab;
     if (typeof t.zoomMode === 'number') { t.zoom = t.zoomMode; return; }
     const info = t.pages[Math.min(t.currentPage, t.pages.length - 1)] || { w: 612, h: 792 };
-    const availW = Math.max(100, this.root.clientWidth - 48);
+    const availW = Math.max(100, this.root.clientWidth - (this.root.clientWidth <= 600 ? 16 : 48));
     const availH = Math.max(100, this.root.clientHeight - 36);
     t.zoom = t.zoomMode === 'fitwidth' ? availW / info.w : Math.min(availW / info.w, availH / info.h);
     t.zoom = Math.max(0.1, Math.min(6, t.zoom));
