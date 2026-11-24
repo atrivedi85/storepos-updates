@@ -34,7 +34,8 @@ export class DocTab {
   past: Snapshot[] = [];
   future: Snapshot[] = [];
   dirty = false;
-  zoomMode: ZoomMode = 'fitwidth';
+  // A new document opens showing the whole page; on a phone-size screen it fits the width instead (a whole page would be too small to read).
+  zoomMode: ZoomMode = (typeof window !== 'undefined' && window.innerWidth <= 820) ? 'fitwidth' : 'fitpage';
   zoom = 1;
   currentPage = 0;
   selectedPages = new Set<number>();
