@@ -18,5 +18,9 @@ mkdir -p public/hotel && cp -r ../hotel/app/. public/hotel/
 for f in public/pos/index.html public/books/index.html public/books/login.html public/hotel/index.html; do
   [ -f "$f" ] && sed -i 's#</body>#<script src="/pdfstudio/apps.js" defer></script></body>#' "$f"
 done
-printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /books/\nDisallow: /hotel/\nDisallow: /api/\nDisallow: /v1/\n' > public/robots.txt
+# Trivedi account button (same piece, top-right, on every page). The home page, /download and /account already include it.
+for f in public/pos/index.html public/books/index.html; do
+  [ -f "$f" ] && sed -i 's#</body>#<script src="/account-bar.js" defer></script></body>#' "$f"
+done
+printf 'User-agent: *\nAllow: /$\nDisallow: /pos/\nDisallow: /books/\nDisallow: /hotel/\nDisallow: /api/\nDisallow: /v1/\nDisallow: /account\n' > public/robots.txt
 echo "website ready: $(find public -type f | wc -l) files"

@@ -3,75 +3,91 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Trivedi POS</title>
-<meta name="description" content="Store POS point of sale, Hotel Desk front desk and Ledger Desk accounting for small businesses.">
+<title>Trivedi POS: point of sale, bookkeeping and PDF tools for small stores</title>
+<meta name="description" content="Store POS for your counter, Ledger Desk for your books and PdfStudio for your paperwork. One Trivedi account for all of it.">
+<meta name="theme-color" content="#0b1526">
 <link rel="icon" href="/icon.png">
-<style>
-:root{--bg:#0f1b2d;--panel:#ffffff;--ink:#14213a;--muted:#5b6880;--blue:#1f6fd1;--green:#1f9d55;--line:#e3e8f0}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;background:var(--bg);color:#fff;display:flex;flex-direction:column}
-header{padding:clamp(8px,1.6vh,18px) 20px 0;max-width:1240px;width:100%;margin:0 auto;display:flex;align-items:center;gap:10px}
-header img{width:34px;height:34px;border-radius:9px}
-header b{font-size:18px;letter-spacing:.2px}
-main{flex:1;min-height:0;max-width:1240px;width:100%;margin:0 auto;padding:0 20px;display:flex;flex-direction:column}
-h1{font-size:clamp(24px,4.2vh,42px);line-height:1.1;margin:clamp(8px,1.8vh,20px) 0 6px;font-weight:800}
-.lead{color:#c4cee0;font-size:clamp(14px,2vh,17px);line-height:1.4;margin:0 0 clamp(10px,2vh,20px)}
-/* six tiles, three across and two down, sized to fill the screen so nothing needs scrolling on a computer */
-.cards{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:clamp(10px,1.8vh,16px)}
-.card{background:var(--panel);color:var(--ink);border-radius:16px;padding:clamp(12px,2.2vh,22px);display:flex;flex-direction:column;gap:clamp(4px,1vh,10px);min-height:0;overflow:hidden}
-.card h2{margin:0;font-size:clamp(17px,2.6vh,22px)}
-.card p{margin:0;color:var(--muted);line-height:1.4;font-size:clamp(13px,1.85vh,15px)}
-.btn{display:block;text-decoration:none;text-align:center;font-weight:700;font-size:clamp(14px,2vh,17px);padding:clamp(8px,1.4vh,13px) 16px;border-radius:10px;color:#fff;background:var(--green);margin-top:auto}
-.btn.blue{background:var(--blue)}
-.tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:#e8f1fd;color:var(--blue);align-self:flex-start}
-.card.soon{background:transparent;border:2px dashed #34486a;color:#8d9ab0;align-items:center;justify-content:center;text-align:center}
-.card.soon b{font-size:clamp(15px,2.2vh,19px);color:#b3bfd3}
-.card.soon span{font-size:13px}
-footer{color:#8d9ab0;font-size:12.5px;text-align:center;padding:clamp(6px,1.2vh,14px) 16px}
-@media (max-width:900px),(max-height:520px){html,body{height:auto}.cards{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));grid-template-rows:none}.card{min-height:150px}.card.soon{min-height:90px}}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<header><img src="/icon.png" alt=""><b>Trivedi POS</b></header>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><img src="/icon.png" alt="" width="34" height="34">Trivedi POS</a>
+  <nav class="nav" aria-label="Main"><a href="#products">Products</a><a href="/download">Download</a><a href="#contact">Contact</a></nav>
+  <div id="acctSlot"></div>
+</div></header>
+
 <main>
-  <h1>Run your store and hotel. Keep your books.</h1>
-  <p class="lead">Store POS for the counter, Hotel Desk for the front desk and Ledger Desk for accounting. Sign in from work, from home, or from your phone.</p>
-  <div class="cards">
-    <section class="card">
-      <span class="tag">Store owners</span>
-      <h2>Store POS: Back office</h2>
-      <p>Change prices, add items, receive invoices, check stock, and see today's sales and profit from anywhere. Connect once with the Cloud code from your store PC.</p>
-      <a class="btn" href="/pos/">Open back office</a>
-    </section>
-    <section class="card">
-      <span class="tag">New stores</span>
-      <h2>Store POS for Windows</h2>
-      <p>The full cash register for your store's PC: barcode scanning, receipts, cash drawer, inventory and employees. Download and activate with your owner code.</p>
-      <a class="btn" href="/download">Download Store POS</a>
-    </section>
-    <section class="card">
-      <span class="tag">Hotels</span>
-      <h2>Hotel Desk: Front desk</h2>
-      <p>Tape chart, reservations, check-in and check-out, guest folios, housekeeping, night audit and reports, on every front-desk computer. Sign in with your e-mail address.</p>
-      <a class="btn blue" href="/hotel/">Open Hotel Desk</a>
-    </section>
-    <section class="card">
-      <span class="tag">Invite only</span>
-      <h2>Ledger Desk: Accounting</h2>
-      <p>Free bookkeeping for our customers: bank and card imports, categories, reports and tax summaries. Your books are locked in your own browser.</p>
-      <a class="btn blue" href="/books/">Open Ledger Desk</a>
-    </section>
-    <section class="card">
-      <span class="tag">Web &amp; Windows app</span>
-      <h2>PdfStudio: PDF editor</h2>
-      <p>View, annotate, edit text, fill forms, sign and organize PDFs. Use it in your browser or install the Windows app. Sign in with your Ledger Desk username and password.</p>
-      <a class="btn blue" href="/pdfstudio/">Open PdfStudio</a>
-    </section>
-    <section class="card soon"><b>Coming soon</b><span>A new product is on the way.</span></section>
+<section class="hero"><div class="wrap">
+  <div>
+    <span class="eyebrow">For small stores</span>
+    <h1>Point of sale, bookkeeping and PDF tools in one place.</h1>
+    <p class="lead">Store POS runs your register. Ledger Desk keeps your books. PdfStudio handles your paperwork. One Trivedi account opens all three.</p>
+    <div class="cta"><a class="btn pri" href="/download">Download Store POS</a><a class="btn ghost" id="heroSign" href="/books/login?next=/">Sign in</a></div>
+    <p class="note">Store POS runs on Windows PCs and Android tablets, with a back office you can open from any browser.</p>
   </div>
+  <div class="frame" aria-hidden="true"><div class="bar"><i></i><i></i><i></i></div><img src="/img/register.jpg" alt="" width="1280" height="720" fetchpriority="high"></div>
+</div></section>
+
+<section class="s" id="products"><div class="wrap">
+  <div class="sh"><span class="eyebrow">Products</span><h2>Everything a small store needs, built by people who run one.</h2><p>Use them together or on their own. They all sign in with the same Trivedi account.</p></div>
+  <div class="grid3">
+    <article class="prod">
+      <div class="ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+      <h3>Store POS</h3><p class="tagline">The cash register for your counter.</p>
+      <ul><li>Barcode scanning, quick keys, receipts and cash drawer</li><li>Cash, credit, debit and EBT, plus discounts and promos</li><li>Inventory, purchase orders and receiving invoices</li><li>Sales, profit and item reports from any browser</li></ul>
+      <div class="links"><a class="btn pri sm" href="/download">Download for Windows</a><a class="btn line sm" href="/pos/">Open back office</a></div>
+    </article>
+    <article class="prod">
+      <div class="ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg></div>
+      <h3>Ledger Desk</h3><p class="tagline">Bookkeeping that stays private.</p>
+      <ul><li>Import bank and card statements (QBO and PDF)</li><li>Categories, bank rules and several stores in one company</li><li>Profit and loss, balance sheet and tax summaries</li><li>Your books are locked in your own browser with your password</li></ul>
+      <div class="links"><a class="btn pri sm" href="/books/">Open Ledger Desk</a></div>
+    </article>
+    <article class="prod">
+      <div class="ic" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></div>
+      <h3>PdfStudio</h3><p class="tagline">View, edit and sign PDFs.</p>
+      <ul><li>Annotate, edit text and fill in forms</li><li>Sign documents and send them for signature</li><li>Organize pages: reorder, merge and split</li><li>Use it in your browser or install the Windows app</li></ul>
+      <div class="links"><a class="btn pri sm" href="/pdfstudio/">Open PdfStudio</a></div>
+    </article>
+  </div>
+  <p class="also">Running a hotel? <a href="/hotel/">Hotel Desk</a> is the front-desk system on this site too.</p>
+</div></section>
+
+<section class="s alt" id="why"><div class="wrap">
+  <div class="sh"><span class="eyebrow">Why Trivedi POS</span><h2>Built to keep the register running.</h2></div>
+  <div class="why">
+    <div><div class="n" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/></svg></div><h3>Works offline</h3><p>Registers keep selling when the internet drops and catch up when it comes back.</p></div>
+    <div><div class="n" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z"/></svg></div><h3>Cloud sync</h3><p>Tablets, a second PC and the web back office stay in step with your store PC.</p></div>
+    <div><div class="n" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div><h3>EBT ready</h3><p>Mark EBT-eligible items and take EBT as a payment type at the counter.</p></div>
+    <div><div class="n" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5zM3 8v8l9 5 9-5V8M12 13v8"/></svg></div><h3>Inventory and purchase orders</h3><p>Track stock, order from vendors and receive invoices straight into your items.</p></div>
+    <div><div class="n" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><h3>Your data stays yours</h3><p>Store data lives on your own PC. What goes online is locked with your own key first.</p></div>
+  </div>
+</div></section>
+
+<section class="s" id="screens"><div class="wrap">
+  <div class="sh"><span class="eyebrow">See it</span><h2>A register your cashiers can learn in minutes.</h2><p>Real screens from Store POS (sample items).</p></div>
+  <div class="shots">
+    <figure><div class="fr"><img src="/img/register.jpg" alt="Store POS register screen with item buttons, a sale in progress and payment buttons" width="1280" height="720" loading="lazy"></div><figcaption><b>Register</b>Big buttons, quick keys and a clear total.</figcaption></figure>
+    <figure><div class="fr"><img src="/img/inventory.jpg" alt="Store POS inventory screen" width="1280" height="720" loading="lazy"></div><figcaption><b>Inventory</b>Items, prices, stock and vendors in one list.</figcaption></figure>
+    <figure><div class="fr"><img src="/img/reports.jpg" alt="Store POS sales reports screen" width="1280" height="720" loading="lazy"></div><figcaption><b>Reports</b>Sales, categories and tenders for any date range.</figcaption></figure>
+  </div>
+</div></section>
+
+<section class="s alt"><div class="wrap">
+  <div class="band"><div><h2>One Trivedi account for everything.</h2><p>Sign in once to open your stores, Ledger Desk and PdfStudio. Add your team to a store from the back office, each with their own role.</p></div><a class="btn pri" id="bandSign" href="/books/login?next=/account">Sign in</a></div>
+</div></section>
 </main>
-<footer>© <span id="y"></span> Indo American LLC · <a style="color:#8d9ab0" href="mailto:atrivedi2508@gmail.com">atrivedi2508@gmail.com</a></footer>
-<script>document.getElementById('y').textContent=new Date().getFullYear()</script>
+
+<footer class="foot" id="contact"><div class="wrap">
+  <div><a class="brand" href="/"><img src="/icon.png" alt="" width="34" height="34">Trivedi POS</a><p style="margin:12px 0 0;max-width:320px">Point of sale, bookkeeping and PDF tools for small stores.</p></div>
+  <div><h4>Products</h4><ul><li><a href="/download">Store POS for Windows</a></li><li><a href="/pos/">Store POS back office</a></li><li><a href="/books/">Ledger Desk</a></li><li><a href="/pdfstudio/">PdfStudio</a></li></ul></div>
+  <div><h4>Contact</h4><ul><li><a href="mailto:atrivedi2508@gmail.com">atrivedi2508@gmail.com</a></li><li><a href="https://atrivedi85.github.io/storepos-updates/privacy-policy.html">Privacy policy</a></li></ul></div>
+  <div class="legal">© <span id="y"></span> Indo American LLC. All rights reserved.</div>
+</div></footer>
+<script>document.getElementById('y').textContent=new Date().getFullYear();
+document.addEventListener('tp-account',function(e){var m=e.detail,h=document.getElementById('heroSign'),b=document.getElementById('bandSign');if(m){h.textContent='My account';h.href='/account';b.textContent='Open my account';b.href='/account'}else{h.textContent='Sign in';h.href='/books/login?next=/';b.textContent='Sign in';b.href='/books/login?next=/account'}});</script>
+<script src="/account-bar.js" defer></script>
 </body>
 </html>

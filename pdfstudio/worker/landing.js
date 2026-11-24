@@ -41,5 +41,5 @@ small{color:var(--mut)}.foot{margin-top:22px;color:var(--mut);font-size:13px;lin
 </div>
 <p class="foot"><a href="/" style="color:inherit">&larr; Back to all apps</a></p>
 <p class="foot">PdfStudio uses your Ledger Desk account. Sign in with your Ledger Desk username and password. Need an account? Ask the owner.</p>
-</main><script src="/pdfstudio/apps.js" defer></script></body></html>`;
+</main><script src="/pdfstudio/apps.js" defer></script><script src="/account-bar.js" defer></script></body></html>`;
 }
