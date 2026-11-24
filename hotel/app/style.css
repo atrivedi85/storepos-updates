@@ -389,3 +389,201 @@ input[type=radio]{width:20px;height:20px;min-height:0;padding:0;vertical-align:m
 .csdet label{display:block;margin-bottom:10px}
 .csday{display:flex;align-items:center;gap:16px;padding:6px 0;border-bottom:1px solid var(--line)}.csday b{width:56px}
 @media (max-width:700px){.csg{grid-template-columns:1fr}.csday{gap:10px;flex-wrap:wrap}.csday label{min-height:44px;display:flex;align-items:center;margin:0}.csdet .btn,.mfoot .btn{min-height:44px}}
+
+/* =====================================================================================================
+   iOS look (Nov 2026). Every rule below starts with  main.ios  (all screens except Home: app.js leaves the
+   class off <main> on Home) or  #modal  (the pop-up windows). The dark top bar, its menus and Home are never
+   touched, and print is untouched (print draws #print, which is outside both).
+   ===================================================================================================== */
+main.ios,#modal{--ios-blue:#007aff;--ios-red:#ff3b30;--ios-green:#34c759;--ios-gray:#6d6d72;--ios-sep:#c6c6c8;--ios-fill:#e9e9ee;--ios-bg:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:#1c1c1e}
+main.ios{background:var(--ios-bg);padding:12px 20px 40px}
+main.ios .hline{color:var(--ios-gray);font-size:15px;margin:0 0 4px}
+:is(main.ios,#modal) .hint,:is(main.ios,#modal) .empty{color:var(--ios-gray)}
+/* titles */
+main.ios h1{font-size:34px;font-weight:700;letter-spacing:-.02em;margin:2px 0 14px;text-align:left}
+main.ios h1.pgt{text-align:left}
+main.ios .pgt-c{font-size:30px;font-weight:700;letter-spacing:-.02em}
+main.ios h1.rtitle{font-size:34px;font-weight:700;text-align:center;letter-spacing:-.02em}
+main.ios .rdesc{color:var(--ios-gray);font-size:16px}
+main.ios .rfmt{font-weight:600;font-size:20px}
+main.ios h2,main.ios .sec{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ios-gray);border:0;margin:22px 0 7px;padding:0 4px}
+main.ios .tside h3,main.ios .pside h3,#modal .pside h3{font-weight:700;font-size:20px;margin:6px 0 10px;text-transform:none;letter-spacing:0}
+#modal .mtitle,#modal .mtitle.thin{font-size:22px;font-weight:700;letter-spacing:-.01em}
+#modal .pgmain .mtitle,#modal .pgmain.wz .mtitle{font-size:28px;font-weight:700;letter-spacing:-.02em}
+#modal .mbox h3,#modal .wz3 h3{font-weight:600;font-size:18px;margin:14px 0 6px}
+#modal .sec{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ios-gray);border:0;margin:20px 0 6px}
+/* back link above a title */
+main.ios .backl{margin:0}
+main.ios .backl a{display:inline-flex;align-items:center;min-height:44px;color:var(--ios-blue);font-size:17px;text-decoration:none}
+main.ios .backl a:active{opacity:.4}
+/* cards */
+:is(main.ios,#modal) .card{background:#fff;border:0;border-radius:12px;padding:16px;box-shadow:0 0 0 .5px rgba(0,0,0,.04)}
+:is(main.ios,#modal) .wrap{background:#fff;border:0;border-radius:12px}
+:is(main.ios,#modal) :is(.infoban,.gnotes,.rwrow,.rwbox,.cutbox,.dnrban){border-radius:12px}
+main.ios .lst-bar{background:#fff;border-radius:12px}
+main.ios .lst-q input{min-height:40px}
+main.ios .lst-date .btn.sm{min-width:44px}
+main.ios .tside{background:#fff;border:0;border-radius:12px;padding:6px 16px 14px}
+main.ios .tside a.un{border-bottom:.5px solid var(--ios-sep)}
+main.ios .legend{color:var(--ios-gray)}
+main.ios #repOut{background:#e5e5ea;border-radius:12px}
+main.ios hr.dash{border-top:.5px solid var(--ios-sep);margin:18px 0}
+/* buttons */
+:is(main.ios,#modal) .btn{background:var(--ios-fill);color:var(--ios-blue);border-radius:10px;font-weight:600;font-size:16px;min-height:40px;padding:8px 18px}
+:is(main.ios,#modal) .btn.sm{min-height:34px;padding:5px 13px;font-size:15px}
+:is(main.ios,#modal) .btn:active{filter:none;opacity:.55}
+:is(main.ios,#modal) .btn.green{background:#34c759!important;color:#fff!important}
+:is(main.ios,#modal) .btn.blue,:is(main.ios,#modal) .btn.teal,:is(main.ios,#modal) .btn.slate{background:var(--ios-blue)!important;color:#fff!important}
+:is(main.ios,#modal) .btn.red{background:var(--ios-red)!important;color:#fff!important}
+:is(main.ios,#modal) .btn.amber{background:#ff9500!important;color:#fff!important}
+:is(main.ios,#modal) .btn[disabled]{opacity:.35}
+:is(main.ios,#modal) .mfoot{gap:10px}
+:is(main.ios,#modal) .btn.wobtn{min-height:48px;font-size:16px}
+/* inputs */
+:is(main.ios,#modal) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not(.scancap){border:1px solid #d1d1d6;border-radius:10px;background-color:#fff;padding:8px 12px;min-height:40px;font-size:16px;color:#000}
+:is(main.ios,#modal) textarea:not(.scancap){min-height:64px;line-height:1.35}
+:is(main.ios,#modal) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):focus{outline:0;border-color:var(--ios-blue);box-shadow:0 0 0 3px rgba(0,122,255,.2)}
+:is(main.ios,#modal) select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px}
+:is(main.ios,#modal) .grid label{color:var(--ios-gray);font-size:13px;font-weight:500;gap:5px}
+:is(main.ios,#modal) .grid label.chk,:is(main.ios,#modal) .chk{font-size:16px;color:#000}
+:is(main.ios,#modal) .err{color:var(--ios-red);font-weight:600}
+:is(main.ios,#modal) table :is(input,select):not([type=checkbox]):not([type=radio]){min-height:36px;padding:4px 10px}
+/* yes / no settings: iOS switches, on the same checkboxes (so the code that reads them does not change) */
+:is(main.ios,#modal) input[type=checkbox]:not([data-f=tax]):not([data-f=days]):not(.swk input){-webkit-appearance:none;appearance:none;width:51px;height:31px;min-height:0;padding:0;margin:0;border:0;border-radius:16px;background:#e9e9ea;position:relative;flex-shrink:0;cursor:pointer;vertical-align:middle;transition:background .2s}
+:is(main.ios,#modal) input[type=checkbox]:not([data-f=tax]):not([data-f=days]):not(.swk input)::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s}
+:is(main.ios,#modal) input[type=checkbox]:not([data-f=tax]):not([data-f=days]):not(.swk input):checked{background:var(--ios-green)}
+:is(main.ios,#modal) input[type=checkbox]:not([data-f=tax]):not([data-f=days]):not(.swk input):checked::after{transform:translateX(20px)}
+:is(main.ios,#modal) input[type=checkbox]:not([data-f=tax]):not([data-f=days]):not(.swk input):disabled{opacity:.45;cursor:default}
+:is(main.ios,#modal) input[type=checkbox]:focus-visible,:is(main.ios,#modal) input[type=radio]:focus-visible{outline:2px solid var(--ios-blue);outline-offset:2px}
+:is(main.ios,#modal) table input[type=checkbox]:not([data-f=tax]):not([data-f=days]){width:42px;height:26px}
+:is(main.ios,#modal) table input[type=checkbox]:not([data-f=tax]):not([data-f=days])::after{width:22px;height:22px}
+:is(main.ios,#modal) table input[type=checkbox]:not([data-f=tax]):not([data-f=days]):checked::after{transform:translateX(16px)}
+:is(main.ios,#modal) input[type=checkbox][data-f=tax],:is(main.ios,#modal) input[type=checkbox][data-f=days],:is(main.ios,#modal) input[type=radio]{accent-color:var(--ios-blue)}
+:is(main.ios,#modal) label.chk{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
+:is(main.ios,#modal) label.chk input[type=checkbox]{order:2;margin-left:auto}
+:is(main.ios,#modal) .grid label.chk.c2,:is(main.ios,#modal) .grid label.chk.c3{grid-column:span 4}
+:is(main.ios,#modal) .rmflags{display:flex;flex-direction:column;gap:0;width:100%;grid-column:1/-1}
+:is(main.ios,#modal) .rmflags .chk{width:100%}
+:is(main.ios,#modal) .rmflags .chk{border-bottom:.5px solid var(--ios-sep)}
+:is(main.ios,#modal) .rmflags .chk:last-child{border-bottom:0}
+:is(main.ios,#modal) .swk i{background:#e9e9ea}
+:is(main.ios,#modal) .swk input:checked+i{background:var(--ios-green)}
+/* choices with few options: segmented controls */
+main.ios .segc{display:inline-flex;background:#e3e3e8;border-radius:9px;padding:2px}
+main.ios .segc button{min-height:32px;padding:5px 20px;border-radius:7px;font-weight:600;font-size:15px;color:#000}
+main.ios .segc button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+main.ios .vh{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0;overflow:hidden}
+main.ios .csday{gap:0;padding:8px 0;min-height:52px;border-bottom:.5px solid var(--ios-sep)}
+main.ios .csday b{width:64px;font-weight:600}
+main.ios .csday label.dchk{position:relative;display:flex;align-items:center;justify-content:center;min-width:68px;min-height:38px;margin:0;padding:0 16px;background:var(--ios-fill);border-radius:0;font-size:15px;font-weight:600;cursor:pointer;user-select:none}
+main.ios .csday b+label.dchk{border-radius:9px 0 0 9px}
+main.ios .csday label.dchk:last-child{border-radius:0 9px 9px 0}
+main.ios .csday label.dchk+label.dchk{border-left:1px solid #fff}
+main.ios .csday label.dchk input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;opacity:0;cursor:pointer}
+main.ios .csday label.dchk:has(input:checked){background:var(--ios-blue);color:#fff}
+main.ios .csday label.dchk:has(input:focus-visible){outline:2px solid var(--ios-blue);outline-offset:2px}
+main.ios .cslist a{border:0;border-radius:12px;padding:12px 16px}
+main.ios .cslist a.on{box-shadow:0 0 0 2px var(--ios-blue)}
+/* tables stay tables: white card, light sticky header, rows at least 44px, thin lines */
+:is(main.ios,#modal) table:not(.rt):not(.tape){background:#fff}
+:is(main.ios,#modal) table:not(.rt):not(.tape) th{background:#f9f9fb;color:var(--ios-gray);font-size:13px;font-weight:600;border-bottom:.5px solid var(--ios-sep);padding:10px 12px}
+:is(main.ios,#modal) table:not(.rt):not(.tape) td{padding:8px 12px;height:44px;border-bottom:.5px solid var(--ios-sep)}
+:is(main.ios,#modal) table:not(.rt):not(.tape) tr:last-child td{border-bottom:0}
+:is(main.ios,#modal) table:not(.rt):not(.tape) tr.click:hover td{background:#f2f2f7}
+:is(main.ios,#modal) table:not(.rt):not(.tape) tr.click:active td{background:#e5e5ea}
+:is(main.ios,#modal) .badge{font-weight:600}
+main.ios .cond button{border-radius:8px}
+main.ios .tape th{border-bottom:.5px solid var(--ios-sep)}
+/* Setup home: like the iPhone Settings app */
+main.ios h1:has(+.setcols){max-width:680px;margin-left:auto;margin-right:auto;padding:0 4px}
+main.ios .setcols{display:block;max-width:680px;margin:0 auto}
+:is(main.ios,#modal) .setcol.card{background:none;box-shadow:none;padding:0;border-radius:0;margin:0 0 6px}
+main.ios .setcol h2{border:0;margin:18px 0 7px;padding:0 16px}
+main.ios .setcol a{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;font-size:17px;color:#000;text-decoration:none;background-color:#fff}
+main.ios .setcol a:hover{text-decoration:none}
+main.ios .setcol a:active{background-color:#e5e5ea}
+main.ios .setcol a+a{background-image:linear-gradient(var(--ios-sep),var(--ios-sep));background-size:calc(100% - 62px) .5px;background-position:62px 0;background-repeat:no-repeat}
+main.ios .setcol h2+a{border-radius:12px 12px 0 0}
+main.ios .setcol a:last-child{border-radius:0 0 12px 12px}
+main.ios .setcol h2+a:last-child{border-radius:12px}
+main.ios .setcol a::before{content:"";flex:0 0 30px;width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;background:#8e8e93;color:#fff}
+main.ios .setcol a::after{content:"\203A";margin-left:auto;color:#c7c7cc;font-size:28px;line-height:1;padding-bottom:3px}
+main.ios .setcol a[data-tab=property]::before{content:"\1F3E8";background:#007aff}
+main.ios .setcol a[data-tab=policies]::before{content:"\1F4CB";background:#5856d6}
+main.ios .setcol a[data-tab=types]::before{content:"\1F6CF\FE0F";background:#ff9500}
+main.ios .setcol a[data-tab=rooms]::before{content:"\1F6AA";background:#34c759}
+main.ios .setcol a[data-tab=rates]::before{content:"\1F4C5";background:#ff3b30}
+main.ios .setcol a[data-tab=packages]::before{content:"\1F381";background:#af52de}
+main.ios .setcol a[data-tab=rewards]::before{content:"\2B50";background:#ffb000}
+main.ios .setcol a[data-tab=taxes]::before{content:"\1F9FE";background:#8e8e93}
+main.ios .setcol a[data-tab=codes]::before{content:"\1F522";background:#32ade6}
+main.ios .setcol a[data-tab=hks]::before{content:"\1F9F9";background:#30b0c7}
+main.ios .setcol a[data-tab=schedules]::before{content:"\1F5D3\FE0F";background:#ff6482}
+main.ios .setcol a[data-tab=woreasons]::before{content:"\1F527";background:#a2845e}
+main.ios .setcol a[data-tab=ooo]::before{content:"\26D4";background:#ff3b30}
+main.ios .setcol a[data-tab=users]::before{content:"\1F465";background:#636366}
+/* Reports list and options */
+main.ios .rcols{column-gap:16px}
+main.ios .rcat{background:#fff;border-radius:12px;padding:2px 16px 4px;margin-bottom:16px}
+main.ios .rch{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ios-gray);border-bottom:.5px solid var(--ios-sep);padding:14px 0 9px;margin:0}
+main.ios .rch .tri{color:#c7c7cc}
+main.ios .rlink{display:flex;align-items:center;justify-content:space-between;color:#000;font-size:17px;line-height:44px;border-bottom:.5px solid #e5e5ea}
+main.ios .rlink:hover{text-decoration:none;background:#f2f2f7}
+main.ios .rlink::after{content:"\203A";color:#c7c7cc;font-size:26px;padding-bottom:2px}
+main.ios .rlink:last-child{border-bottom:0}
+main.ios .rform{background:#fff;border-radius:12px;padding:18px 24px;max-width:680px;margin:0 auto 16px;font-size:16px}
+main.ios .rsearch{color:var(--ios-gray)}
+/* the reservation, the wizard, the folio and the other full-page windows: grey page, white cards */
+#modal .mback{background:rgba(0,0,0,.4);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:4vh 12px}
+#modal .mbox{background:#fff;border-radius:20px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-size:15px;animation:dlgIn .18s ease-out}
+#modal .mbox.page{background:var(--ios-bg);padding:0;border-radius:20px;overflow:hidden}
+#modal .pg{align-items:stretch}
+#modal .pgmain{background:#fff;border-radius:14px;margin:12px 0 12px 12px;padding:20px 24px}
+#modal .pside{background:#fff;border:0;border-radius:14px;margin:12px;padding:18px 20px}
+#modal .pside dt{color:var(--ios-gray)}
+#modal .alinks a{color:var(--ios-blue);padding:9px 0;font-size:16px;border-bottom:.5px solid var(--ios-sep)}
+#modal .alinks a:last-child{border-bottom:0}
+#modal .wztrack{border-bottom:.5px solid var(--ios-sep)}
+#modal .wztrack span.on{color:var(--ios-blue)}
+#modal .wzn{background:var(--ios-blue)}
+#modal .wzf>label{color:var(--ios-gray);font-weight:500}
+#modal .gsrow{border-bottom:.5px solid var(--ios-sep)}
+#modal .qllist{border:0;border-radius:12px;background:#fff}
+#modal .qllist li{border-bottom:.5px solid var(--ios-sep)}
+#modal .mfoot .btn{min-width:90px}
+@keyframes dlgIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){#modal .mbox{animation:none!important}}
+/* touch devices and phones: 16px text, 44px controls */
+@media (pointer:coarse),(max-width:820px){
+  main.ios,#modal .mbox{font-size:16px}
+  :is(main.ios,#modal) .btn,:is(main.ios,#modal) .btn.sm{min-height:44px}
+  :is(main.ios,#modal) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not(.scancap),:is(main.ios,#modal) table :is(input,select):not([type=checkbox]):not([type=radio]){min-height:44px}
+  main.ios .cond button{width:40px;height:40px}
+  main.ios .segc button{min-height:40px}
+}
+@media (max-width:820px){
+  main.ios{padding:8px 12px 32px}
+  main.ios h1{font-size:30px}
+  main.ios .rcat{margin-bottom:12px}
+  main.ios .rform{padding:14px 16px}
+  /* windows become bottom sheets */
+  #modal .mback{align-items:flex-end;padding:0;overflow:hidden}
+  #modal .mbox,#modal .mbox.wide,#modal .mbox.sm,#modal .mbox.page{width:100%;max-height:92vh;max-height:92dvh;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-radius:14px 14px 0 0;position:relative;padding:28px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -6px 30px rgba(0,0,0,.25);animation:sheetUp .3s cubic-bezier(.2,.8,.2,1)}
+  #modal .mbox::before{content:"";position:absolute;top:8px;left:50%;margin-left:-18px;width:36px;height:5px;border-radius:3px;background:#c7c7cc}
+  #modal .mbox.page{padding:24px 0 env(safe-area-inset-bottom)}
+  #modal .mbox.page .pg{min-height:0}
+  #modal .pgmain{margin:8px;padding:14px 12px}
+  #modal .pside{margin:8px}
+  #modal .pgmain .mtitle,#modal .pgmain.wz .mtitle{font-size:26px}
+  #modal .mfoot{position:sticky;bottom:0;background:#fff;padding:10px 0 4px}
+  #modal .mfoot .btn{flex:1 1 auto}
+  /* housekeeping cards as list cells */
+  main.ios .hkfilter{top:-8px;margin:0 -12px 12px;padding:8px 12px;background:rgba(242,242,247,.94);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:.5px solid var(--ios-sep)}
+  main.ios .hkcards{gap:10px}
+  main.ios .hkcard{border:0;border-radius:12px;box-shadow:none;padding:14px 16px}
+  main.ios .hkb{border:0;border-radius:10px;background:var(--ios-fill);color:var(--ios-gray)}
+  main.ios .hkb.on.R{background:var(--ios-green);color:#fff}main.ios .hkb.on.C{background:#ffcc00;color:#3a3000}main.ios .hkb.on.D{background:var(--red);color:#fff}
+  main.ios .hkcard .hknote input{min-height:48px}
+  main.ios .csday{flex-wrap:nowrap}
+}

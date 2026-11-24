@@ -130,6 +130,8 @@ function render() {
 }
 const IC_PERSON = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
 const IC_BUILD = '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4h9v17M14 9h5v12M3 21h18M8 8h3M8 12h3M8 16h3"/></svg>';
+// Every screen that goes in <main>. Home has no "ios" class on <main>, so the iOS look in style.css can never reach it.
+const VIEWS = () => ({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, wo: vWo, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, members: vMembers, groups: vGroups, companies: vCompanies, stats: vStats });
 function paint(hk, nav) {
   const it = (label, attr) => `<a href="#" ${attr}>${label}</a>`, N = (v, label) => it(label, `data-nav="${v}"`), A = (a, label, x) => it(label, `data-act="${a}" ${x || ''}`);
   const menu = (name, items, cls) => `<div class="menu ${cls || ''}"><button type="button">${name}</button><div class="drop">${items.filter(Boolean).join('')}</div></div>`;
@@ -142,7 +144,7 @@ function paint(hk, nav) {
   $('#app').innerHTML = `<header class="${hk ? 'hkbar' : ''}"><div class="brand"><img src="icon.png" alt="">${esc(S.config.name)}</div><nav class="menus">${menus}</nav>
     <div class="hright">${S.me.master ? '<button class="btn sm amber" data-act="mClose">◀ All hotels</button>' : ''}${hk ? '' : '<span class="rj"><input id="roomJump" placeholder="Room #" autocomplete="off" aria-label="Room number"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><input class="find" id="find" placeholder="Find guest or conf. #">'}
     ${menu(IC_PERSON + ' ' + esc(S.me.name), [A('myPw', 'My password'), A('logout', 'Logout')], 'user')}<span class="bdate">${esc(dshort(B()))}</span>${hk ? '<button type="button" class="btn sm hklogout" data-act="logout">Logout</button>' : ''}</div></header>
-    <main><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${({ home: vHome, tape: vTape, arrivals: vArrivals, inhouse: vInHouse, departures: vDepartures, hk: vHk, wo: vWo, reports: vReports, setup: vSetup, find: vFind, dnr: vDnr, members: vMembers, groups: vGroups, companies: vCompanies, stats: vStats }[view.name] || vHome)()}</main>`;
+    <main class="${view.name === 'home' || !VIEWS()[view.name] ? '' : 'ios'}"><div class="hline">${IC_BUILD}<span>${esc(S.config.name)}</span></div>${(VIEWS()[view.name] || vHome)()}</main>`;
 }
 
 /* ---------- Home ---------- */
@@ -325,8 +327,8 @@ function vWo() {
   const f = view.woFilter || 'open', hkr = S.me.role === 'hk', l = (S.workorders || []).filter(w => f === 'all' || w.status === f);
   const row = w => `<tr><td><b>${esc(w.room)}</b></td><td>${esc(w.reason)}${w.blockId && S.blocks.some(b => b.id === w.blockId) ? ' <span class="badge r">Out of order</span>' : ''}</td><td>${esc(w.notes)}</td><td>${stamp(w.createdAt)}<div class="hint">${esc(w.createdBy)}</div></td>
     <td>${w.status === 'done' ? stamp(w.doneAt) + '<div class="hint">' + esc(w.doneBy) + '</div>' : '<span class="badge a">Open</span>'}</td><td>${w.status === 'open' ? `<button class="btn sm green" data-act="woDone" data-id="${w.id}">Mark done</button>` : ''}</td></tr>`;
-  return `<h1>Work Orders</h1><p style="margin:0 0 12px"><a href="#" class="btn sm" data-nav="hk">‹ Back to Housekeeping</a></p>
-  <div class="bar"><select id="woFilter" aria-label="Show"><option value="open" ${f === 'open' ? 'selected' : ''}>Open</option><option value="done" ${f === 'done' ? 'selected' : ''}>Done</option><option value="all" ${f === 'all' ? 'selected' : ''}>All</option></select><span class="flex"></span><button class="btn blue" data-act="woNew" data-room="">+ New Work Order</button></div>
+  return `<p class="backl"><a href="#" data-nav="hk">‹ Housekeeping</a></p><h1>Work Orders</h1>
+  <div class="bar"><span class="segc" role="group" aria-label="Show">${[['open', 'Open'], ['done', 'Done'], ['all', 'All']].map(([k, l]) => `<button type="button" class="${f === k ? 'on' : ''}" data-act="woSeg" data-v="${k}">${l}</button>`).join('')}</span><select id="woFilter" class="vh" aria-label="Show"><option value="open" ${f === 'open' ? 'selected' : ''}>Open</option><option value="done" ${f === 'done' ? 'selected' : ''}>Done</option><option value="all" ${f === 'all' ? 'selected' : ''}>All</option></select><span class="flex"></span><button class="btn blue" data-act="woNew" data-room="">+ New Work Order</button></div>
   <div class="wrap"><table><tr><th>Room</th><th>Reason</th><th>Notes</th><th>Opened</th><th>Closed</th><th></th></tr>${l.map(row).join('') || '<tr><td colspan="6" class="empty">No work orders here.</td></tr>'}</table></div>
   <p class="hint">${hkr ? '' : 'Housekeeping can open and close work orders too. '}Closed work orders are kept for the most recent 300. The Maintenance Report in Reports lists them by date.</p>`;
 }
@@ -1072,7 +1074,7 @@ function vSetup() {
   else if (view.setup === 'ooo') body = `<div class="bar"><button class="btn red" data-act="blockNew">Take a room out of order…</button></div><div class="wrap"><table><tr><th>Room</th><th>From</th><th>Through</th><th>Reason</th><th></th></tr>${S.blocks.map(b => `<tr><td><b>${esc(b.room)}</b></td><td>${dshort(b.start)}</td><td>${dshort(b.end)}</td><td>${esc(b.reason)}</td><td><button class="btn sm" data-act="blockRemove" data-id="${b.id}">Put back in order</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No rooms are out of order.</td></tr>'}</table></div>`;
   if (view.setup === 'users') setTimeout(async () => { const box = $('#usersBox'); if (!box) return; try { const R = await api('/account/users'), names = { owner: 'Owner', manager: 'Manager (GM)', desk: 'Front desk', hk: 'Housekeeping only' }; $('#u_role').innerHTML = R.may.map(r => `<option value="${r}">${names[r]}</option>`).join(''); if (R.may.includes('desk')) $('#u_role').value = 'desk';
     box.innerHTML = `<div class="wrap"><table><tr><th>Name</th><th>E-mail address</th><th>Role</th><th>Status</th><th>Last sign-in</th></tr>${R.users.map(x => `<tr class="click" data-act="userPick" data-u="${esc(JSON.stringify(x))}"><td><b>${esc(x.name)}</b></td><td>${esc(x.email)}</td><td>${names[x.role]}</td><td>${x.disabled ? '<span class="badge r">Off</span>' : x.hasPassword ? '<span class="badge g">On</span>' : '<span class="badge a">Has not chosen a password yet</span>'}</td><td>${x.lastLogin ? stamp(x.lastLogin) : ''}</td></tr>`).join('')}</table></div>${R.mailOn ? '' : '<p class="hint">E-mail sending is not set up yet, so copy each new login\'s link and send it yourself.</p>'}`; } catch (e) { box.textContent = e.message; } }, 0);
-  return `<h1>${SETUP_NAMES[view.setup]}</h1><p style="margin:0 0 12px"><a href="#" class="btn sm" data-act="setupHome">‹ Back to Setup</a></p><div id="sdForm" data-page="${view.setup}">${body}</div>`;
+  return `<p class="backl"><a href="#" data-act="setupHome">‹ Setup</a></p><h1>${SETUP_NAMES[view.setup]}</h1><div id="sdForm" data-page="${view.setup}">${body}</div>`;
 }
 function sdErr(msg) { const el = $('#setupErr'); if (el) el.textContent = msg || ''; }
 const needMoney = (v, label, blankOk) => { const s = String(v == null ? '' : v).trim(); if (!s) { if (blankOk) return 0; throw new Error('Type ' + label + '.'); } const n = toCents(s); if (!Number.isFinite(n) || n < 0) throw new Error('Check ' + label + '. It must be an amount like 80.00.'); return n; };
@@ -1455,6 +1457,7 @@ document.addEventListener('click', async e => {
   if (a === 'printRep') return printHtml($('#repOut').innerHTML);
   if (a === 'nightAudit') return nightAudit();
   if (a === 'setupTab') { view.setup = el.dataset.tab; SD = null; return render(); }
+  if (a === 'woSeg') { view.woFilter = el.dataset.v; return render(); }
   if (a === 'setupHome') { view.setup = ''; SD = null; return render(); }
   if (a === 'sdAdd') return sdAdd();
   if (a === 'sdDel') return sdDel(+el.dataset.i);

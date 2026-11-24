@@ -16,6 +16,13 @@ My password / Logout), the business date, the find box and, for the master, "All
 when it takes dates), then SUBMIT for the result with BACK and PRINT (`view.repStage` = list / options / result; menu links with `repGo` jump to the result).
 Menu items sit in hidden drop-downs, so `ui.test.mjs` clicks them with its `go()` helper and reaches a report with `runRep()` (link, SUBMIT). The name, logo and artwork are our own.
 
+## iOS look (Nov 2026)
+
+Every screen except Home looks like iOS: `<main class="ios">` (Home gets no class) plus the pop-up windows (`#modal`). All of it is the last block of `app/style.css`,
+and every rule there starts with `main.ios` or `#modal`, so the dark top bar, its menus, Home and print are untouched. Yes/no checkboxes are drawn as switches by CSS
+(the code still reads the same checkboxes; tax and weekday boxes stay real checkboxes), Full/Light/None and Open/Done/All are segmented controls, Setup home is a Settings-style list
+(icons are CSS `::before` per `data-tab`), and on screens up to 820px wide windows slide up as bottom sheets. Add a new Setup page: give its link an icon in the `.setcol a[data-tab=...]::before` list.
+
 ## What it does
 
 - **Home**: occupancy, ADR, RevPAR, arrivals/departures left, rooms available tonight by type.
