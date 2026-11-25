@@ -45,7 +45,9 @@ How it is built: `terminal.js` has one driver per terminal program, all with the
 - `valor` — Valor semi-integration: the terminal is a TCP server (its IP, port 5000, cancel on port 5001), JSON text wrapped in STX/ETX (Settings → Advanced can switch to plain JSON). Amounts are in cents. One connection per request.
   If the answer never comes or the link drops after the request was sent, the POS sends Cancel, asks the terminal for the transaction status, and then shows "check the terminal screen". It **never sends the sale again**, so a card cannot be charged twice.
 - `demo` — a pretend terminal inside the app for training: approves after 2 s; an amount ending **.13** is declined, **.51** is half approved, **.99** shows the "check the terminal" screen.
-- `poslink` — PAX BroadPOS/POSLink: placeholder only ("not available yet").
+- `poslink` — PAX BroadPOS / POSLink ("Interface Between ECR and Terminal"). The terminal is a TCP server (its IP, port **10009**); an option switches to HTTP. Each request is `STX, fields split by FS, ETX, LRC`, then ACK, the answer, ACK, EOT (a bad checksum gets a NAK and the packet is sent again). Commands: Initialize A00 (Test connection: shows model, serial, firmware), Do Credit T00, Do Debit T02, Do EBT T04 (sale, return, void, balance), Batch Close B00, Cancel A14, Local Detail Report R02 (looks a payment up by the ECR reference we send).
+  A card payment is **never sent twice**: if the answer does not come or the link drops, the POS sends Cancel, asks the terminal for the record of that reference, and otherwise shows "check the terminal". The surcharge is decided by the terminal (the POS never sends one) and comes back in the answer. The PAX spec is PAX's licensed document and is not kept in this repo.
+  Settings → Card terminal → Advanced: connection (TCP/HTTP), protocol version (1.28), whether the terminal prints receipts, wait time (300 s).
 
 What is saved on a card payment: brand, last 4 only, auth code, entry mode (tap/chip/swipe), RRN, tran/batch/STAN numbers, AID, and the surcharge if the terminal added one. Never a full card number.
 **Surcharge:** the terminal decides it. It is saved on the payment (`surcharge`) and on the order (`surcharge`), printed on the receipt as "Card surcharge" and "Total charged to card", but the sale total, tax and reports are not changed (the sale is still paid by `amount`). Do not use the POS "Card Fee" button together with a terminal surcharge (the POS warns if both are present).
@@ -54,5 +56,6 @@ Refunds of a terminal card payment offer Void on terminal (same batch), Refund t
 Test it without a terminal:
 1. `node source/tools/mock-valor-terminal.js` (pretend terminal on this PC, ports 5000/5001; `--surcharge 3`, `--framing raw`, `--delay 3000` available; amounts ending .13 decline, .51 partial, .77 drop the line, .88 never answer).
 2. In Store POS: Settings → Card terminal → switch on, Valor, IP `127.0.0.1`, Test connection.
-3. `node source/tools/test-terminal.js` runs the automatic checks of the driver against the mock (approve, decline, partial, cancel, drop/hang, void, refund, settle, EBT balance, both message formats).
+3. `node source/tools/test-terminal.js` runs the automatic checks of the Valor/demo drivers against the mock (approve, decline, partial, cancel, drop/hang, void, refund, settle, EBT balance, both message formats).
+PAX: `node source/tools/mock-pax-terminal.js` (port 10009; amounts ending .13 decline, .51 partial, .66 customer cancels, .77/.78 line drops, .88/.89 no answer, .97 bad checksum answer, .98 damaged request; `--surcharge 3`, `--split 40`) and `node source/tools/test-terminal-pax.js` runs the automatic PAX checks.
 `build_update.py` includes `terminal.js` in the update file.

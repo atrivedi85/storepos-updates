@@ -470,7 +470,7 @@ ipcMain.handle('loadLicenseFile', async () => {
 /* ---------- config / app ---------- */
 ipcMain.handle('getConfig', () => ({ ...cfg, appVersion: require('./package.json').version, bundledVersion: BOOT.bundledVersion, runningUpdate: !!BOOT.updateDir, rolledBack: BOOT.rolledBack, hasPrevious: fs.existsSync(path.join(UPDATE_DIR, 'previous')) || !!BOOT.updateDir, dataDir: DATA_DIR, backupRoot: BACKUP_DIR, version: app.getVersion(), platform: process.platform }));
 ipcMain.handle('setConfig', (e, patch) => {
-  const allowed = ['printer', 'paper', 'drawerOnCash', 'drawerMode', 'kiosk', 'autoStart', 'reportPrinter', 'rcptConn', 'cmdSet', 'cols', 'cut', 'feed', 'drawerPin', 'netHost', 'netPort', 'comPort', 'comBaud', 'comFlow', 'scanCom', 'scanBaud', 'labelPrinter', 'updateUrl', 'termEnabled', 'termDriver', 'termIp', 'termPort', 'termCancelPort', 'termFraming', 'termTimeoutSec', 'termDemoSurchargePct'];
+  const allowed = ['printer', 'paper', 'drawerOnCash', 'drawerMode', 'kiosk', 'autoStart', 'reportPrinter', 'rcptConn', 'cmdSet', 'cols', 'cut', 'feed', 'drawerPin', 'netHost', 'netPort', 'comPort', 'comBaud', 'comFlow', 'scanCom', 'scanBaud', 'labelPrinter', 'updateUrl', 'termEnabled', 'termDriver', 'termIp', 'termPort', 'termCancelPort', 'termFraming', 'termTimeoutSec', 'termDemoSurchargePct', 'termProtocol', 'termPaxVersion', 'termPaxReceipt'];
   for (const k of Object.keys(patch || {})) if (allowed.includes(k)) cfg[k] = patch[k];
   saveCfg();
   if ('kiosk' in patch && win) { win.setKiosk(!!cfg.kiosk); if (!cfg.kiosk) win.setFullScreen(true); }

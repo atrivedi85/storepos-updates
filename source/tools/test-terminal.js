@@ -107,8 +107,7 @@ const cfgFor = (m, extra) => Object.assign({ termEnabled: true, termDriver: 'val
     });
   }
 
-  console.log('PAX POSLink stub');
-  await t('poslink is not available yet', async () => { const r = await T.createManager(() => ({ termEnabled: true, termDriver: 'poslink' })).sale({ mode: 'credit', cents: 100, ref: 'P' }); eq(r.ok, false); truthy(/not available yet/.test(r.message), r.message); });
+  // The PAX poslink driver has its own tests: node source/tools/test-terminal-pax.js
 
   console.log('Demo driver');
   {
