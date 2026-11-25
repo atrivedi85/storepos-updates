@@ -137,12 +137,105 @@
     return { kind, last4, bankName, begin, end, diff, ok: diff != null && Math.abs(diff) < 0.01, txns, from: dates[0] || '', to: dates[dates.length - 1] || '', periodEnd: pEnd ? iso(pEnd[0], pEnd[1], pEnd[2]) : '', warn, text: text.length };
   }
 
+  // ---- opening a PDF, repairing a broken page tree if needed ----
+  const DAMAGED = 'This PDF is damaged and couldn\'t be read. Open it in Chrome and use Print → Save as PDF, then upload the new file.';
+  const docOpts = () => { const o = { isEvalSupported: false, useWasm: false }; try { if (typeof document !== 'undefined') o.wasmUrl = new URL('vendor/wasm/', document.baseURI).href; } catch (e) {} return o; };
+  const toLatin = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; };
+  const fromLatin = s => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; };
+  // raw text of the value after /Key inside a PDF dictionary body: {start,end,val}
+  function keySpan(body, key) {
+    const m = new RegExp('/' + key + '(?![A-Za-z0-9])').exec(body); if (!m) return null;
+    let i = m.index + m[0].length; while (i < body.length && /\s/.test(body[i])) i++;
+    const st = i;
+    if (body.startsWith('<<', i) || body[i] === '[') {
+      let depth = 0;
+      for (; i < body.length; i++) {
+        const c = body[i];
+        if (c === '(') { for (i++; i < body.length && body[i] !== ')'; i++) if (body[i] === '\\') i++; continue; }
+        if (c === '<' && body[i + 1] === '<') { depth++; i++; } else if (c === '>' && body[i + 1] === '>') { depth--; i++; if (!depth) { i++; break; } }
+        else if (c === '[') depth++; else if (c === ']') { depth--; if (!depth) { i++; break; } }
+      }
+    } else { const r = /^(\d+\s+\d+\s+R|\/?[^\s\/<>\[\]()]+)/.exec(body.slice(i)); if (!r) return null; i += r[0].length; }
+    return { start: m.index, end: i, val: body.slice(st, i) };
+  }
+  // Rebuild the page tree: find every /Type /Page object in the raw bytes, then append a new flat /Pages + /Catalog
+  // and a fresh xref/trailer (an incremental update). Returns null when no page objects can be found.
+  function repairPdf(u8) {
+    const s = toLatin(u8), objs = new Map(), re = /(?:^|[\r\n\s>])(\d{1,7})[ \t]+(\d{1,5})[ \t]+obj\b/g; let m;
+    while ((m = re.exec(s))) { const num = +m[1]; objs.delete(num); objs.set(num, { n: num, g: +m[2], at: m.index + m[0].indexOf(m[1]), bodyAt: m.index + m[0].length }); }   // last definition wins
+    const list = [...objs.values()].sort((a, b) => a.at - b.at);
+    list.forEach((o, i) => { const e = s.indexOf('endobj', o.bodyAt), nx = list[i + 1] ? list[i + 1].at : s.length; o.body = s.slice(o.bodyAt, e >= 0 && e < nx ? e : nx); });
+    const bodyOf = n => (objs.get(n) || {}).body || '';
+    const dictOf = b => { const i = b.indexOf('<<'); if (i < 0) return ''; const k = keySpan('/X ' + b.slice(i, i + 30000), 'X'); return k ? k.val : ''; };
+    const pages = list.filter(o => /\/Type\s*\/Page(?![A-Za-z])/.test(dictOf(o.body)));
+    if (!pages.length) return null;
+    const maxN = Math.max(...list.map(o => o.n)), pagesN = maxN + 1, catN = maxN + 2;
+    const inherit = (o, key) => {   // MediaBox, Resources... may live on an old /Pages parent
+      let d = dictOf(o.body), seen = 0;
+      for (;;) {
+        const k = keySpan(d, key); if (k) return k.val;
+        const par = keySpan(d, 'Parent'), pm = par && /^(\d+)\s+\d+\s+R/.exec(par.val); if (!pm || ++seen > 20) return null;
+        d = dictOf(bodyOf(+pm[1]));
+      }
+    };
+    const out = []; let pos = u8.length + 1; const offs = [];
+    const add = (n, g, txt) => { offs.push({ n, g, off: pos }); const t = n + ' ' + g + ' obj\n' + txt + '\nendobj\n'; out.push(t); pos += t.length; };
+    pages.forEach(o => {
+      let d = dictOf(o.body); const par = keySpan(d, 'Parent'); if (par) d = d.slice(0, par.start) + d.slice(par.end);
+      let extra = '/Parent ' + pagesN + ' 0 R';
+      ['MediaBox', 'Resources', 'CropBox', 'Rotate'].forEach(k => { if (!keySpan(d, k)) { const v = inherit(o, k) || (k === 'MediaBox' ? '[0 0 612 792]' : k === 'Resources' ? '<< >>' : null); if (v) extra += ' /' + k + ' ' + v; } });
+      add(o.n, o.g, d.replace(/>>\s*$/, '') + ' ' + extra + ' >>');
+    });
+    add(pagesN, 0, '<< /Type /Pages /Kids [' + pages.map(o => o.n + ' ' + o.g + ' R').join(' ') + '] /Count ' + pages.length + ' >>');
+    add(catN, 0, '<< /Type /Catalog /Pages ' + pagesN + ' 0 R >>');
+    const xrefAt = pos, sorted = offs.slice().sort((a, b) => a.n - b.n);
+    let x = 'xref\n0 1\n0000000000 65535 f \n';
+    for (let i = 0; i < sorted.length;) { let j = i; while (j + 1 < sorted.length && sorted[j + 1].n === sorted[j].n + 1) j++; x += sorted[i].n + ' ' + (j - i + 1) + '\n'; for (let k = i; k <= j; k++) x += String(sorted[k].off).padStart(10, '0') + ' ' + String(sorted[k].g).padStart(5, '0') + ' n \n'; i = j + 1; }
+    const sx = [...s.matchAll(/startxref\s+(\d+)/g)].pop(), prev = sx && +sx[1] < u8.length && /^\s*(xref|\d+\s+\d+\s+obj)/.test(s.slice(+sx[1], +sx[1] + 40)) ? +sx[1] : null;
+    const enc = [...s.matchAll(/\/Encrypt\s+(\d+\s+\d+\s+R)/g)].pop(), id = [...s.matchAll(/\/ID\s*(\[[^\]]*\])/g)].pop();
+    x += 'trailer\n<< /Size ' + (catN + 1) + ' /Root ' + catN + ' 0 R' + (prev != null ? ' /Prev ' + prev : '') + (enc ? ' /Encrypt ' + enc[1] : '') + (id ? ' /ID ' + id[1] : '') + ' >>\nstartxref\n' + xrefAt + '\n%%EOF\n';
+    const res = fromLatin(s + '\n' + out.join('') + x); res.pageNums = pages.map(o => o.n); return res;
+  }
+  // Open a PDF with pdf.js. A damaged page tree is repaired and retried once. Returns { doc, bytes, repaired }.
+  async function openPdf(file, lib, bytes) {
+    bytes = bytes || new Uint8Array(await file.arrayBuffer());
+    const tryOpen = async b => { const doc = await lib.getDocument(Object.assign({ data: b.slice() }, docOpts())).promise; if (!doc.numPages) throw new Error('no pages'); await doc.getPage(1); return doc; };
+    let err;
+    try { return { doc: await tryOpen(bytes), bytes, repaired: false }; } catch (e) { err = e; }
+    if (err && (err.name === 'PasswordException' || /password/i.test(err.message || ''))) throw new Error('This PDF is password-protected. Open it, remove the password (Print → Save as PDF), then upload the new file.');
+    let fixed = null; try { fixed = repairPdf(bytes); } catch (e) {}
+    if (fixed) { try { return { doc: await tryOpen(fixed), bytes: fixed, repaired: true }; } catch (e) {} }
+    throw new Error(DAMAGED);
+  }
   // ---- pdf.js text → lines ----
-  async function readLines(file, lib) {
-    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
-    const lines = [];
+  async function readPages(doc) {
+    const pageItems = [], bad = [], refs = new Set();
     for (let p = 1; p <= doc.numPages; p++) {
-      const page = await doc.getPage(p), items = (await page.getTextContent()).items.filter(i => i.str && i.str.trim());
+      try { const page = await doc.getPage(p); if (page.ref) refs.add(page.ref.num); pageItems.push((await page.getTextContent()).items.filter(i => i.str && i.str.trim())); }
+      catch (e) { pageItems.push(null); bad.push(p); }
+    }
+    return { pageItems, bad, refs };
+  }
+  async function readLines(file, lib) {
+    let { doc, bytes, repaired } = await openPdf(file, lib);
+    let got = await readPages(doc);
+    // Some pages failed, or the page list disagrees with the page objects in the file (pdf.js can quietly skip a page when the list is wrong):
+    // read it again from a repaired copy and keep whichever copy gave more pages with text.
+    const score = g => g.pageItems.filter(i => i && i.length).length;
+    if (!repaired) {
+      try {
+        const fixed = repairPdf(bytes);
+        if (fixed && (got.bad.length || fixed.pageNums.some(n => !got.refs.has(n)))) {
+          const d2 = await openPdf(file, lib, fixed), g2 = await readPages(d2.doc);
+          if (g2.bad.length < got.bad.length || (g2.bad.length === got.bad.length && score(g2) > score(got))) { doc = d2.doc; got = g2; repaired = true; }
+        }
+      } catch (e) {}
+    }
+    const lines = [], warn = got.bad.map(p => 'Page ' + p + ' of this PDF couldn\'t be read, check those transactions.');
+    if (got.bad.length === doc.numPages) throw new Error(DAMAGED);
+    if (repaired) warn.unshift('This PDF had a damaged page list and was repaired while reading. Check the totals.');
+    got.pageItems.forEach((items, idx) => {
+      if (!items) return; const p = idx + 1;
       const rows = [];
       items.forEach(i => { const y = i.transform[5], x = i.transform[4]; let r = rows.find(r => Math.abs(r.y - y) < 2.5); if (!r) rows.push(r = { y, items: [] }); r.items.push({ x, w: i.width || 0, str: i.str }); });
       rows.sort((a, b) => b.y - a.y).forEach(r => {
@@ -157,14 +250,15 @@
         });
         lines.push({ page: p, y: 1e4 - r.y, tokens: toks.map(t => ({ x: t.x, w: t.w, str: t.str.trim() })).filter(t => t.str) });
       });
-    }
-    return { lines, pages: doc.numPages };
+    });
+    return { lines, pages: doc.numPages, warn };
   }
   async function readStatement(file, lib) {
-    const { lines, pages } = await readLines(file, lib);
+    const { lines, pages, warn } = await readLines(file, lib);
     const r = parse(lines);
     r.pages = pages;
+    if (warn.length) r.warn = warn.concat(r.warn || []);
     return r;
   }
-  root.LedgerPdfStatement = { parse, readStatement };
+  root.LedgerPdfStatement = { parse, readStatement, openPdf, repairPdf };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -80,17 +80,22 @@
     o.getContext('2d').drawImage(cv, b.x, b.y, b.w, b.h, 0, 0, o.width, o.height);
     return o.toDataURL('image/jpeg', 0.88);
   }
+  // open a PDF; a damaged page list is repaired once (see pdfstmt.js), else the plain "damaged" message
+  async function openDoc(lib, file) {
+    if (window.LedgerPdfStatement && window.LedgerPdfStatement.openPdf) return (await window.LedgerPdfStatement.openPdf(file, lib)).doc;
+    return await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
+  }
   async function readPdf(file, into) {
     if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { toast('Choose the PDF statement from your bank.'); return; }
     const P = into || (ST.pc = {}); Object.assign(P, { name: file.name, busy: true, progress: 'Opening the PDF…', items: [], note: '', deposits: 0, scanned: false, none: false }); L.render();
+    const unread = [];
     try {
       const lib = await pdfLib();
-      const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
+      const doc = await openDoc(lib, file);
       const found = [], scanned = []; let deposits = 0;
       for (let p = 1; p <= doc.numPages; p++) {
         P.progress = 'Looking for checks on page ' + p + ' of ' + doc.numPages + '…'; L.render();
-        const page = await doc.getPage(p), vp = page.getViewport({ scale: 3 });
-        const ops = await page.getOperatorList(), boxes = imageBoxes(ops, lib.OPS, vp);
+        let page, vp, boxes; try { page = await doc.getPage(p); vp = page.getViewport({ scale: 3 }); boxes = imageBoxes(await page.getOperatorList(), lib.OPS, vp); } catch (e) { unread.push(p); continue; }
         const checks = boxes.filter(b => isCheckShape(b, vp.width, vp.height));
         if (!checks.length) { if (boxes.some(b => b.w * b.h > vp.width * vp.height * 0.5)) scanned.push(p); continue; }
         const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
@@ -121,12 +126,13 @@
       await suggestCats(P.items.filter(x => x.tid && x.payee));
       P.note = P.items.length ? '' : 'Check pictures were found, but the AI couldn\'t read them. Try a clearer copy, or screenshots of each check.';
     } catch (e) { P.note = 'Couldn\'t read this PDF: ' + e.message; }
+    if (unread.length) P.note = ((P.note || '') + ' ' + unread.map(p => 'Page ' + p + ' of this PDF couldn\'t be read, check those checks.').join(' ')).trim();
     P.busy = false; P.progress = ''; L.render(); return P;
   }
   // First page of a PDF as a picture (for a bill or invoice that came as a PDF)
   async function pdfPageImage(file) {
     const lib = await pdfLib();
-    const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, wasmUrl: new URL('vendor/wasm/', document.baseURI).href, useWasm: false }).promise;
+    const doc = await openDoc(lib, file);
     const page = await doc.getPage(1), v0 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 1700 / Math.max(v0.width, v0.height)) });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);

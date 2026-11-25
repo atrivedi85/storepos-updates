@@ -744,7 +744,7 @@
   async function pdfToStmt(f) {
     if (!window.LedgerPdfStatement) throw new Error('the PDF reader did not load. Refresh the page and try again.');
     if (!PDFJS) { PDFJS = await import(new URL('vendor/pdf.min.js', document.baseURI).href); PDFJS.GlobalWorkerOptions.workerSrc = new URL('vendor/pdf.worker.min.js', document.baseURI).href; }
-    let r; try { r = await window.LedgerPdfStatement.readStatement(f, PDFJS); } catch (e) { throw new Error('could not open this PDF (' + e.message + ')'); }
+    let r; try { r = await window.LedgerPdfStatement.readStatement(f, PDFJS); } catch (e) { throw new Error(/damaged/i.test(e.message) ? e.message : 'could not open this PDF (' + e.message + ')'); }
     if (!r.text || r.text < 200) throw new Error('this PDF is a scan or picture, so there is no text to read. Download the statement PDF from the bank\'s website instead.');
     if (!r.txns.length) throw new Error('no transactions found in this PDF. Is it a bank or credit card statement?');
     const txns = r.txns.map((t, i) => ({ date: t.date, payee: t.payee, memo: t.memo || '', amount: t.amount, fitid: 'pdf:' + t.date + ':' + t.amount.toFixed(2) + ':' + (t.checkNum || t.payee).slice(0, 24) + ':' + i, checkNum: t.checkNum || '' }));
