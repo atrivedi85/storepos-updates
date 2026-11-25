@@ -1,6 +1,6 @@
 {
     "name":  "pdfstudio",
-    "version":  "1.1.8",
+    "version":  "1.1.9",
     "description":  "PdfStudio - a modern PDF editor",
     "main":  "dist/main/main.js",
     "author":  "PdfStudio",

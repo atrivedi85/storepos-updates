@@ -15,6 +15,25 @@ export function fromBase64(b64: string): Uint8Array {
   return out;
 }
 
+/** Android app: the sign-in token is kept in the app's private storage, so the person stays signed in (30 days, renewed while used)
+ *  even if the web view loses its cookies. Everything is a no-op outside the Android app. */
+export const androidToken = {
+  available: (): boolean => typeof w.PdfAndroid?.saveToken === 'function',
+  get(): string { try { return String(w.PdfAndroid?.getToken?.() || ''); } catch { return ''; } },
+  set(t: string) { try { w.PdfAndroid?.saveToken?.(t); } catch { /* ignore */ } },
+  clear() { try { w.PdfAndroid?.clearToken?.(); } catch { /* ignore */ } },
+};
+
+/** Android app lock (fingerprint / face / screen lock). status: 'ok' = can be switched on, 'none' = phone has no screen lock set up,
+ *  'unavailable' = this phone cannot do it, '' = not the Android app (or an older app without the feature). */
+export const appLock = {
+  status(): 'ok' | 'none' | 'unavailable' | '' {
+    try { const s = String(w.PdfAndroid?.biometricStatus?.() || ''); return s === 'ok' || s === 'none' || s === 'unavailable' ? s : ''; } catch { return ''; }
+  },
+  enabled(): boolean { try { return !!w.PdfAndroid?.getAppLock?.(); } catch { return false; } },
+  set(on: boolean) { try { w.PdfAndroid?.setAppLock?.(on); } catch { /* ignore */ } },
+};
+
 /** Android: opens the native Save dialog. Returns false when there is no Android bridge (caller downloads instead). */
 export function androidSave(name: string, bytes: Uint8Array): boolean {
   if (typeof w.PdfAndroid?.saveFile !== 'function') return false;

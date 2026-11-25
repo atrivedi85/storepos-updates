@@ -26,6 +26,18 @@ export function toast(msg: string, err = false) {
   setTimeout(() => t.remove(), err ? 5000 : 2600);
 }
 
+/** A message with one tappable action (e.g. "Saved" + Share). Stays a little longer so it can be tapped. */
+export function toastAction(msg: string, label: string, action: () => void) {
+  const t = el('div', 'toast act');
+  const m = document.createElement('span'); m.textContent = msg;
+  const b = document.createElement('button'); b.textContent = label;
+  b.onclick = () => { t.remove(); action(); };
+  t.append(m, b);
+  document.getElementById('toasts')!.appendChild(t);
+  setTimeout(() => t.remove(), 7000);
+  return t;
+}
+
 export function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }

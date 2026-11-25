@@ -214,6 +214,8 @@ select option { background: var(--panel); }
 #toasts { position: fixed; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 400; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toast { background: #0d1020; border: 1px solid var(--line); padding: 8px 16px; border-radius: 20px; box-shadow: 0 6px 20px #000a; animation: tin .2s; }
 .toast.err { border-color: var(--danger); }
+.toast.act { display: flex; align-items: center; gap: 14px; pointer-events: auto; }
+.toast.act button { background: none; border: 0; color: #6aa3ff; font-weight: 700; font-size: 14px; padding: 6px 4px; min-height: 36px; cursor: pointer; text-transform: uppercase; letter-spacing: .3px; }
 @keyframes tin { from { opacity: 0; transform: translateY(8px); } }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-thumb { background: #3b4366; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
@@ -343,6 +345,8 @@ input.fieldinput:focus, textarea.fieldinput:focus, select.fieldinput:focus { bor
 html.web:not(.mob) .webonly { display: inline-block; }
 html.mob body:not(.mhome) .mobonly { display: flex; }
 html.mob body.mhome .mobhome { display: flex; }
+html.mob #toolbar .share-btn { color: #6aa3ff; }
+html.mob #toolbar .share-btn span { color: #6aa3ff; font-weight: 600; }
 #mhome { display: none; }
 html.mob #welcome { display: none !important; }
 html.mob #tabbar { display: none !important; }
@@ -414,6 +418,15 @@ html.mob #mobSearch { margin-left: auto; }
 .mh-nav button.on { color: #6aa3ff; }
 .mh-nav svg { width: 24px; height: 24px; }
 body.scanning #mhome { visibility: hidden; }
+.mh-settings { padding: 0 0 8px; }
+.mh-set { display: flex; align-items: center; gap: 14px; margin: 0 16px; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+.mh-set .tx { flex: 1; min-width: 0; }
+.mh-set b { display: block; font-size: 15px; margin-bottom: 2px; }
+.mh-set small { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.mh-switch { flex: none; position: relative; width: 52px; height: 30px; border-radius: 15px; border: 0; background: #556; cursor: pointer; padding: 0; transition: background .15s; }
+.mh-switch i { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.mh-switch.on { background: #2f7dff; }
+.mh-switch.on i { transform: translateX(22px); }
 
 /* ---- scanner (full screen over everything but dialogs) ---- */
 .scn { position: fixed; inset: 0; z-index: 150; background: #000; color: #fff; display: flex; flex-direction: column; font-size: 15px; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); touch-action: manipulation; }

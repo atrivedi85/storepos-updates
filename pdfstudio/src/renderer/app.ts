@@ -3,7 +3,7 @@ import { DocView, PageView, PageHooks } from './viewer';
 import { Thumbs } from './thumbs';
 import { searchDoc, Hit } from './search';
 import { hydrateIcons, icon } from './icons';
-import { $, baseName, el, esc, toast, modal, showMenu, uid, type MenuItem } from './util';
+import { $, baseName, el, esc, toast, toastAction, modal, showMenu, uid, type MenuItem } from './util';
 import { Editor } from './editor';
 import {
   applyDocChange, buildPdf, reorderPages, rotatePages, deletePages, insertBlank, extractPages, appendPdfs,
@@ -22,6 +22,15 @@ declare global { interface Window { api: Api; app: App } }
 
 const api = window.api;
 const w = window as any;
+
+/** Android: the document whose Save / Save As screen is open right now (so the result can say "Saved" + Share, or undo "saved"). */
+let pendingNativeSave: { tab: DocTab; bytes: Uint8Array; name: string } | null = null;
+async function shareSaved(name: string, bytes: Uint8Array) {
+  try {
+    const r = await shareBytes(name, bytes);
+    if (r === 'downloaded') toast(`Saved ${name} to your downloads`);
+  } catch (e: any) { toast(`Could not share: ${e?.message || e}`, true); }
+}
 
 export class App implements PageHooks {
   tabs: DocTab[] = [];
@@ -339,7 +348,12 @@ export class App implements PageHooks {
       tab.path = path; tab.name = baseName(path); tab.dirty = false;
       this.renderTabs(); this.updateUi();
       void this.mobile?.record(tab, bytes);
-      toast(`Saved ${tab.name}`);
+      if (!path.startsWith('cloud://') && typeof (window as any).PdfAndroid?.saveFile === 'function') {
+        // Android: the phone's "Save as" screen is still open; the app tells us how it went (pdfAndroidSaved below).
+        pendingNativeSave = { tab, bytes, name: tab.name };
+      } else if (this.mobile?.mob) {
+        toastAction(`Saved ${tab.name}`, 'Share', () => void shareSaved(tab.name, bytes));
+      } else toast(`Saved ${tab.name}`);
       for (const w of warnings) toast(w, true);
       return true;
     } catch (e: any) {
@@ -663,11 +677,28 @@ app.mobile = new Mobile(app);
 // ---- Android wrapper hooks (harmless in a normal browser) ----
 let ready = false;
 const pendingOpen: { name: string; b64: string }[] = [];
-/** The wrapper calls this when a PDF is opened while the app is running. */
-w.pdfAndroidOpen = (name: string, b64: string) => {
+/** The wrapper calls this when a PDF is opened while the app is running. With no arguments (what the app does) the file is fetched from the app. */
+w.pdfAndroidOpen = (name?: string, b64?: string) => {
+  if (!b64 && typeof w.PdfAndroid?.takeOpenedFile === 'function') {
+    try { const j = JSON.parse(w.PdfAndroid.takeOpenedFile() || 'null'); if (j?.b64) { name = j.name; b64 = j.b64; } } catch (e) { console.warn('opened file not read', e); }
+  }
   if (!b64) return;
   if (!ready) { pendingOpen.push({ name: name || 'Document.pdf', b64 }); return; }
   void app.openBytes(fromBase64(b64), name || 'Document.pdf', 'device');
+};
+/** The wrapper calls this when the phone's "Save as" screen finishes: ok + file name, or not ok + "Cancelled" / the problem. */
+w.pdfAndroidSaved = (ok: boolean, msg: string) => {
+  const p = pendingNativeSave; pendingNativeSave = null;
+  if (ok) {
+    const name = String(msg || p?.name || 'file');
+    if (p) toastAction(`Saved ${name}`, 'Share', () => void shareSaved(p.name, p.bytes));
+    else toast(`Saved ${name}`);
+    return;
+  }
+  if (p) { p.tab.dirty = true; app.renderTabs(); app.updateUi(); }   // nothing was written, so it still has unsaved changes
+  const m = String(msg || '');
+  if (m === 'Cancelled') toast('Not saved');
+  else toast(m || 'Could not save', true);
 };
 /** The wrapper calls this on the Android back button. true = handled here; false = let the app close. */
 w.pdfAndroidBack = (): boolean => {

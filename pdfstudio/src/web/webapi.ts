@@ -7,7 +7,7 @@ import {
   CloudConflict, CloudError, CloudOffline, type CloudEvent,
 } from '../shared/cloud';
 import { esignClient } from '../shared/esign';
-import { androidSave, isAndroid } from '../renderer/native';
+import { androidSave, androidToken, isAndroid } from '../renderer/native';
 
 const SERVER = '/pdfstudio';
 const PDF_TYPES = [{ description: 'PDF documents', accept: { 'application/pdf': ['.pdf'] } }];
@@ -51,9 +51,22 @@ async function writeHandle(handle: any, data: Uint8Array) {
   await ws.close();
 }
 
+// ---- sign-in token (Android app only) ----
+// The Android app keeps the sign-in token in its own private storage and sends it with every call, so a lost web-view cookie
+// never signs the person out. In a normal browser this stays empty and the cookie does the job (as before).
+let bearer = androidToken.get();
+function af(url: string, init: RequestInit = {}): Promise<Response> {
+  if (!bearer) return fetch(url, init);
+  const h = new Headers(init.headers);
+  h.set('authorization', `Bearer ${bearer}`);
+  return fetch(url, { ...init, headers: h });
+}
+function keepToken(t: unknown) { if (typeof t === 'string' && /^[a-f0-9]{64}$/.test(t) && androidToken.available()) { bearer = t; androidToken.set(t); } }
+function dropToken() { bearer = ''; androidToken.clear(); }
+
 // ---- cloud library (same server API as the desktop app; the browser has no offline cache) ----
-const esignApi = esignClient((p, init) => fetch(`${SERVER}/api/${p}`, init as RequestInit));
-const client = cloudClient((p, init) => fetch(`${SERVER}/api/${p}`, init as RequestInit));
+const esignApi = esignClient((p, init) => af(`${SERVER}/api/${p}`, init as RequestInit));
+const client = cloudClient((p, init) => af(`${SERVER}/api/${p}`, init as RequestInit));
 const revs = new Map<string, { rev: number; name: string }>();
 let cloudCb: ((e: CloudEvent) => void) | null = null;
 const needOnline = (what: string) => new Error(`You need an internet connection to ${what}.`);
@@ -86,7 +99,7 @@ async function cloudWrite(id: string, d: Uint8Array): Promise<void> {
 
 // ---- account (cookie session served by the Worker) ----
 let authCb: ((s: AuthStatus) => void) | null = null;
-const post = (p: string, body?: unknown) => fetch(`${SERVER}/api/${p}`, {
+const post = (p: string, body?: unknown) => af(`${SERVER}/api/${p}`, {
   method: 'POST', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined,
 });
 const toStatus = (u: any): AuthStatus => ({ signedIn: true, username: u.username, email: u.email, role: u.role });
@@ -94,21 +107,39 @@ async function loginResult(r: Response): Promise<any> {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return { signedIn: false, error: j.error || 'Sign-in failed.' };
   if (j.need2fa) return { signedIn: false, need2fa: j.need2fa, ticket: j.ticket, to: j.to, canEmail: j.canEmail };
+  keepToken(j.token);
+  remember(j.user);
   return toStatus(j.user);
 }
 
+// The last signed-in user is remembered (name only) so a server hiccup while the app starts does not look like a sign-out.
+const LAST = 'pdfstudio.lastUser';
+function remember(u: any) { try { localStorage.setItem(LAST, JSON.stringify({ username: u.username, email: u.email, role: u.role })); } catch { /* private window */ } }
+function forget() { try { localStorage.removeItem(LAST); } catch { /* ignore */ } }
+function recall(): any { try { const u = JSON.parse(localStorage.getItem(LAST) || 'null'); return u && u.username ? u : null; } catch { return null; } }
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Only a definite "no" from the server (401 / 403) means signed out. Network trouble or a 5xx is retried, and then the
+// person stays in the app (their calls fail one by one with a message) instead of being sent back to the sign-in form.
 async function authStatus(): Promise<AuthStatus> {
-  try {
-    const r = await fetch(`${SERVER}/api/me`);
-    if (r.ok) return toStatus((await r.json()).user);
-    return { signedIn: false };
-  } catch { return { signedIn: false, error: 'Cannot reach the PdfStudio server.' }; }
+  let problem = 'Cannot reach the PdfStudio server.';
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await af(`${SERVER}/api/me`);
+      if (r.ok) { const u = (await r.json()).user; remember(u); return toStatus(u); }
+      if (r.status === 401 || r.status === 403) { forget(); dropToken(); return { signedIn: false }; }
+      problem = 'The PdfStudio server is busy right now. Try again in a moment.';
+    } catch { problem = 'Cannot reach the PdfStudio server.'; }
+    if (i < 2) await wait(1500);
+  }
+  const u = recall();
+  return u ? toStatus(u) : { signedIn: false, error: problem };
 }
 // A rejected session (account disabled, signed out elsewhere) locks the editor; network trouble does not.
 setInterval(async () => {
   try {
-    const r = await fetch(`${SERVER}/api/me`);
-    if (r.status === 401 || r.status === 403) authCb?.({ signedIn: false, error: 'Your session has ended. Sign in to continue.' });
+    const r = await af(`${SERVER}/api/me`);
+    if (r.status === 401 || r.status === 403) { forget(); dropToken(); authCb?.({ signedIn: false, error: 'Your session has ended. Sign in to continue.' }); }
   } catch { /* offline: keep working */ }
 }, 10 * 60 * 1000);
 
@@ -137,6 +168,7 @@ const api: { [K in keyof Api]: (...a: Parameters<Api[K]>) => any } = {
   },
   logout: async () => {
     try { await post('logout'); } catch { /* ignore */ }
+    forget(); dropToken();
     authCb?.({ signedIn: false });
   },
   onAuthChanged: (cb) => { authCb = cb; },

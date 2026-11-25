@@ -23,6 +23,7 @@ async function newPage(browser, url, opts = {}) {
   page.on('pageerror', (e) => { console.log('pageerror', e.message); fails++; });
   await page.route('**/pdfstudio/api/**', (r) => {
     const u = r.request().url();
+    if (u.endsWith('/api/me')) { (page.__auth = page.__auth || []).push(r.request().headers()['authorization'] || ''); }
     if (u.endsWith('/api/me')) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { username: 'milan', role: 'admin' } }) });
     if (/\/api\/files(\?|$)/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: 'a'.repeat(16), name: 'Cloud lease.pdf', size: 20480, rev: 1, updatedAt: Date.now() - 86400000 * 3 }], used: 20480, quota: 1e9 }) });
     return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -232,6 +233,8 @@ const pickWith = async (page, clickFn, files) => {
       saveFile(n, b) { window.__log.push(['save', n, b.length]); },
       shareFile(n, b) { window.__log.push(['share', n, b.length]); },
       takeOpenedFile() { const f = window.__first; window.__first = null; return f ? JSON.stringify(f) : ''; },
+      getToken() { return 'c'.repeat(64); }, saveToken(t) { window.__log.push(['token', t]); }, clearToken() {},
+      biometricStatus() { return 'ok'; }, getAppLock() { return !!window.__lock; }, setAppLock(on) { window.__lock = !!on; },
     };` });
   await p3.waitForSelector('.page canvas', { timeout: 15000 });
   check('Android: file opened from another app at startup', (await p3.evaluate(() => window.app.active.name)) === 'Opened with.pdf');
@@ -239,17 +242,44 @@ const pickWith = async (page, clickFn, files) => {
   await p3.waitForTimeout(500);
   check('Android: now on Home', await p3.locator('#mhome.on').isVisible());
   check('Android: back on Home lets the app close', (await p3.evaluate(() => window.pdfAndroidBack())) === false);
+  check('Android: saved token is sent as Bearer on API calls', (p3.__auth || []).includes('Bearer ' + 'c'.repeat(64)), JSON.stringify(p3.__auth));
+  // app lock switch (Tools > Settings)
+  await p3.locator('.mh-nav [data-nav=tools]').click();
+  check('Android: App lock switch shown when biometricStatus is ok', await p3.locator('.mh-set[data-set=applock] .mh-switch').isVisible());
+  await p3.locator('.mh-set[data-set=applock] .mh-switch').click();
+  check('Android: App lock switch calls setAppLock(true)', (await p3.evaluate(() => window.__lock)) === true && (await p3.locator('.mh-switch.on').count()) === 1);
+  await p3.locator('.mh-set[data-set=applock] .mh-switch').click();
+  check('Android: App lock switch off again', (await p3.evaluate(() => window.__lock)) === false);
+  await p3.locator('.mh-nav [data-nav=home]').click();
   await p3.evaluate((b) => window.pdfAndroidOpen('Second.pdf', b), b64);
   await p3.waitForFunction(() => window.app.active && window.app.active.name === 'Second.pdf', null, { timeout: 15000 });
   check('Android: pdfAndroidOpen opens a PDF while running', true);
   await p3.locator('[data-action=saveAs]').click(); await p3.waitForTimeout(800);
   check('Android: Save As uses native saveFile', JSON.stringify((await p3.evaluate(() => window.__log)).filter((x) => x[0] === 'save').map((x) => x[1])) === '["Second.pdf"]', JSON.stringify(await p3.evaluate(() => window.__log)));
+  // Share sits right after Save As, fully on screen without scrolling the toolbar
+  const bx = async (sel) => p3.locator(sel).boundingBox();
+  const [bSaveAs, bShare, bCloud] = [await bx('[data-action=saveAs]'), await bx('[data-action=share]'), await bx('[data-action=cloud]')];
+  check('Share button is visible in the phone editor toolbar', await p3.locator('[data-action=share]').isVisible());
+  check('Share is right after Save As', bShare.x > bSaveAs.x && bShare.x < bCloud.x, JSON.stringify([bSaveAs.x, bShare.x, bCloud.x]));
+  check('Share is on screen without scrolling', bShare.x >= 0 && bShare.x + bShare.width <= 390, JSON.stringify(bShare));
+  check('Share has a text label', (await p3.locator('[data-action=share] span').innerText()) === 'Share');
+  // after the phone says "saved": a Saved message with a Share action (same bytes as the save)
+  await p3.evaluate(() => window.pdfAndroidSaved(true, 'Second.pdf'));
+  check('Android: Saved toast has a Share action', (await p3.locator('.toast.act').textContent()).includes('Saved Second.pdf') && (await p3.locator('.toast.act button').textContent()) === 'Share');
+  await p3.locator('.toast.act button').click(); await p3.waitForTimeout(500);
+  check('Android: Share in the Saved toast shares the saved file', (await p3.evaluate(() => window.__log.filter((x) => x[0] === 'share' && x[1] === 'Second.pdf').length)) === 1);
+  // a cancelled Save As puts the "unsaved changes" mark back
+  await p3.evaluate(() => { window.app.active.dirty = true; });
+  await p3.locator('[data-action=saveAs]').click(); await p3.waitForTimeout(800);
+  await p3.evaluate(() => window.pdfAndroidSaved(false, 'Cancelled')); await p3.waitForTimeout(200);
+  check('Android: cancelled save keeps the document marked as changed', (await p3.evaluate(() => window.app.active.dirty)) === true);
+  await p3.evaluate(() => { window.app.active.dirty = false; });
   await p3.locator('[data-action=share]').click(); await p3.waitForTimeout(800);
   check('Android: Share in the editor uses shareFile', (await p3.evaluate(() => window.__log)).some((x) => x[0] === 'share' && x[1] === 'Second.pdf'));
   await p3.evaluate(() => window.pdfAndroidBack()); await p3.waitForTimeout(500);
   await p3.locator('.mh-row', { hasText: 'Second.pdf' }).locator('.more').click();
   await p3.locator('#menu-root .menu button', { hasText: 'Share' }).click(); await p3.waitForTimeout(500);
-  check('Android: Share in Recent menu uses shareFile', (await p3.evaluate(() => window.__log.filter((x) => x[0] === 'share').length)) === 2);
+  check('Android: Share in Recent menu uses shareFile', (await p3.evaluate(() => window.__log.filter((x) => x[0] === 'share').length)) === 3);
   // back closes a dialog first
   await p3.locator('.mh-row', { hasText: 'Second.pdf' }).locator('.more').click();
   await p3.locator('#menu-root .menu button', { hasText: 'Rename' }).click(); await p3.waitForSelector('.modal');

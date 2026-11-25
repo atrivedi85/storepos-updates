@@ -18,7 +18,8 @@ export default {
     if (url.pathname.startsWith('/pdfstudio/app/')) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
       let signedIn = null;
-      try { signedIn = await authenticate(request, env, url); } catch { /* treat as signed out */ }
+      try { signedIn = await authenticate(request, env, url); }
+      catch { return new Response('PdfStudio is busy for a moment. Please try again.', { status: 503, headers: { 'retry-after': '3', 'cache-control': 'no-store' } }); }   // a database hiccup must not look like a sign-out
       if (!signedIn) {
         if (url.pathname !== '/pdfstudio/app/') return new Response('Sign in required', { status: 401, headers: { 'cache-control': 'no-store' } });
         return new Response(request.method === 'HEAD' ? null : appLoginHtml, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY' } });

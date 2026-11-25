@@ -201,6 +201,8 @@ export class Ledger extends DurableObject {
     const k = sha(m[1]), s = this.one('SELECT user, exp FROM sessions WHERE h=?', k);
     if (!s || s.exp < now()) { if (s) this.sql.exec('DELETE FROM sessions WHERE h=?', k); return null; }
     const u = this.findUser(s.user); if (!u || u.disabled) return null;
+    // Sliding session: people who keep using it stay signed in. Renewed to 30 days from now, written at most once a day.
+    if (s.exp - now() < (SESSION_DAYS - 1) * 864e5) this.sql.exec('UPDATE sessions SET exp=? WHERE h=?', now() + SESSION_DAYS * 864e5, k);
     return { user: u, key: k };
   }
   dropSessionsOf(username, exceptKey) { this.sql.exec('DELETE FROM sessions WHERE user=? AND h<>?', username, exceptKey || ''); this.ctx.waitUntil(posKick(this, username).catch(() => {})); }

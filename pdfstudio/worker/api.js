@@ -87,24 +87,28 @@ async function ledgerBrowserUser(env, ldToken) {
   return user;
 }
 
-// Returns { user, via, sessionHash?, sealed? } or null. Cookie-authenticated writes must come from our own origin (CSRF guard).
+// Returns { user, via, sessionHash?, sealed?, expiresAt? } or null. Cookie-authenticated writes must come from our own origin (CSRF guard).
+// A Bearer token (desktop app, Android app) is tried first; if it is unknown the cookie is tried next, so a stale saved token
+// never locks out a browser that still has a good cookie.
 export async function authenticate(request, env, url) {
   const bearer = bearerToken(request);
-  const cookie = bearer ? null : cookieToken(request);
-  const token = bearer || cookie;
+  const cookie = cookieToken(request);
   const unsafe = request.method !== 'GET' && request.method !== 'HEAD';
   const sameOrigin = request.headers.get('origin') === url.origin;
-  if (token && !(cookie && unsafe && !sameOrigin)) {
-    const th = await sha256(token);
+  const tries = [];
+  if (bearer) tries.push({ token: bearer, via: 'bearer' });
+  if (cookie && cookie !== bearer && !(unsafe && !sameOrigin)) tries.push({ token: cookie, via: 'cookie' });
+  for (const t of tries) {
+    const th = await sha256(t.token);
     const row = await env.DB.prepare(
       `SELECT u.id, u.username, u.email, u.role, u.disabled, s.expires_at, s.ledger_token
          FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`
     ).bind(th).first();
     if (row && row.expires_at >= Date.now()) {
-      return { user: { id: row.id, username: row.username, email: row.email, role: row.role }, via: bearer ? 'bearer' : 'cookie', sessionHash: th, sealed: row.ledger_token };
+      return { user: { id: row.id, username: row.username, email: row.email, role: row.role }, via: t.via, token: t.token, sessionHash: th, sealed: row.ledger_token, expiresAt: row.expires_at };
     }
   }
-  const ld = bearer ? null : ledgerTokenFromRequest(request);
+  const ld = ledgerTokenFromRequest(request);
   if (ld && !(unsafe && !sameOrigin)) {
     const user = await ledgerBrowserUser(env, ld);
     if (user) return { user, via: 'ledger' };
@@ -216,11 +220,13 @@ export async function handleApi(request, env, url) {
 
   if (route === 'me' && method === 'GET') {
     if (!auth) return fail(401, 'Not signed in.');
-    // Re-check the account with Ledger Desk now and then (the desktop app calls this about once an hour),
-    // so turning someone off in Ledger Desk turns off their PdfStudio sessions too.
+    // Re-check the account with Ledger Desk now and then (the apps call this every few minutes), so turning someone off
+    // in Ledger Desk turns off their PdfStudio sessions too. ONLY a definite answer signs the person out:
+    // Ledger Desk saying 401 for that token, or saying the account is disabled. Anything else (Ledger Desk unreachable,
+    // 5xx, 429, a saved token we cannot decrypt) keeps the session: a hiccup must never log anyone out.
     if (auth.sealed) {
       const ld = await openToken(env, auth.sealed);
-      const r = ld ? await ledgerCall(env, '/api/me', { method: 'GET', token: ld }) : { status: 401, data: {} };
+      const r = ld ? await ledgerCall(env, '/api/me', { method: 'GET', token: ld }) : { status: 0, data: {} };
       if (r.status === 401 || (r.status === 200 && r.data.disabled)) {
         await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(auth.sessionHash).run();
         return json({ error: 'Signed out. Sign in again.' }, r.status === 401 ? 401 : 403, { 'set-cookie': sessionCookie('', 0) });
@@ -229,22 +235,31 @@ export async function handleApi(request, env, url) {
         const fresh = await upsertLedgerUser(env, r.data);
         if (fresh) auth.user = fresh;
       }
-      // status 0 / 5xx: Ledger Desk is unreachable; keep the session rather than sign everyone out.
     }
-    return json({ user: auth.user });
+    // Sliding session: an active person is never logged out. Renew to 30 days from now, at most once a day.
+    const headers = {};
+    let expiresAt = auth.expiresAt;
+    if (auth.sessionHash && auth.expiresAt - Date.now() < (SESSION_DAYS - 1) * 86400000) {
+      expiresAt = Date.now() + SESSION_DAYS * 86400000;
+      await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?').bind(expiresAt, auth.sessionHash).run();
+      headers['set-cookie'] = sessionCookie(auth.token, SESSION_DAYS * 86400);
+    } else if (auth.via === 'bearer' && !cookieToken(request)) {
+      // Signed in by a saved token but the browser lost its cookie (Android WebView): put the cookie back.
+      headers['set-cookie'] = sessionCookie(auth.token, Math.max(60, Math.floor((auth.expiresAt - Date.now()) / 1000)));
+    }
+    return json({ user: auth.user, expiresAt }, 200, headers);
   }
   if (route === 'logout' && method === 'POST') {
     const headers = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
     headers.append('set-cookie', sessionCookie('', 0));
-    const token = bearerToken(request) || cookieToken(request);
-    if (token) {
+    for (const token of new Set([bearerToken(request), cookieToken(request)].filter(Boolean))) {
       const th = await sha256(token);
       const row = await env.DB.prepare('SELECT ledger_token FROM sessions WHERE token_hash = ?').bind(th).first();
       if (row && row.ledger_token) { const ld = await openToken(env, row.ledger_token); if (ld) await ledgerCall(env, '/api/logout', { token: ld }); }
       await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(th).run();
     }
     // Signed in through the browser's Ledger Desk session: signing out here ends that one as well.
-    const ldCookie = bearerToken(request) ? null : ledgerTokenFromRequest(request);
+    const ldCookie = ledgerTokenFromRequest(request);
     if (ldCookie && request.headers.get('origin') === url.origin) {
       const r = await ledgerCall(env, '/api/logout', { token: ldCookie });
       for (const c of r.cookies) if (/^ld_s=/.test(c)) headers.append('set-cookie', c);

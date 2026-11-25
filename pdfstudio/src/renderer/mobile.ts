@@ -5,7 +5,7 @@ import type { App } from './app';
 import type { DocTab } from './doc';
 import { $, baseName, closeMenu, el, esc, prompt, showMenu, toast, type MenuItem } from './util';
 import { icon } from './icons';
-import { isAndroid, shareBytes } from './native';
+import { appLock, isAndroid, shareBytes } from './native';
 import { getBytes, fmtSize, fmtWhen, listRecents, putRecent, recordRecent, removeRecent, type RecentEntry } from './recents';
 import { openScanner, scannerBack, scannerOpen } from './scan';
 import { appendPdfs } from './pdfops';
@@ -223,6 +223,7 @@ export class Mobile {
     } else {
       scroll.append(el('h1', 'mh-title', {}, 'Tools'));
       scroll.append(this.tilesRow(TOOLS, 'grid'));
+      const set = this.settingsBox(); if (set) scroll.append(set);
     }
     r.append(scroll);
     if (this.view !== 'tools') {
@@ -280,6 +281,33 @@ export class Mobile {
       b.onclick = () => this.runTool(t.id);
       box.append(b);
     }
+    return box;
+  }
+
+  /** Android app only: the app-lock switch (fingerprint / face / phone PIN). Hidden when the phone cannot do it. */
+  private settingsBox(): HTMLElement | null {
+    const st = appLock.status();
+    if (!st || st === 'unavailable') return null;
+    const box = el('div', 'mh-settings');
+    box.append(el('h2', 'mh-h', {}, 'Settings'));
+    const row = el('div', 'mh-set', { 'data-set': 'applock' });
+    const txt = el('div', 'tx', {}, `<b>App lock (fingerprint / face)</b><small>${st === 'ok'
+      ? 'Ask for your fingerprint, face or phone PIN when PdfStudio is opened.'
+      : 'Set up a screen lock / fingerprint in your phone settings first.'}</small>`);
+    row.append(txt);
+    if (st === 'ok') {
+      const on = appLock.enabled();
+      const sw = el('button', 'mh-switch' + (on ? ' on' : ''), { role: 'switch', 'aria-checked': String(on), 'aria-label': 'App lock (fingerprint / face)' }, '<i></i>');
+      sw.onclick = () => {
+        const next = !appLock.enabled();
+        appLock.set(next);
+        const now = appLock.enabled();
+        sw.classList.toggle('on', now); sw.setAttribute('aria-checked', String(now));
+        toast(now ? 'App lock is on' : 'App lock is off');
+      };
+      row.append(sw);
+    }
+    box.append(row);
     return box;
   }
 

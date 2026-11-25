@@ -41,6 +41,18 @@ async function authFor(username,password){
 }
 const post=async(path,body)=>{const r=await fetch('/pdfstudio/api/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return{ok:r.ok,j:await r.json().catch(()=>({}))};};
 let ticket=null;
+// Android app: if the web view lost its cookie but the app still holds the saved sign-in token, sign back in without asking.
+(async()=>{
+  try{
+    if(!(window.PdfAndroid&&PdfAndroid.getToken))return;
+    const t=PdfAndroid.getToken();if(!t)return;
+    const last=+sessionStorage.getItem('pdfs.restore')||0;if(Date.now()-last<20000)return;
+    sessionStorage.setItem('pdfs.restore',String(Date.now()));
+    const r=await fetch('/pdfstudio/api/me',{headers:{authorization:'Bearer '+t}});
+    if(r.ok){location.reload();return;}
+    if(r.status===401||r.status===403)PdfAndroid.clearToken&&PdfAndroid.clearToken();
+  }catch{}
+})();
 $('f').onsubmit=async(e)=>{
   e.preventDefault();
   const err=$('err'),go=$('go');
@@ -58,7 +70,7 @@ $('f').onsubmit=async(e)=>{
       $('sub').textContent=r.j.need2fa==='email'?'We emailed a 6-digit code to '+(r.j.to||'you')+'. Enter it here.':'Enter the 6-digit code from your authenticator app.';
       go.disabled=false;return;
     }
-    if(r.ok){location.reload();return;}
+    if(r.ok){try{if(window.PdfAndroid&&PdfAndroid.saveToken&&r.j.token)PdfAndroid.saveToken(r.j.token);}catch{}location.reload();return;}
     err.textContent=r.j.error||'Sign-in failed.';
     if(ticket&&/Sign in again|Too many/.test(r.j.error||'')){ticket=null;$('pwStep').hidden=false;$('codeStep').hidden=true;$('p').value='';}
   }catch{err.textContent='Cannot reach the server. Check your internet connection.';}
