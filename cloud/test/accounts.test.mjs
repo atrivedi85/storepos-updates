@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { start } from './harness.mjs';
+import { seal, open } from './fakepc.mjs';
+import fs from 'node:fs';
 const require = createRequire(import.meta.url);
 const { WebSocket: WS } = createRequire('/opt/npm-tools/node_modules/')('ws');
 const PC = require('../../source/app/acct.js');
@@ -166,6 +168,58 @@ test('relay: web browsers need a session AND membership; the store PC is told wh
   // wrong HMAC is still refused
   await assert.rejects(connect(h.url, store.storeId, 'client', crypto.randomBytes(32).toString('base64'), { cid: 'tablet-2' }), e => e.status === 403);
   tab.close(); bws.close();
+});
+
+/* ---------- roles: who gets PINs, who can write (the store PC decides; this runs the real filter code from acct.js behind the real relay) ---------- */
+test('store PC filters by the relay-stamped role: owner gets everything, others no PINs, reports cannot write, code-paired devices unchanged', async () => {
+  // a small stand-in for lanHandle() in main.js: same calls (deviceAllowed, canWrite, guardOps, filterFor), same order
+  const kv = { users: [{ id: 'u1', name: 'Owner', pin: '1111', role: 'admin', pay: { rate: 15 } }, { id: 'u2', name: 'Sam', pin: '2222', role: 'cashier', perms: { txn_view: true } }], settings: { storeName: 'Test', nextOrder: 5, smtpPass: 'hunter2' } };
+  const tablets = [];
+  const pc = (r, acct) => {
+    const role = acct ? acct.r : null, body = r.body || {};
+    if (r.path === '/pair') { if (!acct) return { status: 403, error: 'code needed' }; const t = { id: 'a:' + acct.u, token: crypto.randomBytes(8).toString('hex'), acct: { user: acct.u } }; tablets.push(t); return { token: t.token }; }
+    const t = tablets.find(x => x.token === r.token); if (!t || !PC.deviceAllowed(t, acct)) return { status: 401, error: 'not allowed' };
+    if (Array.isArray(body.ops) && body.ops.length) {
+      if (acct && !PC.canWrite(acct.r)) return { status: 403, error: 'Your account can look at reports but not change anything.' };
+      for (const op of PC.guardOps(role, body.ops, k => kv[k] || null).ops) kv[op.key] = op.data;
+    }
+    return PC.filterFor(role, { items: Object.entries(kv).map(([k, v]) => ({ store: 'kv', key: k, data: v })), seq: 1 });
+  };
+  const onMsg = d => { let m; try { m = JSON.parse(d.toString()); } catch (e) { return; } if (m.t !== 'req' || !m.enc || !m.enc.startsWith('p.')) return; let out; try { out = pc(open(store.key, m.enc), m.acct); } catch (e) { return; } host.send(JSON.stringify({ t: 'res', id: m.id, to: m.from, enc: seal(store.key, out && out.status ? { status: out.status, error: out.error } : out, false) })); };
+  host.on('message', onMsg);
+  const ask = async (ws, path, token, body) => { const id = 'q' + crypto.randomBytes(4).toString('hex'); ws.send(JSON.stringify({ t: 'req', id, enc: seal(store.key, { path, token, body }, false) })); const m = await waitFor(() => ws.msgs.find(x => x.t === 'res' && x.id === id)); return open(store.key, m.enc); };
+  const web = async (b, cid) => { const ws = await connect(h.url, store.storeId, 'client', store.key, { cid, cookie: b.cookie, mode: 'acct' }); const { token } = await ask(ws, '/pair', '', { deviceId: cid }); return { ws, token }; };
+  const usersOf = r => r.items.find(i => i.key === 'users').data, settingsOf = r => r.items.find(i => i.key === 'settings').data;
+  const owner1 = await web(owner, 'web-raj-9'), mgr = await web(carol, 'web-carol-9'), rep = await web(dina, 'web-dina-9');
+  // owner: everything, untouched
+  let r = await ask(owner1.ws, '/sync', owner1.token, { snap: { stage: 'kv' } });
+  assert.equal(usersOf(r)[1].pin, '2222'); assert.equal(settingsOf(r).smtpPass, 'hunter2');
+  // manager and reports: no PINs or other secrets, but names, roles, permissions and pay stay
+  for (const who of [mgr, rep]) {
+    r = await ask(who.ws, '/sync', who.token, { snap: { stage: 'kv' } });
+    for (const u of usersOf(r)) { assert.equal(u.pin, undefined); assert.equal(u.hasPin, true); }
+    assert.deepEqual([usersOf(r)[1].id, usersOf(r)[1].name, usersOf(r)[1].role, usersOf(r)[1].perms], ['u2', 'Sam', 'cashier', { txn_view: true }]);
+    assert.equal(settingsOf(r).smtpPass, undefined); assert.equal(settingsOf(r).storeName, 'Test');
+    assert.ok(!JSON.stringify(r).includes('2222') && !JSON.stringify(r).includes('hunter2'));
+  }
+  // reports cannot write at all; the store PC says so
+  const nope = await ask(rep.ws, '/sync', rep.token, { ops: [{ store: 'kv', key: 'settings', data: { storeName: 'Hacked' } }] });
+  assert.equal(nope.status, 403); assert.equal(kv.settings.storeName, 'Test');
+  // manager: normal writes work, but cannot touch users, and a settings write cannot wipe the PC's secrets
+  await ask(mgr.ws, '/sync', mgr.token, { ops: [{ store: 'kv', key: 'users', data: [{ id: 'u1', name: 'Owner', role: 'admin' }] }, { store: 'kv', key: 'settings', data: { storeName: 'Test', nextOrder: 9 } }] });
+  assert.equal(kv.users[1].pin, '2222'); assert.equal(kv.users.length, 2); assert.equal(kv.settings.nextOrder, 9); assert.equal(kv.settings.smtpPass, 'hunter2');
+  // a code-paired device (no account stamp, as tablets and linked PCs) is unchanged: full copy including PINs, writes allowed
+  const legacy = await connect(h.url, store.storeId, 'client', store.key, { cid: 'tablet-7' });
+  tablets.push({ id: 'tablet-7', token: 'legacytok' }); r = await ask(legacy, '/sync', 'legacytok', { snap: { stage: 'kv' } });
+  assert.equal(usersOf(r)[1].pin, '2222');
+  // the filter itself: unknown roles are treated as the strictest; nothing is stripped when there is no stamp
+  assert.equal(PC.canWrite('hacker'), false); assert.equal(PC.canWrite(undefined), false);
+  assert.equal(PC.filterFor('hacker', { result: { pin: '1', ok: 2 } }).result.pin, undefined);
+  assert.equal(PC.filterFor(null, { result: { pin: '1' } }).result.pin, '1');
+  // main.js really uses it on all three answers and on writes
+  const src = fs.readFileSync(new URL('../../source/app/main.js', import.meta.url), 'utf8');
+  assert.equal((src.match(/ACCT\.filterFor\(role,/g) || []).length, 3); assert.match(src, /ACCT\.guardOps\(role, body\.ops/); assert.match(src, /req\.acct && !ACCT\.canWrite\(req\.acct\.r\)/);
+  host.off('message', onMsg); for (const x of [owner1, mgr, rep]) x.ws.close(); legacy.close();
 });
 
 test('removed / changed / signed-out people are cut off at once', async () => {

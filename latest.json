@@ -1,7 +1,7 @@
 {
- "version": "1.19.0",
- "notes": "One Trivedi account: Settings - Tablets - Link to my Trivedi account (sign in with email or user name). Then sign in at trivedipos.com/pos from anywhere, and invite staff by role (Owner, Manager, Cashier, Reports only). Cloud codes still work for tablets.",
- "url": "updates/StorePOS-Update-1.19.0.posupdate",
- "sha256": "ab97caac8c8718f78da5b8120fd9285acc0fd90fd53543dbb87fe03f1a1e106d",
+ "version": "1.20.0",
+ "notes": "Safer sign-ins: people who sign in with a Trivedi account (not the owner) no longer receive staff PINs, and 'Reports only' accounts can look at reports but can't change anything.",
+ "url": "updates/StorePOS-Update-1.20.0.posupdate",
+ "sha256": "6812b0c8248065501b5b20cc519e5044372a011dca83871694be0957a958f234",
  "cloudUrl": "https://trivedipos.com"
 }
