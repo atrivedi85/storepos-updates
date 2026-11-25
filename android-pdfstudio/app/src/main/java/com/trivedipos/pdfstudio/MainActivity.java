@@ -530,7 +530,19 @@ public class MainActivity extends Activity {
             if (cb == null) return;
             Uri[] out = null;
             if (res == RESULT_OK) {
-                if (data != null) out = WebChromeClient.FileChooserParams.parseResult(res, data);
+                if (data != null) {
+                    // Several picks (photo picker, Google Photos, Files with multi-select) come back in ClipData, not getData().
+                    ClipData clip = data.getClipData();
+                    if (clip != null && clip.getItemCount() > 0) {
+                        ArrayList<Uri> list = new ArrayList<Uri>();
+                        for (int i = 0; i < clip.getItemCount(); i++) {
+                            Uri u = clip.getItemAt(i).getUri();
+                            if (u != null) list.add(u);
+                        }
+                        if (!list.isEmpty()) out = list.toArray(new Uri[0]);
+                    }
+                    if (out == null && data.getData() != null) out = new Uri[]{ data.getData() };
+                }
                 if (out == null && cameraFile != null && cameraFile.length() > 0) out = new Uri[]{Uri.fromFile(cameraFile)};
             }
             cb.onReceiveValue(out);
