@@ -853,6 +853,7 @@ function applyTabletOps(ops, device) {
   });
   if (out.products.length || out.orders || Object.keys(out.kv).length) send('sync', out);
 }
+function readKvPlain(k) { const r = Q.kv.get.get(String(k)); return r ? JSON.parse(r.data) : null; }
 function readRecord(store, key) {
   if (store === 'products') { const r = getProduct.get(String(key)); return r ? JSON.parse(r.data) : null; }
   if (store === 'orders') { const r = getOrderRow.get(String(key)); return r ? JSON.parse(r.data) : null; }
@@ -893,15 +894,16 @@ function lanHandle(req, body) {
   const t = tabletFor(req);
   if (!t) return { status: 401, error: 'This device is not allowed in any more. Link it again (or sign in again with your Trivedi account).' };
   t.lastSeen = Date.now(); t.ip = req.socket.remoteAddress;
+  const role = req.acct ? req.acct.r : null;   // from the relay's stamp; null = paired with a code (full copy, as before). Anything but 'owner' gets no PINs or other credentials (acct.js filterFor)
   if (url === '/api') {
     const ok = ['ordersQuery', 'orderGet', 'report', 'reportDaily', 'itemMonthly', 'stats'];
     if (!ok.includes(body.method)) return { status: 400, error: 'Unknown request' };
-    return Promise.resolve(H[body.method](null, ...(body.args || []))).then(result => ({ result }));
+    return Promise.resolve(H[body.method](null, ...(body.args || []))).then(result => ACCT.filterFor(role, { result }));
   }
   if (url === '/sync') {
     const epoch = Number(cfg.syncEpoch) || 0;
     if (body.epoch !== undefined && body.epoch !== null && Number(body.epoch) !== epoch && !body.snap) return { resync: true, epoch };
-    if (Array.isArray(body.ops) && body.ops.length) { if (t.acct && !ACCT.canWrite(t.acct.role)) return { status: 403, error: 'Your account can look at reports but not change anything.' }; applyTabletOps(body.ops, t.id); }
+    if (Array.isArray(body.ops) && body.ops.length) { if (req.acct && !ACCT.canWrite(req.acct.r)) return { status: 403, error: 'Your account can look at reports but not change anything.' }; const g = ACCT.guardOps(role, body.ops, readKvPlain); applyTabletOps(g.ops, t.id); }
     if (body.snap) {   // first copy of the store's data, sent in pages
       const s = body.snap, res = { epoch, startSeq: s.startSeq || maxSeq(), items: [], next: null };
       if (s.stage === 'products') {
@@ -917,12 +919,12 @@ function lanHandle(req, body) {
         res.items = rows.map(r => ({ store: 'orders', key: r.id, data: JSON.parse(r.data) }));
         res.next = rows.length === 700 ? { stage: 'orders', after: rows[rows.length - 1].id } : null;
       }
-      return res;
+      return ACCT.filterFor(role, res);
     }
     const since = Number(body.since) || 0;
     const rows = db.prepare('SELECT seq, store, key, origin FROM changes WHERE seq > ? ORDER BY seq LIMIT 800').all(since);
     const items = rows.map(r => { const d = readRecord(r.store, r.key); return { store: r.store, key: r.key, data: d, deleted: d === null }; });
-    return { epoch, seq: rows.length ? rows[rows.length - 1].seq : since, more: rows.length === 800, items, now: Date.now() };
+    return ACCT.filterFor(role, { epoch, seq: rows.length ? rows[rows.length - 1].seq : since, more: rows.length === 800, items, now: Date.now() });
   }
   return { status: 404, error: 'Not found' };
 }

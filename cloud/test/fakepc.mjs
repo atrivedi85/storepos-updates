@@ -10,6 +10,7 @@ const ACCT = require('../../source/app/acct.js');
 const seal = (keyB64, obj, gz) => { const iv = crypto.randomBytes(12); let p = Buffer.from(JSON.stringify(obj)); if (gz) p = zlib.gzipSync(p); const c = crypto.createCipheriv('aes-256-gcm', Buffer.from(keyB64, 'base64'), iv); const ct = Buffer.concat([c.update(p), c.final(), c.getAuthTag()]); return (gz ? 'z.' : 'p.') + Buffer.concat([iv, ct]).toString('base64'); };
 const open = (keyB64, s) => { const gz = s.startsWith('z.'), raw = Buffer.from(s.slice(2), 'base64'); const d = crypto.createDecipheriv('aes-256-gcm', Buffer.from(keyB64, 'base64'), raw.subarray(0, 12)); d.setAuthTag(raw.subarray(raw.length - 16)); let p = Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]); if (gz) p = zlib.gunzipSync(p); return JSON.parse(p.toString()); };
 
+export { seal, open };
 export function startFakePc(base, store) {
   const tablets = [], parts = new Map(), seen = [];
   const products = ['Cola 20oz:1.99:Drinks', 'Energy Drink:3.49:Drinks', 'Tortilla Chips:2.49:Snacks', 'Mint Gum:1.29:Candy', 'Root Beer:1.99:Drinks'].map((s, i) => { const [name, price, cat] = s.split(':'); return { sku: String(100 + i), name, label: name, price: +price, cost: +price / 2, stock: 20 + i, cat, tax: [], ebt: false }; });

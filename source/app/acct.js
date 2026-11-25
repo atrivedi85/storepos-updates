@@ -89,6 +89,46 @@ function deviceAllowed(tablet, acct) {
   if (!tablet || !tablet.acct) return true;                // an ordinary paired tablet or PC (made with a code)
   return !!acct && acct.u === tablet.acct.user && ROLES.includes(acct.r);
 }
-const canWrite = role => role !== 'reports';
+const canWrite = role => role === 'owner' || role === 'manager' || role === 'cashier';   // "Reports only" and anything unknown can look but not change
 
-module.exports = { deviceAllowed, canWrite, ROLES, authFor, openWrap, newPersonKeys, wrapKeyFor, relayAuth, signIn, signIn2fa, emailCode, linkStore, devicePending, deviceWrap, deviceHeartbeat, deviceUnlink, approvePending };
+/* ---- What each account role may see and send (the store PC enforces this; the browser screens are only for looks) ----
+   WHO is asking comes from the relay: the Hub checks the sign-in and the store membership, then stamps every message with
+   { u: user, r: role } OUTSIDE the sealed part (the browser can't set it; index.js deletes any m.acct it sends). The store PC
+   trusts the stamp only from its own authenticated Hub connection (cloudRequest in main.js builds req.acct from it).
+   role === null/undefined means "no stamp": a device paired with a code (LAN tablet, Cloud code, linked PC). Those hold the
+   store key by pairing and need the PINs to sign in offline, so they get everything, as before.
+   Owner = everything. Every other account role never receives credentials. */
+const SECRET_KEYS = new Set(['pin', 'pinhash', 'pinsalt', 'pins', 'password', 'passwd', 'pwd', 'passcode', 'secret', 'clientsecret', 'token', 'accesstoken', 'devicetoken',
+  'apikey', 'licensekey', 'license', 'storekey', 'relayauth', 'privatekey', 'smtp', 'smtppass', 'smtppassword', 'smtpuser', 'mailpassword', 'authkey', 'accesskey', 'terminalkey', 'terminalsecret', 'merchantkey']);
+const isSecretKey = k => SECRET_KEYS.has(String(k).toLowerCase());
+const seesAll = role => role === undefined || role === null || role === 'owner';
+function strip(v) {   // a copy without any credential-like field, at any depth
+  if (Array.isArray(v)) return v.map(strip);
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) if (!isSecretKey(k)) o[k] = strip(v[k]); return o; }
+  return v;
+}
+function stripUser(u) { if (!u || typeof u !== 'object') return u; const o = strip(u); o.hasPin = !!(u.pin || u.pinHash); return o; }   // keeps id, name, role, perms, pay; "hasPin" lets a screen show ••••
+function filterFor(role, payload) {
+  if (seesAll(role) || payload == null || typeof payload !== 'object') return payload;
+  const one = it => (it && it.store === 'kv' && it.key === 'users' && Array.isArray(it.data)) ? { ...strip({ ...it, data: null }), data: it.data.map(stripUser) } : strip(it);
+  if (Array.isArray(payload.items)) return { ...strip({ ...payload, items: null }), items: payload.items.map(one) };   // /sync (snapshot pages and changes)
+  return strip(payload);                                                                                          // /api answers
+}
+/** Changes a non-owner account sends. Credentials can never be changed from here: a write to the users list is dropped, and a
+    write to settings keeps whatever secret-like settings the PC already has (the sender never saw them, so can't send them back). */
+function guardOps(role, ops, readKv) {
+  if (seesAll(role)) return { ops, skipped: [] };
+  const out = [], skipped = [];
+  for (const op of ops || []) {
+    if (op && op.store === 'kv' && String(op.key) === 'users') { skipped.push('users'); continue; }
+    if (op && op.store === 'kv' && String(op.key) === 'settings' && op.data && typeof op.data === 'object') {
+      const cur = readKv('settings') || {}, d = strip(op.data);
+      for (const k of Object.keys(cur)) if (isSecretKey(k)) d[k] = cur[k];
+      out.push({ ...op, data: d }); continue;
+    }
+    out.push(op);
+  }
+  return { ops: out, skipped };
+}
+
+module.exports = { deviceAllowed, canWrite, filterFor, guardOps, ROLES, authFor, openWrap, newPersonKeys, wrapKeyFor, relayAuth, signIn, signIn2fa, emailCode, linkStore, devicePending, deviceWrap, deviceHeartbeat, deviceUnlink, approvePending };
