@@ -19,11 +19,11 @@ export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a
 export function baseName(p: string) { return p.split(/[\\/]/).pop() || p; }
 export function dirName(p: string) { const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')); return i >= 0 ? p.slice(0, i) : ''; }
 
-export function toast(msg: string, err = false) {
+export function toast(msg: string, err = false, ms?: number) {
   const t = el('div', 'toast' + (err ? ' err' : ''));
   t.textContent = msg;
   document.getElementById('toasts')!.appendChild(t);
-  setTimeout(() => t.remove(), err ? 5000 : 2600);
+  setTimeout(() => t.remove(), ms ?? (err ? 5000 : 2600));
 }
 
 /** A message with one tappable action (e.g. "Saved" + Share). Stays a little longer so it can be tapped. */

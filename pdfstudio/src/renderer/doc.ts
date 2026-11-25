@@ -1,7 +1,8 @@
 ﻿import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { Asset, Box, FormFieldInfo, FormValue, ObjectsByPage, PageInfo, Snapshot } from './types';
-import { uid } from './util';
+import { uid, toast } from './util';
+import { openWithRepair, REPAIR_NOTICE } from './pdfrepair';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./pdf.worker.min.mjs', location.href).href;
 const base = (d: string) => new URL(`./${d}/`, location.href).href;
@@ -43,7 +44,9 @@ export class DocTab {
   version = 0;
   private textCache = new Map<number, Promise<PageText>>();
   private pageCache = new Map<number, Promise<PDFPageProxy>>();
-  private loadingTask: any = null;
+  private badPages = new Set<number>();
+  /** true when this document was damaged and PdfStudio opened a repaired copy */
+  repairedNote = false;
 
   static async create(bytes: Uint8Array, path: string | null, name?: string) {
     const t = new DocTab();
@@ -59,18 +62,20 @@ export class DocTab {
     this.version++;
     this.textCache.clear();
     this.pageCache.clear();
-    const task = pdfjsLib.getDocument({
-      data: bytes.slice(),
+    // A damaged file (broken page list, missing page, bad xref) opens from a repaired copy; those are the bytes we keep and save.
+    const opened = await openWithRepair(pdfjsLib, bytes, {
       cMapUrl: base('cmaps'), cMapPacked: true,
       standardFontDataUrl: base('standard_fonts'),
       iccUrl: base('iccs'), wasmUrl: base('wasm'),
-    } as any);
-    this.pdf = await task.promise;
-    this.loadingTask = task;
+    });
+    this.pdf = opened.pdf;
+    this.badPages = new Set(opened.badPages);
+    if (opened.repaired) { this.bytes = opened.bytes; this.dirty = true; }
     if (old) (old as any).destroy?.()?.catch?.(() => {});
     this.pages = [];
     const fields: FormFieldInfo[] = [];
     for (let i = 0; i < this.pdf.numPages; i++) {
+      if (this.badPages.has(i)) { this.pages.push({ w: 612, h: 792, rotation: 0 }); continue; }   // unreadable page: blank placeholder
       const p = await this.getPage(i);
       const vp = p.getViewport({ scale: 1 });
       this.pages.push({ w: vp.width, h: vp.height, rotation: p.rotate });
@@ -105,6 +110,7 @@ export class DocTab {
       if (f.type === 'radio' && !(f.name in this.formValues)) this.formValues[f.name] = f.value;
     }
     if (this.currentPage >= this.pages.length) this.currentPage = Math.max(0, this.pages.length - 1);
+    if (opened.repaired) { this.repairedNote = true; try { toast(REPAIR_NOTICE(this.pages.length), false, 9000); } catch { /* no screen (tests) */ } }
   }
 
   getPage(i: number): Promise<PDFPageProxy> {
@@ -115,7 +121,7 @@ export class DocTab {
 
   getText(i: number): Promise<PageText> {
     let t = this.textCache.get(i);
-    if (!t) { t = this.buildText(i); this.textCache.set(i, t); }
+    if (!t) { t = this.buildText(i).catch((): PageText => ({ runs: [], text: '', map: [] })); this.textCache.set(i, t); }
     return t;
   }
 
