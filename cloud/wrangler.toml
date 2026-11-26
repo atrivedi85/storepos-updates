@@ -33,6 +33,10 @@ tag = "v3"
 new_sqlite_classes = ["Hotel"]
 
 # PdfStudio has its own Worker (pdfstudio/worker). If a /pdfstudio request ever lands here, hand it over.
+[[kv_namespaces]]
+binding = "SURFER"   # IPTV Surfer APK (key "surfer.apk") + short TV download codes; written by android-iptv.yml
+id = "3a131d80955e4eed9b4bdb5ef977e562"
+
 [[services]]
 binding = "PDFSTUDIO"
 service = "pdfstudio-downloads"

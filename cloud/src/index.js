@@ -58,6 +58,35 @@ async function posInfo() {
   return J({ version: null });
 }
 
+async function surferUser(req, env) {
+  try {
+    const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/me', req.url), { headers: { cookie: req.headers.get('cookie') || '' } }));
+    if (!r.ok) return null; const me = await r.json(); return me && !me.disabled && (me.username || me.name || me.id) ? me : null;
+  } catch (e) { return null; }
+}
+async function surferApk(env) {
+  const body = await env.SURFER.get('surfer.apk', { type: 'stream' });
+  if (!body) return new Response('IPTV Surfer is not available right now. Please try again later.', { status: 503, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  return new Response(body, { headers: { 'content-type': 'application/vnd.android.package-archive', 'content-disposition': 'attachment; filename="IPTVSurfer.apk"', 'cache-control': 'private, no-store' } });
+}
+async function surfer(req, env, path) {
+  if (path.startsWith('/s/')) {
+    const code = path.slice(3).toLowerCase();
+    if (!(await env.SURFER.get('code:' + code))) return new Response('This TV code has expired or is wrong. Sign in at trivedipos.com/download on a phone or computer to get a new one.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    return surferApk(env);
+  }
+  const me = await surferUser(req, env);
+  if (path === '/surfer/tv-code') {
+    if (!me) return J({ error: 'Please sign in first.' }, 401);
+    const abc = 'abcdefghjkmnpqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(6));
+    const code = [...b].map(x => abc[x % abc.length]).join('');
+    await env.SURFER.put('code:' + code, String(me.username || me.name || me.id), { expirationTtl: 86400 });
+    return J({ code, url: 'trivedipos.com/s/' + code, hours: 24 });
+  }
+  if (!me) return Response.redirect(new URL('/books/login?next=' + encodeURIComponent('/download#surfer'), req.url).toString(), 302);
+  return surferApk(env);
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -65,8 +94,11 @@ export default {
     const path = new URL(req.url).pathname;
     if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
     if (path === '/dl/info') return posInfo();
-    // Short link for typing on a TV remote (Downloader app): trivedipos.com/surfer -> latest IPTV Surfer test APK
-    if (path === '/surfer' || path === '/surfer/') return Response.redirect('https://github.com/atrivedi85/storepos-updates/releases/download/iptv-surfer-test/IPTVSurfer.apk', 302);
+    // IPTV Surfer download, only for people with a Trivedi account (signed in to Ledger Desk / My account).
+    //   /surfer          signed in: the APK; not signed in: the sign-in page, then back here
+    //   /surfer/tv-code  signed in: a short one-day code for a TV ({code}); the TV types trivedipos.com/s/<code> in Downloader
+    //   /s/<code>        the APK, for 24 hours, without signing in
+    if (path === '/surfer' || path === '/surfer/' || path === '/surfer/tv-code' || /^\/s\/[a-z0-9]{6}$/i.test(path)) return surfer(req, env, path);
     if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
     // Privacy (PdfStudio) and Delete account pages: same asset trick as /account (Cloudflare redirects "x.html" to "x")
     if (path === '/pdfstudio-privacy' || path === '/delete-account') {
