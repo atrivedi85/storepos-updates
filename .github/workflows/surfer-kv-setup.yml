@@ -1,0 +1,19 @@
+name: IPTV Surfer private storage setup (one-off)
+on: workflow_dispatch
+jobs:
+  kv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Create (or find) the SURFER KV namespace
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx -y wrangler@3 kv namespace list | tee list.json
+          id=$(node -e 'const l=JSON.parse(require("fs").readFileSync("list.json","utf8").replace(/^[^\[]*/s,""));const n=l.find(x=>/surfer/i.test(x.title));console.log(n?n.id:"")')
+          if [ -z "$id" ]; then npx -y wrangler@3 kv namespace create SURFER | tee create.txt; id=$(grep -oE '[0-9a-f]{32}' create.txt | head -1); fi
+          echo "SURFER_KV_ID=$id"
+          echo "### SURFER KV namespace id: \`$id\`" >> "$GITHUB_STEP_SUMMARY"
