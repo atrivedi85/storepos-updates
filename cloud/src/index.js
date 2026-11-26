@@ -65,6 +65,8 @@ export default {
     const path = new URL(req.url).pathname;
     if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
     if (path === '/dl/info') return posInfo();
+    // Short link for typing on a TV remote (Downloader app): trivedipos.com/surfer -> latest IPTV Surfer test APK
+    if (path === '/surfer' || path === '/surfer/') return Response.redirect('https://github.com/atrivedi85/storepos-updates/releases/download/iptv-surfer-test/IPTVSurfer.apk', 302);
     if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
     // Privacy (PdfStudio) and Delete account pages: same asset trick as /account (Cloudflare redirects "x.html" to "x")
     if (path === '/pdfstudio-privacy' || path === '/delete-account') {
