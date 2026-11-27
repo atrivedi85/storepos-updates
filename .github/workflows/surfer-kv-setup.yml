@@ -3,12 +3,20 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "list = show what is stored, delete-apk = remove the stored APK"
+        description: "list | delete-apk | delete-old-branches (removes trivedi-tv and ci-logs-iptv-surfer)"
         default: list
+permissions:
+  contents: write
 jobs:
   kv:
     runs-on: ubuntu-latest
     steps:
+      - name: Delete the old IPTV Surfer branches
+        if: inputs.action == 'delete-old-branches'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for b in trivedi-tv ci-logs-iptv-surfer; do gh api -X DELETE repos/$GITHUB_REPOSITORY/git/refs/heads/$b && echo "deleted $b" || true; done
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: KV ${{ inputs.action }}

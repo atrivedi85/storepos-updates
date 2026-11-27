@@ -72,6 +72,16 @@
       </p>
       <p style="font-size:14px">Testers: first tap <a href="https://play.google.com/apps/testing/com.trivedipos.pdfstudio">Become a tester</a> with the Gmail you gave us.</p>
     </div>
+    <div class="card" id="iptv">
+      <h2>MD's IPTV for phones, Fire TV and Google TV</h2>
+      <p>A player for your own IPTV service (portal + MAC address): live TV with a TV guide, Video Club movies and series, favorites, Multi View, downloads and casting. The app has no channels of its own; you add your provider.</p>
+      <p style="font-size:14px"><b>For Trivedi account holders.</b> You'll be asked to sign in first.</p>
+      <p style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn pri" href="/iptv">Download the APK</a>
+        <button class="btn sec" type="button" id="iptvTv">Get a code for my TV</button>
+      </p>
+      <p style="font-size:14px" id="iptvTvOut">On a TV: get a TV code here, then open the free <b>Downloader</b> app on the TV and type the address it shows. Codes work for 24 hours. The app updates itself after that.</p>
+    </div>
   </div>
   <p style="font-size:14px;color:var(--muted)">Installing the APK: open the downloaded file on the phone or tablet. If Android asks, allow your browser to install apps. Apps from Google Play update by themselves; APK installs update when you download the new APK.</p>
 </div></main>
@@ -88,5 +98,16 @@ document.getElementById('f').addEventListener('submit', function () { var b = do
 fetch('/dl/info').then(function (r) { return r.json(); }).then(function (j) { if (j.version) document.getElementById('ver').textContent = 'Version ' + j.version + (j.bytes ? ' · ' + Math.round(j.bytes / 1048576) + ' MB' : ''); }).catch(function () { });
 </script>
 <script src="/account-bar.js" defer></script>
+<script>
+document.getElementById('iptvTv').addEventListener('click', async () => {
+  const out = document.getElementById('iptvTvOut');
+  try {
+    const r = await fetch('/iptv/tv-code', { credentials: 'same-origin' });
+    if (r.status === 401) { location.href = '/books/login?next=' + encodeURIComponent('/download#iptv'); return; }
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Something went wrong');
+    out.innerHTML = 'On the TV, open <b>Downloader</b> and type: <span style="font-size:22px;font-weight:700;letter-spacing:.04em;display:block;margin:6px 0">' + d.url + '</span>This code works for 24 hours.';
+  } catch (e) { out.textContent = 'Could not make a TV code: ' + e.message; }
+});
+</script>
 </body>
 </html>
