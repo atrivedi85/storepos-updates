@@ -72,16 +72,6 @@
       </p>
       <p style="font-size:14px">Testers: first tap <a href="https://play.google.com/apps/testing/com.trivedipos.pdfstudio">Become a tester</a> with the Gmail you gave us.</p>
     </div>
-    <div class="card" id="surfer">
-      <h2>IPTV Surfer for phones and Google TV</h2>
-      <p>Watch your own IPTV service: live TV with a TV guide, movies and series, favorites and Multi View. Works with a portal (MAC), Xtream login or M3U link. The app has no channels of its own; you add your provider.</p>
-      <p style="font-size:14px"><b>For Trivedi account holders.</b> You'll be asked to sign in first.</p>
-      <p style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-        <a class="btn pri" href="/surfer">Download the APK</a>
-        <button class="btn sec" type="button" id="surferTv">Get a code for my TV</button>
-      </p>
-      <p style="font-size:14px" id="surferTvOut">On Google TV: get a TV code here, then open the free <b>Downloader</b> app on the TV and type the address it shows. Codes work for 24 hours.</p>
-    </div>
   </div>
   <p style="font-size:14px;color:var(--muted)">Installing the APK: open the downloaded file on the phone or tablet. If Android asks, allow your browser to install apps. Apps from Google Play update by themselves; APK installs update when you download the new APK.</p>
 </div></main>
@@ -98,16 +88,5 @@ document.getElementById('f').addEventListener('submit', function () { var b = do
 fetch('/dl/info').then(function (r) { return r.json(); }).then(function (j) { if (j.version) document.getElementById('ver').textContent = 'Version ' + j.version + (j.bytes ? ' · ' + Math.round(j.bytes / 1048576) + ' MB' : ''); }).catch(function () { });
 </script>
 <script src="/account-bar.js" defer></script>
-<script>
-document.getElementById('surferTv').addEventListener('click', async () => {
-  const out = document.getElementById('surferTvOut');
-  try {
-    const r = await fetch('/surfer/tv-code', { credentials: 'same-origin' });
-    if (r.status === 401) { location.href = '/books/login?next=' + encodeURIComponent('/download#surfer'); return; }
-    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Something went wrong');
-    out.innerHTML = 'On the TV, open <b>Downloader</b> and type: <span style="font-size:22px;font-weight:700;letter-spacing:.04em;display:block;margin:6px 0">' + d.url + '</span>This code works for 24 hours.';
-  } catch (e) { out.textContent = 'Could not make a TV code: ' + e.message; }
-});
-</script>
 </body>
 </html>
