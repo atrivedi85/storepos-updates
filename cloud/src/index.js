@@ -58,12 +58,6 @@ async function posInfo() {
   return J({ version: null });
 }
 
-async function iptvUser(req, env) {
-  try {
-    const r = await env.LEDGER.get(env.LEDGER.idFromName('main')).fetch(new Request(new URL('/api/me', req.url), { headers: { cookie: req.headers.get('cookie') || '' } }));
-    if (!r.ok) return null; const me = await r.json(); return me && !me.disabled && (me.username || me.name || me.id) ? me : null;
-  } catch (e) { return null; }
-}
 // MD's IPTV: the latest release APK of github.com/dalsaniamilan-cmd/mds-iptv (the app's own update channel), passed through.
 const MDIPTV_APK = 'https://github.com/dalsaniamilan-cmd/mds-iptv/releases/latest/download/MDsIPTV.apk';
 async function iptvApk(env) {
@@ -74,23 +68,6 @@ async function iptvApk(env) {
   const len = r.headers.get('content-length'); if (len) h['content-length'] = len;
   return new Response(r.body, { headers: h });
 }
-async function iptvDownload(req, env, path) {
-  if (path.startsWith('/s/')) {
-    const code = path.slice(3).toLowerCase();
-    if (!(await env.IPTV.get('code:' + code))) return new Response('This TV code has expired or is wrong. Sign in at trivedipos.com/download on a phone or computer to get a new one.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
-    return iptvApk(env);
-  }
-  const me = await iptvUser(req, env);
-  if (path === '/iptv/tv-code') {
-    if (!me) return J({ error: 'Please sign in first.' }, 401);
-    const abc = 'abcdefghjkmnpqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(6));
-    const code = [...b].map(x => abc[x % abc.length]).join('');
-    await env.IPTV.put('code:' + code, String(me.username || me.name || me.id), { expirationTtl: 86400 });
-    return J({ code, url: 'trivedipos.com/s/' + code, hours: 24 });
-  }
-  if (!me) return Response.redirect(new URL('/books/login?next=' + encodeURIComponent('/download#iptv'), req.url).toString(), 302);
-  return iptvApk(env);
-}
 
 export default {
   async fetch(req, env) {
@@ -99,11 +76,8 @@ export default {
     const path = new URL(req.url).pathname;
     if (path === '/dl/windows' && req.method === 'POST') return posDownload(req);
     if (path === '/dl/info') return posInfo();
-    // MD's IPTV download, only for people with a Trivedi account (signed in to Ledger Desk / My account).
-    //   /iptv          signed in: the APK; not signed in: the sign-in page, then back here
-    //   /iptv/tv-code  signed in: a short one-day code for a TV ({code}); the TV types trivedipos.com/s/<code> in Downloader
-    //   /s/<code>        the APK, for 24 hours, without signing in
-    if (path === '/iptv' || path === '/iptv/' || path === '/iptv/tv-code' || /^\/s\/[a-z0-9]{6}$/i.test(path)) return iptvDownload(req, env, path);
+    // MD's IPTV download for anyone (owner's choice, Nov 27): trivedipos.com/iptv is short enough to type in Downloader on a TV.
+    if (path === '/iptv' || path === '/iptv/') return iptvApk(env);
     if (path === '/download') return env.ASSETS.fetch(new Request(new URL('/download.html', req.url), { method: 'GET' })).then(r => r.status >= 300 && r.status < 400 ? env.ASSETS.fetch(new Request(new URL(r.headers.get('Location') || '/download.html', req.url), { method: 'GET' })) : r).then(r => new Response(r.body, { status: 200, headers: r.headers }));
     // Privacy (PdfStudio) and Delete account pages: same asset trick as /account (Cloudflare redirects "x.html" to "x")
     if (path === '/pdfstudio-privacy' || path === '/delete-account') {

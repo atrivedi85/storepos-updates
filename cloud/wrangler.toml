@@ -33,10 +33,6 @@ tag = "v3"
 new_sqlite_classes = ["Hotel"]
 
 # PdfStudio has its own Worker (pdfstudio/worker). If a /pdfstudio request ever lands here, hand it over.
-[[kv_namespaces]]
-binding = "IPTV"   # MD's IPTV: one-day TV download codes (key code:<code>)
-id = "3a131d80955e4eed9b4bdb5ef977e562"
-
 [[services]]
 binding = "PDFSTUDIO"
 service = "pdfstudio-downloads"
